@@ -1,0 +1,79 @@
+<?php
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+require_once __DIR__.'/../lib/shop.php';
+$source = $db_name;
+$testDb = 'shop_test_'.date('Ymd_His').'_'.bin2hex(random_bytes(3));
+query("CREATE DATABASE `$testDb` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+$tables = rows('SHOW TABLES');
+query('SET FOREIGN_KEY_CHECKS=0');
+foreach ($tables as $record) {
+    $table = array_values($record)[0];
+    $definition = one('SHOW CREATE TABLE `'.str_replace('`','``',$table).'`')['Create Table'];
+    $conn->select_db($testDb); query($definition); $conn->select_db($source);
+}
+$conn->select_db($testDb); query('SET FOREIGN_KEY_CHECKS=1');
+require __DIR__.'/../scripts/migrate.php';
+require __DIR__.'/../scripts/migrate.php';
+$assertions = 0;
+function check($value,$message) { global $assertions; if (!$value) throw new RuntimeException('FAIL: '.$message); $assertions++; echo 'PASS: '.$message."\n"; }
+function rejects($fn,$message) { try { $fn(); } catch (DomainException $e) { check(true,$message); return; } throw new RuntimeException('FAIL: '.$message); }
+function insert_user($name,$role) { global $conn; query('INSERT INTO users(username,password,role) VALUES(?,?,?)',[$name,password_hash('TestShop2026!',PASSWORD_DEFAULT),$role]); return (int)$conn->insert_id; }
+$buyer=insert_user('qa_buyer','user'); $other=insert_user('qa_other','user'); $merchant=insert_user('qa_merchant','merchant'); $admin=insert_user('qa_admin','admin');
+query("INSERT INTO shops(user_id,shop_name,contact_phone,status) VALUES(?,'QA Shop','13800000000',1)",[$merchant]); $shop=(int)$conn->insert_id;
+query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'测试买家','13800000000','测试省测试市测试地址',1)",[$buyer]); $address=(int)$conn->insert_id;
+query("INSERT INTO categories(category_name,parent_id) VALUES('测试分类',0)"); $category=(int)$conn->insert_id;
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('平台测试商品','19.90',10,?,1,'approved')",[$category]); $p1=(int)$conn->insert_id;
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('店铺测试商品','30.10',10,?,?,1,'approved')",[$category,$shop]); $p2=(int)$conn->insert_id;
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+check(!verify_account_password('123456',password_hash('different-password',PASSWORD_DEFAULT)),'universal password bypass removed');
+check(verify_account_password('old-exact-password','old-exact-password'),'legacy password exact match only');
+check(cents('19.90')===1990 && money(3001)==='30.01','integer money arithmetic');
+rejects(function(){ quantity(-1); },'negative quantity rejected');
+rejects(function(){ quantity('1.5'); },'fractional quantity rejected');
+query('INSERT INTO cart(user_id,product_id,quantity) VALUES(?,?,2),(?,?,1)',[$buyer,$p1,$buyer,$p2]);
+rejects(function()use($buyer,$other,$p1,$address){create_orders($other,$p1,1,$address,'wrong-owner');},'foreign address rejected');
+$ids=create_orders($buyer,0,1,$address,'test-checkout');
+check(count($ids)===2,'cross-shop checkout splits orders');
+check(create_orders($buyer,0,1,$address,'test-checkout')===$ids,'checkout retry is idempotent');
+check((int)one('SELECT stock FROM products WHERE id=?',[$p1])['stock']===8,'stock reserved once');
+check((int)one('SELECT COUNT(*) AS n FROM cart WHERE user_id=?',[$buyer])['n']===0,'ordered cart entries removed');
+$platform=one('SELECT * FROM orders WHERE id=?',[(int)$ids[0]]);
+check($platform['total_amount']==='39.80','server prices used for total');
+rejects(function()use($buyer,$p1,$address){create_orders($buyer,$p1,999,$address,'too-many');},'overselling rejected');
+check((int)one('SELECT COUNT(*) AS n FROM orders')['n']===2,'failed checkout leaves no partial order');
+rejects(function()use($ids,$other){change_order((int)$ids[0],$other,'cancel');},'foreign buyer cannot cancel');
+change_order((int)$ids[0],$buyer,'cancel');
+check((int)one('SELECT stock FROM products WHERE id=?',[$p1])['stock']===10,'cancellation restores inventory');
+rejects(function()use($ids,$buyer){change_order((int)$ids[0],$buyer,'cancel');},'repeat cancellation cannot inflate stock');
+$shopOrder=(int)$ids[1];
+putenv('SHOP_DEMO_PAYMENT=0');
+rejects(function()use($shopOrder,$buyer){change_order($shopOrder,$buyer,'pay');},'payment disabled unless explicitly enabled');
+putenv('SHOP_DEMO_PAYMENT=1'); change_order($shopOrder,$buyer,'pay');
+rejects(function()use($shopOrder,$buyer){change_order($shopOrder,$buyer,'pay');},'duplicate payment rejected');
+$_SESSION['role']='merchant';
+rejects(function()use($shopOrder,$other){change_order($shopOrder,$other,'ship',['express_company'=>'测试快递','express_no'=>'TEST12345']);},'another merchant cannot ship');
+change_order($shopOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'TEST12345']);
+$_SESSION['role']='user'; change_order($shopOrder,$buyer,'receive');
+check(one('SELECT status FROM orders WHERE id=?',[$shopOrder])['status']==='completed','pay ship receive complete');
+$item=one('SELECT * FROM order_items WHERE order_id=?',[$shopOrder]);
+query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content) VALUES(?,?,?,?,?)',[$buyer,(int)$item['id'],$p2,5,'测试购买评价']);
+check((int)one('SELECT COUNT(*) AS n FROM reviews WHERE product_id=?',[$p2])['n']===1,'review persists against purchased item');
+try { query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content) VALUES(?,?,?,?,?)',[$buyer,(int)$item['id'],$p2,5,'重复评价']); throw new RuntimeException('duplicate review accepted'); } catch(mysqli_sql_exception $e) {check($e->getCode()===1062,'duplicate review prevented');}
+$refund=(int)create_orders($buyer,$p2,1,$address,'refund-order')[0]; change_order($refund,$buyer,'pay'); change_order($refund,$buyer,'refund',['reason'=>'测试未发货退款']);
+$_SESSION['role']='merchant';
+rejects(function()use($refund,$merchant){change_order($refund,$merchant,'ship',['express_company'=>'测试','express_no'=>'TEST54321']);},'refund request blocks shipment');
+change_order($refund,$merchant,'refund_approve');
+check(one('SELECT status FROM orders WHERE id=?',[$refund])['status']==='cancelled','demo refund closes order');
+check((int)one('SELECT stock FROM products WHERE id=?',[$p2])['stock']===9,'refund restores reserved inventory once');
+$_SESSION['role']='user';
+$expired=(int)create_orders($buyer,$p1,1,$address,'expired-order')[0];
+query('UPDATE orders SET created_at=NOW()-INTERVAL 4 HOUR WHERE id=?',[$expired]); expire_orders($buyer); expire_orders($buyer);
+check(one('SELECT status FROM orders WHERE id=?',[$expired])['status']==='cancelled','expired order cancelled');
+check((int)one('SELECT stock FROM products WHERE id=?',[$p1])['stock']===10,'expiry restores stock once');
+query("UPDATE products SET audit_status='pending' WHERE id=?",[$p1]);
+rejects(function()use($buyer,$p1,$address){create_orders($buyer,$p1,1,$address,'unapproved');},'unapproved product cannot be purchased');
+query("UPDATE products SET audit_status='approved' WHERE id=?",[$p1]);
+query('INSERT INTO favorites(user_id,product_id) VALUES(?,?)',[$buyer,$p1]);
+check((int)one('SELECT COUNT(*) AS n FROM favorites WHERE user_id=?',[$buyer])['n']===1,'favorites persist');
+file_put_contents(__DIR__.'/state.json',json_encode(['database'=>$testDb,'buyer'=>$buyer,'other'=>$other,'merchant'=>$merchant,'admin'=>$admin,'address'=>$address,'platform_product'=>$p1,'shop_product'=>$p2,'shop'=>$shop,'completed_item'=>(int)$item['id']],JSON_PRETTY_PRINT));
+echo "$assertions integration assertions passed. Test database: $testDb\n";

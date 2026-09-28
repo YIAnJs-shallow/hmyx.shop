@@ -1,0 +1,11 @@
+config/secrets.php
+config/database.local.php
+uploads/*
+!uploads/.htaccess
+backup_*/
+*.sql
+*.zip
+*.log
+tests/state.json
+tests/__pycache__/
+.claude/

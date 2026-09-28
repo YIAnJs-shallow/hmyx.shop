@@ -1,0 +1,30 @@
+<?php
+require_once __DIR__.'/lib/shop.php';
+$userId=uid(); expire_orders($userId);
+$status=$_GET['status'] ?? 'all'; if($status==='unshipped') $status='paid';
+$states=['all'=>'全部','pending'=>'待付款','paid'=>'待发货','shipped'=>'待收货','completed'=>'已完成','cancelled'=>'已取消'];
+if(!isset($states[$status])) $status='all';
+$page=max(1,(int)($_GET['page'] ?? 1)); $offset=($page-1)*10;
+$where='o.user_id=?'; $params=[$userId]; if($status!=='all') { $where.=' AND o.status=?'; $params[]=$status; }
+$count=one('SELECT COUNT(*) AS n FROM orders o WHERE '.$where,$params)['n'];
+$orders=rows('SELECT o.*,s.shop_name,r.status AS refund_status,r.reason FROM orders o LEFT JOIN shops s ON s.id=o.shop_id LEFT JOIN refund_requests r ON r.order_id=o.id WHERE '.$where.' ORDER BY o.id DESC LIMIT 10 OFFSET '.$offset,$params);
+page_start('我的订单');
+echo '<nav class="tabs">'; foreach($states as $key=>$label) echo '<a class="'.($status===$key?'active':'').'" href="?status='.$key.'">'.$label.'</a>'; echo '</nav>';
+if(!$orders) echo '<div class="card empty">暂无订单，<a href="index.php">去逛逛</a></div>';
+foreach($orders as $order): $id=(int)$order['id'];
+$items=rows('SELECT i.*,COALESCE(i.product_title,p.title,\'历史商品\') AS title,COALESCE(i.product_image,p.image_url) AS image_url,r.id AS review_id FROM order_items i LEFT JOIN products p ON p.id=i.product_id LEFT JOIN reviews r ON r.order_item_id=i.id WHERE i.order_id=?',[$id]);
+?>
+<section class="card"><div class="row"><div class="grow"><strong><?=h($order['shop_name'] ?? '平台 / 历史订单')?></strong><p class="muted"><?=h($order['order_no'])?> · <?=h($order['created_at'])?></p></div><span class="badge"><?=h(status_name($order['status']))?></span></div>
+<?php foreach($items as $item): ?><div class="row"><div class="grow"><a href="detail.php?id=<?=(int)$item['product_id']?>"><?=h($item['title'])?></a><p>¥ <?=h($item['price'])?> × <?=(int)$item['quantity']?></p></div>
+<?php if($order['status']==='completed' && $item['product_id'] && !$item['review_id']): ?><a class="button" href="review.php?item_id=<?=(int)$item['id']?>">评价商品</a><?php elseif($item['review_id']): ?><span>已评价</span><?php endif; ?></div><?php endforeach; ?>
+<?php if(!$items): ?><p class="muted">历史订单未保存商品明细。</p><?php endif; ?>
+<p><?=h($order['receiver_name'])?> · <?=h($order['receiver_phone'])?> · <?=h($order['receiver_address'])?></p><hr class="divider"><div class="row"><strong class="price grow">¥ <?=h($order['total_amount'])?></strong><div class="actions">
+<?php if($order['status']==='pending'): ?><a class="button" href="pay.php?order_id=<?=$id?>">去付款</a><?=action_button($id,'cancel','取消订单')?><?php endif; ?>
+<?php if(in_array($order['status'],['shipped','completed'],true)): ?><a href="express_detail.php?order_id=<?=$id?>">查看物流</a><?php endif; ?>
+<?php if($order['status']==='shipped') echo action_button($id,'receive','确认已收货'); ?>
+</div></div>
+<?php if($order['refund_status']): ?><p class="notice">退款申请：<?=h(['pending'=>'待商家处理','approved'=>'已批准（演示退款）','rejected'=>'已拒绝，请联系商家'][$order['refund_status']])?> · <?=h($order['reason'])?></p>
+<?php elseif($order['status']==='paid' && $order['payment_method']==='demo'): ?><details><summary>申请未发货退款（演示）</summary><form method="post" action="order_action.php"><?=csrf_field()?><input type="hidden" name="order_id" value="<?=$id?>"><label>退款原因<textarea name="reason" minlength="2" maxlength="500" required></textarea></label><button name="action" value="refund">提交退款申请</button></form></details><?php endif; ?>
+</section><?php endforeach; ?>
+<nav class="tabs"><?php if($page>1): ?><a href="?status=<?=h($status)?>&page=<?=$page-1?>">上一页</a><?php endif; ?><span>第 <?=$page?> 页 · 共 <?=(int)$count?> 笔</span><?php if($page*10<$count): ?><a href="?status=<?=h($status)?>&page=<?=$page+1?>">下一页</a><?php endif; ?></nav>
+<?php page_end(); ?>
