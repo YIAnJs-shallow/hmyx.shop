@@ -60,6 +60,17 @@ class Client:
                     assert form['fields'].get('csrf_token'), ('missing CSRF', path, form)
         return html, response.url
 
+    def ajax(self, path, data, expected=200):
+        request = urllib.request.Request(BASE + path, urllib.parse.urlencode(data).encode(), headers={'X-Requested-With': 'XMLHttpRequest'})
+        try:
+            response = self.opener.open(request, timeout=15)
+        except urllib.error.HTTPError as error:
+            response = error
+        body = response.read().decode('utf-8')
+        assert response.code == expected, (path, response.code, body[:300])
+        assert not re.search(r'(Fatal error|Warning:|Parse error|Notice:|SQLSTATE)', body), (path, body[:500])
+        return json.loads(body)
+
     def token(self, path='user_login.php'):
         html, _ = self.request(path)
         return re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
@@ -140,6 +151,20 @@ html, _ = merchant.request('product_list.php')
 new_product = str(max(int(x) for x in re.findall(r'product_edit.php\?id=(\d+)', html)))
 buyer.request('detail.php?id=' + new_product, expected=404)
 check(True, 'merchant product requires approval before public access')
+rejected_title = 'HTTP驳回商品'
+merchant.request('product_add.php', {'csrf_token': merchant.token('product_add.php'), 'title': rejected_title,
+                 'price': '8.88', 'stock': '3', 'detail': '驳回后不得直接上架', 'submit_action': 'publish'})
+html, _ = merchant.request('product_list.php')
+rejected_product = str(max(int(x) for x in re.findall(r'product_edit.php\?id=(\d+)', html) if int(x) != int(new_product)))
+admin.request('admin_audit.php', {'csrf_token': admin.token('admin_audit.php?tab=pending'),
+               'product_id': rejected_product, 'audit_action': 'reject', 'comment': '请补充商品说明'})
+response = merchant.ajax('product_list.php', {'csrf_token': merchant.token('product_list.php'), 'action': 'toggle_status',
+                                               'is_ajax': '1', 'product_id': rejected_product})
+check(response['status'] == 0 and '重新提交审核' in response['msg'], 'rejected product cannot be relisted directly')
+html, _ = merchant.request('product_list.php')
+check(rejected_title in html and '审核未通过' in html and '请编辑后重新提交审核' in html, 'rejected product remains off shelf in merchant list')
+buyer.request('detail.php?id=' + rejected_product, expected=404)
+check(True, 'rejected product remains hidden from storefront')
 html, _ = admin.request('admin_audit.php', {'csrf_token': admin.token('admin_audit.php?tab=pending'),
                          'product_id': new_product, 'audit_action': 'approve', 'comment': '测试通过'})
 html, _ = buyer.request('detail.php?id=' + new_product)

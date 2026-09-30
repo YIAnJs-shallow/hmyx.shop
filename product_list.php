@@ -80,41 +80,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && isset($_
         }
 
         if ($action === 'toggle_status') {
-            // 上下架切换：1 -> 0，0 -> 1
+            // 已驳回商品仅可下架，重新上架前必须编辑并重新提交审核。
+            $sql = "UPDATE products SET status = 1 - status WHERE id = ? AND shop_id = ? AND NOT (status = 0 AND audit_status = 'rejected')";
             if ($db instanceof PDO) {
-                $stmt = $db->prepare("UPDATE products SET status = 1 - status WHERE id = ? AND shop_id = ?");
+                $stmt = $db->prepare($sql);
                 $stmt->execute([$product_id, $shop_id]);
                 $affected = $stmt->rowCount();
 
-                $stmt2 = $db->prepare("SELECT status FROM products WHERE id = ?");
-                $stmt2->execute([$product_id]);
-                $new_status = $stmt2->fetchColumn();
+                $stmt2 = $db->prepare('SELECT status, audit_status FROM products WHERE id = ? AND shop_id = ?');
+                $stmt2->execute([$product_id, $shop_id]);
+                $productStatus = $stmt2->fetch(PDO::FETCH_ASSOC) ?: null;
             } elseif ($db instanceof mysqli) {
-                $stmt = $db->prepare("UPDATE products SET status = 1 - status WHERE id = ? AND shop_id = ?");
+                $stmt = $db->prepare($sql);
                 if ($stmt) {
                     $stmt->bind_param("ii", $product_id, $shop_id);
                     $stmt->execute();
                     $affected = $db->affected_rows;
 
-                    $stmt2 = $db->prepare("SELECT status FROM products WHERE id = ?");
-                    $stmt2->bind_param("i", $product_id);
+                    $stmt2 = $db->prepare('SELECT status, audit_status FROM products WHERE id = ? AND shop_id = ?');
+                    $stmt2->bind_param("ii", $product_id, $shop_id);
                     $stmt2->execute();
-                    $new_status = $stmt2->get_result()->fetch_assoc()['status'] ?? null;
+                    $productStatus = $stmt2->get_result()->fetch_assoc() ?: null;
                 } else {
-                    $affected = 0;
-                    $new_status = null;
+                    $productStatus = null;
                 }
             }
+            $new_status = $productStatus['status'] ?? null;
             echo json_encode($affected > 0
                 ? ['status' => 1, 'msg' => $new_status == 1 ? '商品已上架！' : '商品已下架（转入草稿）！', 'new_status' => intval($new_status)]
-                : ['status' => 0, 'msg' => '操作失败：商品不存在或无权操作']);
+                : (($productStatus['audit_status'] ?? '') === 'rejected' && intval($new_status) === 0
+                    ? ['status' => 0, 'msg' => '该商品审核未通过，请编辑后重新提交审核再上架']
+                    : ['status' => 0, 'msg' => '操作失败：商品不存在或无权操作']));
             exit;
         }
 
         echo json_encode(['status' => 0, 'msg' => '未知操作']);
         exit;
     } catch (Exception $e) {
-        echo json_encode(['status' => 0, 'msg' => '操作失败：' . $e->getMessage()]);
+        error_log('merchant_product_status_change_failed: ' . $e->getMessage());
+        echo json_encode(['status' => 0, 'msg' => '操作失败，请稍后重试']);
         exit;
     }
 }
@@ -270,9 +274,13 @@ foreach ($products as $p) {
                             <a href="product_edit.php?id=<?= $p['id'] ?>" class="btn btn-outline-primary btn-sm">
                                 <i class="bi bi-pencil"></i> 编辑
                             </a >
-                            <button type="button" class="btn btn-outline-warning btn-sm toggle-btn" data-id="<?= $p['id'] ?>" data-status="<?= $p['status'] ?>">
-                                <i class="bi bi-arrow-repeat"></i> <?= $p['status'] == 1 ? '下架' : '上架' ?>
-                            </button>
+                            <?php if ($as === 'rejected' && $p['status'] == 0): ?>
+                                <span class="btn btn-outline-secondary btn-sm disabled" aria-disabled="true">请编辑后重新提交审核</span>
+                            <?php else: ?>
+                                <button type="button" class="btn btn-outline-warning btn-sm toggle-btn" data-id="<?= $p['id'] ?>" data-status="<?= $p['status'] ?>">
+                                    <i class="bi bi-arrow-repeat"></i> <?= $p['status'] == 1 ? '下架' : '上架' ?>
+                                </button>
+                            <?php endif; ?>
                             <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteProduct(<?= $p['id'] ?>)">
                                 <i class="bi bi-trash"></i> 下架
                             </button>
