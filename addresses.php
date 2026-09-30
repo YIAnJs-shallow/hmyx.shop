@@ -141,7 +141,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'parse_geo') {
         exit;
     }
 
-    echo json_encode(['status' => 1, 'address' => '当前定位点附近（未能获取详细地址，请手动补充）']);
+    echo json_encode(['status' => 0, 'reason' => 'address_unavailable', 'msg' => '未能解析详细地址，请手动补充']);
     exit;
 }
 
@@ -439,8 +439,8 @@ function parseBackendAddress(lat, lng) {
     fetch(`addresses.php?${query}`)
     .then(res => res.ok ? res.json() : Promise.reject())
     .then(data => {
-        if (data && data.status === 1 && data.address) input.value = data.address;
-        else showLocationHint('未能解析详细地址，请手动补充');
+        if (data && data.status === 1 && typeof data.address === 'string' && data.address.trim() !== '') input.value = data.address;
+        else showLocationHint(data && data.msg ? data.msg : '未能解析详细地址，请手动补充');
     })
     .catch(() => showLocationHint('未能解析详细地址，请手动补充'));
 }

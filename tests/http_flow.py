@@ -106,6 +106,17 @@ check(True, 'buyer navigation renders and POST forms contain CSRF')
 invalid_geo, _ = buyer.request('addresses.php?action=parse_geo&lat=91&lng=0')
 invalid_geo = json.loads(invalid_geo)
 check(invalid_geo['status'] == 0 and invalid_geo['msg'] == '经纬度无效', 'invalid geolocation is rejected without service details')
+parsed_geo, _ = buyer.request('addresses.php?action=parse_geo&lat=28.1123&lng=112.9889')
+parsed_geo = json.loads(parsed_geo)
+if parsed_geo['status'] == 1:
+    check(isinstance(parsed_geo.get('address'), str) and parsed_geo['address'].strip(), 'reverse geocoding only succeeds with an address')
+else:
+    check(
+        parsed_geo.get('reason') == 'address_unavailable'
+        and parsed_geo.get('msg') == '未能解析详细地址，请手动补充'
+        and not parsed_geo.get('address'),
+        'reverse geocoding failure does not return a placeholder address'
+    )
 for path in ['admin.php', 'admin_dashboard.php', 'admin_users.php', 'admin_audit.php?tab=approved', 'category_add.php', 'product_add.php', 'product_edit.php?id=' + str(state['platform_product']), 'admin_orders.php']:
     admin.request(path)
 check(True, 'admin pages render and forms remain valid')
