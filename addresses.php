@@ -78,7 +78,7 @@ function gcj02ToWgs84($lng, $lat) {
 }
 
 // HTTP GET 并返回 JSON 数组（失败返回 null）
-function httpGetJson($url) {
+function httpGetJson($url, $provider) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -87,9 +87,14 @@ function httpGetJson($url) {
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
     $response = curl_exec($ch);
-    if ($response === false) error_log('reverse_geocode_request_failed errno='.curl_errno($ch));
+    $errno = curl_errno($ch);
+    $error = preg_replace('/[\r\n]+/', ' ', curl_error($ch));
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    if ($response === false) return null;
+    if ($response === false) {
+        error_log('reverse_geocode_request_failed provider='.$provider.' errno='.$errno.' http='.$httpCode.' error='.substr($error, 0, 200));
+        return null;
+    }
     return json_decode($response, true);
 }
 
@@ -108,7 +113,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'parse_geo') {
 
     if (!empty($AMAP_KEY)) {
         $apiUrl = "https://restapi.amap.com/v3/geocode/regeo?output=json&location={$lng},{$lat}&key={$AMAP_KEY}&extensions=base";
-        $res = httpGetJson($apiUrl);
+        $res = httpGetJson($apiUrl, 'amap');
 
         if ($res && isset($res['status']) && $res['status'] === '1' && !empty($res['regeocode']['formatted_address'])) {
             $formatted = $res['regeocode']['formatted_address'];
@@ -128,7 +133,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'parse_geo') {
         // BigDataCloud 免费接口（无需 Key）。注意：该接口使用 WGS-84，先从 GCJ-02 转换
         list($wgs_lng, $wgs_lat) = gcj02ToWgs84($lng, $lat);
         $apiUrl = "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={$wgs_lat}&longitude={$wgs_lng}&localityLanguage=zh";
-        $res = httpGetJson($apiUrl);
+        $res = httpGetJson($apiUrl, 'bigdatacloud');
 
         $formatted = reverse_geocode_address_suggestion($res);
     }
