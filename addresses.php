@@ -2,6 +2,7 @@
 require_once __DIR__ . '/lib/security.php';
 
 require_once __DIR__.'/lib/shop.php';
+require_once __DIR__.'/lib/geocoding.php';
 $db = isset($pdo) ? $pdo : (isset($conn) ? $conn : null);
 
 if (!$db) {
@@ -129,11 +130,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'parse_geo') {
         $apiUrl = "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={$wgs_lat}&longitude={$wgs_lng}&localityLanguage=zh";
         $res = httpGetJson($apiUrl);
 
-        if ($res && !empty($res['city']) && !empty($res['locality'])) {
-            $parts = [$res['city'], $res['locality']];
-            if (!empty($res['suburb'])) $parts[] = $res['suburb'];
-            $formatted = implode('', array_unique($parts)) . '（定位点附近，请补充门牌号）';
-        }
+        $formatted = reverse_geocode_address_suggestion($res);
     }
 
     if ($formatted !== '') {
