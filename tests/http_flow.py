@@ -167,6 +167,15 @@ buyer.request('detail.php?id=' + rejected_product, expected=404)
 check(True, 'rejected product remains hidden from storefront')
 html, _ = admin.request('admin_audit.php', {'csrf_token': admin.token('admin_audit.php?tab=pending'),
                          'product_id': new_product, 'audit_action': 'approve', 'comment': '测试通过'})
+html, _ = admin.request('admin_audit.php', {'csrf_token': admin.token('admin_audit.php?tab=pending'),
+                         'product_id': new_product, 'audit_action': 'approve', 'comment': '重复通过'})
+check('已审核或状态已变化' in html and '商品已通过审核' not in html, 'repeated approval is rejected')
+html, _ = admin.request('admin_audit.php', {'csrf_token': admin.token('admin_audit.php?tab=pending'),
+                         'product_id': new_product, 'audit_action': 'reject', 'comment': '重复驳回'})
+check('已审核或状态已变化' in html and '商品已驳回并自动下架' not in html, 'repeated rejection is rejected')
+history, _ = admin.request('api_audit_history.php?product_id=' + new_product)
+history = json.loads(history)
+check(history['success'] is True and len(history['records']) == 1 and history['records'][0]['result'] == 'approved', 'repeated audit creates no additional record')
 html, _ = buyer.request('detail.php?id=' + new_product)
 check(title in html and '12.34' in html, 'approved merchant product appears in storefront')
 html, _ = buyer.request('checkout.php?product_id=' + new_product + '&quantity=1&price=0.01')

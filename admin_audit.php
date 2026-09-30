@@ -17,28 +17,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['audit_action'], $_POS
         $msg = '驳回时请填写审核意见，方便商家修改！';
         $msg_type = 'error';
     } else {
-        $conn->begin_transaction();
+        $transactionStarted = false;
         try {
-            if ($audit_action === 'approved') {
-                $stmt = $conn->prepare("UPDATE products SET audit_status = 'approved' WHERE id = ?");
+            $conn->begin_transaction();
+            $transactionStarted = true;
+
+            $stmt = $conn->prepare("SELECT id FROM products WHERE id = ? AND audit_status = 'pending' FOR UPDATE");
+            $stmt->bind_param('i', $product_id);
+            $stmt->execute();
+            $product = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if (!$product) {
+                $conn->commit();
+                $transactionStarted = false;
+                $msg = '商品不存在、已审核或状态已变化，请刷新后重试。';
+                $msg_type = 'error';
             } else {
-                $stmt = $conn->prepare("UPDATE products SET audit_status = 'rejected', status = 0 WHERE id = ?");
+                $sql = $audit_action === 'approved'
+                    ? "UPDATE products SET audit_status = 'approved' WHERE id = ? AND audit_status = 'pending'"
+                    : "UPDATE products SET audit_status = 'rejected', status = 0 WHERE id = ? AND audit_status = 'pending'";
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param('i', $product_id);
+                $stmt->execute();
+                $updated = $stmt->affected_rows === 1;
+                $stmt->close();
+
+                if (!$updated) {
+                    $conn->commit();
+                    $transactionStarted = false;
+                    $msg = '商品状态已变化，请刷新后重试。';
+                    $msg_type = 'error';
+                } else {
+                    $stmt = $conn->prepare("INSERT INTO audit_records (product_id, result, comment, admin_id) VALUES (?, ?, ?, ?)");
+                    $stmt->bind_param('issi', $product_id, $audit_action, $comment, $admin_id);
+                    $stmt->execute();
+                    $stmt->close();
+
+                    $conn->commit();
+                    $transactionStarted = false;
+                    $msg = $audit_action === 'approved' ? '商品已通过审核，可正常上架展示！' : '商品已驳回并自动下架！';
+                    $msg_type = 'success';
+                }
             }
-            $stmt->bind_param("i", $product_id);
-            $stmt->execute();
-            $stmt->close();
-
-            $stmt = $conn->prepare("INSERT INTO audit_records (product_id, result, comment, admin_id) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param("issi", $product_id, $audit_action, $comment, $admin_id);
-            $stmt->execute();
-            $stmt->close();
-
-            $conn->commit();
-            $msg = $audit_action === 'approved' ? '商品已通过审核，可正常上架展示！' : '商品已驳回并自动下架！';
-            $msg_type = 'success';
         } catch (Exception $e) {
-            $conn->rollback();
-            $msg = '审核操作失败：' . $e->getMessage();
+            if ($transactionStarted) $conn->rollback();
+            error_log('single_product_audit_failed: ' . $e->getMessage());
+            $msg = '审核操作失败，请稍后重试。';
             $msg_type = 'error';
         }
     }
@@ -216,12 +241,12 @@ $tab_titles = ['pending' => '待审核', 'approved' => '已通过', 'rejected' =
         <div id="bulkForm">
         <table class="crud-table">
             <tr>
-                <th class="cb-cell"><input type="checkbox" id="selectAll" title="全选"></th>
+                <?php if ($tab === 'pending'): ?><th class="cb-cell"><input type="checkbox" id="selectAll" title="全选"></th><?php endif; ?>
                 <th>图片</th><th>商品名称</th><th>店铺</th><th>分类</th><th>价格</th><th>库存</th><th>状态</th><th>操作</th>
             </tr>
             <?php foreach ($rows as $r): ?>
                 <tr>
-                    <td class="cb-cell"><input type="checkbox" class="row-cb" value="<?php echo intval($r['id']); ?>"></td>
+                    <?php if ($tab === 'pending'): ?><td class="cb-cell"><input type="checkbox" class="row-cb" value="<?php echo intval($r['id']); ?>"></td><?php endif; ?>
                     <td>
                         <?php if (!empty($r['image_url'])): ?>
                             <img class="prod-img" src="<?php echo htmlspecialchars($r['image_url']); ?>" alt="">
@@ -243,28 +268,29 @@ $tab_titles = ['pending' => '待审核', 'approved' => '已通过', 'rejected' =
                     <td><?php echo intval($r['stock']); ?></td>
                     <td><?php echo $audit_badge[$r['audit_status']]; ?></td>
                     <td>
-                        <form method="post" action="admin_audit.php?tab=<?php echo $tab; ?>" style="display:inline-block;"><?php echo csrf_field(); ?>
-                            <input type="hidden" name="product_id" value="<?php echo intval($r['id']); ?>">
-                            <input class="comment-input" type="text" name="comment" placeholder="审核意见（驳回必填）"
-                                <?php echo $tab === 'approved' ? 'style="display:none;"' : ''; ?>>
-                            <button class="btn-pass" type="submit" name="audit_action" value="approve">通过</button>
-                            <?php if ($tab !== 'rejected'): ?>
+                        <?php if ($tab === 'pending'): ?>
+                            <form method="post" action="admin_audit.php?tab=pending" style="display:inline-block;"><?php echo csrf_field(); ?>
+                                <input type="hidden" name="product_id" value="<?php echo intval($r['id']); ?>">
+                                <input class="comment-input" type="text" name="comment" placeholder="审核意见（驳回必填）">
+                                <button class="btn-pass" type="submit" name="audit_action" value="approve">通过</button>
                                 <button class="btn-reject" type="submit" name="audit_action" value="reject">驳回</button>
-                            <?php endif; ?>
-                        </form>
+                            </form>
+                        <?php endif; ?>
                         <button class="btn-history" type="button" onclick="showHistory(<?php echo intval($r['id']); ?>, '<?php echo addslashes(htmlspecialchars($r['title'])); ?>')">历史</button>
                     </td>
                 </tr>
             <?php endforeach; ?>
         </table>
 
-        <!-- 批量操作栏 -->
-        <div class="bulk-bar">
-            <span class="selected-count">已选 <strong id="selectedCount">0</strong> 件</span>
-            <button class="btn-pass" type="button" onclick="bulkAction('approve')">批量通过</button>
-            <input class="comment-input" type="text" id="bulkComment" placeholder="批量审核意见（驳回必填）" style="width:260px;">
-            <button class="btn-reject" type="button" onclick="bulkAction('reject')">批量驳回</button>
-        </div>
+        <?php if ($tab === 'pending'): ?>
+            <!-- 批量操作栏 -->
+            <div class="bulk-bar">
+                <span class="selected-count">已选 <strong id="selectedCount">0</strong> 件</span>
+                <button class="btn-pass" type="button" onclick="bulkAction('approve')">批量通过</button>
+                <input class="comment-input" type="text" id="bulkComment" placeholder="批量审核意见（驳回必填）" style="width:260px;">
+                <button class="btn-reject" type="button" onclick="bulkAction('reject')">批量驳回</button>
+            </div>
+        <?php endif; ?>
         </div>
     <?php endif; ?>
 </div>
