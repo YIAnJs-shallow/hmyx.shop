@@ -99,6 +99,9 @@ admin = Client(); admin.login('qa_admin', True)
 for path in ['index.php?sort=price_asc', 'cart.php', 'favorites.php', 'my_orders.php', 'addresses.php', 'shop_manage.php', 'user_center.php']:
     buyer.request(path)
 check(True, 'buyer navigation renders and POST forms contain CSRF')
+invalid_geo, _ = buyer.request('addresses.php?action=parse_geo&lat=91&lng=0')
+invalid_geo = json.loads(invalid_geo)
+check(invalid_geo['status'] == 0 and invalid_geo['msg'] == '经纬度无效', 'invalid geolocation is rejected without service details')
 for path in ['admin.php', 'admin_dashboard.php', 'admin_users.php', 'admin_audit.php?tab=approved', 'category_add.php', 'product_add.php', 'product_edit.php?id=' + str(state['platform_product']), 'admin_orders.php']:
     admin.request(path)
 check(True, 'admin pages render and forms remain valid')

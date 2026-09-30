@@ -98,7 +98,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'parse_geo') {
     $lat = floatval($_GET['lat'] ?? 0);
     $lng = floatval($_GET['lng'] ?? 0);
 
-    if ($lat == 0 || $lng == 0) {
+    if (!is_finite($lat) || !is_finite($lng) || $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180 || ($lat == 0 && $lng == 0)) {
         echo json_encode(['status' => 0, 'msg' => '经纬度无效']);
         exit;
     }
@@ -371,48 +371,79 @@ function initMap(lat, lng) {
     setTimeout(() => { if (map) map.invalidateSize(); }, 300);
 }
 
+function outsideChina(lat, lng) {
+    return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+}
+
+function wgs84ToGcj02(lat, lng) {
+    if (outsideChina(lat, lng)) return [lat, lng];
+    const a = 6378245.0;
+    const ee = 0.00669342162296594323;
+    const transformLat = (x, y) => {
+        let value = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+        value += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+        value += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0;
+        return value + (160.0 * Math.sin(y / 12.0 * Math.PI) + 320.0 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0;
+    };
+    const transformLng = (x, y) => {
+        let value = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+        value += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+        value += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0;
+        return value + (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0;
+    };
+    const dLat = transformLat(lng - 105.0, lat - 35.0);
+    const dLng = transformLng(lng - 105.0, lat - 35.0);
+    const radLat = lat / 180.0 * Math.PI;
+    const magic = 1 - ee * Math.sin(radLat) * Math.sin(radLat);
+    const sqrtMagic = Math.sqrt(magic);
+    return [lat + (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * Math.PI), lng + (dLng * 180.0) / (a / sqrtMagic * Math.cos(radLat) * Math.PI)];
+}
+
+function showLocationHint(message) {
+    const input = document.getElementById('detail_address');
+    input.placeholder = message;
+    if (input.value.startsWith('正在')) input.value = '';
+}
+
 // 获取定位
 function getCurrentLocation() {
     const input = document.getElementById('detail_address');
-    if (navigator.geolocation) {
-        input.value = "正在获取您的 GPS 定位...";
-        navigator.geolocation.getCurrentPosition(
-            function (position) {
-                const lat = position.coords.latitude;
-                const lng = position.coords.longitude;
-                map.setView([lat, lng], 17);
-                marker.setLatLng([lat, lng]);
-                parseBackendAddress(lat, lng);
-            },
-            function (error) {
-                const pos = marker.getLatLng();
-                parseBackendAddress(pos.lat, pos.lng);
-            },
-            { enableHighAccuracy: true, timeout: 8000 }
-        );
-    } else {
-        const pos = marker.getLatLng();
-        parseBackendAddress(pos.lat, pos.lng);
+    if (!navigator.geolocation) {
+        showLocationHint('浏览器不支持自动定位，请手动填写地址');
+        return;
     }
+    input.value = '正在获取当前位置…';
+    navigator.geolocation.getCurrentPosition(
+        function (position) {
+            const [lat, lng] = wgs84ToGcj02(position.coords.latitude, position.coords.longitude);
+            map.setView([lat, lng], 17);
+            marker.setLatLng([lat, lng]);
+            parseBackendAddress(lat, lng);
+        },
+        function (error) {
+            const messages = {
+                1: '未获定位授权，请允许浏览器定位或手动填写地址',
+                2: '暂时无法获取位置，请稍后重试或手动填写地址',
+                3: '定位超时，请重试或手动填写地址'
+            };
+            showLocationHint(messages[error.code] || '无法自动定位，请手动填写地址');
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
 }
 
 // 后端解析逆地理地址
 function parseBackendAddress(lat, lng) {
     const input = document.getElementById('detail_address');
-    input.value = "正在解析具体门牌店铺...";
-
-    fetch(`addresses.php?action=parse_geo&lat=${lat}&lng=${lng}`)
-    .then(res => res.json())
+    input.value = '正在解析附近地址…';
+    const query = new URLSearchParams({ action: 'parse_geo', lat: String(lat), lng: String(lng) });
+    fetch(`addresses.php?${query}`)
+    .then(res => res.ok ? res.json() : Promise.reject())
     .then(data => {
-        if (data && data.address) {
-            input.value = data.address;
-        } else {
-            input.value = "湖南省长沙市天心区附近";
-        }
+        if (data && data.status === 1 && data.address) input.value = data.address;
+        else showLocationHint('未能解析详细地址，请手动补充');
     })
-    .catch(err => {
-        input.value = "湖南省长沙市天心区附近";
-    });
+    .catch(() => showLocationHint('未能解析详细地址，请手动补充'));
 }
 
 // 填入数据进入编辑模式
