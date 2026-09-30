@@ -12,12 +12,19 @@ foreach ($tables as $record) {
     $conn->select_db($testDb); query($definition); $conn->select_db($source);
 }
 $conn->select_db($testDb); query('SET FOREIGN_KEY_CHECKS=1');
+query('ALTER TABLE products DROP COLUMN audit_status');
+query("INSERT INTO categories(category_name,parent_id) VALUES('旧库测试分类',0)"); $legacyCategory=(int)$conn->insert_id;
+query("INSERT INTO products(title,price,stock,category_id,status) VALUES('旧库测试商品','9.90',1,?,1)",[$legacyCategory]); $legacyProduct=(int)$conn->insert_id;
 require __DIR__.'/../scripts/migrate.php';
 require __DIR__.'/../scripts/migrate.php';
 $assertions = 0;
 function check($value,$message) { global $assertions; if (!$value) throw new RuntimeException('FAIL: '.$message); $assertions++; echo 'PASS: '.$message."\n"; }
 function rejects($fn,$message) { try { $fn(); } catch (DomainException $e) { check(true,$message); return; } throw new RuntimeException('FAIL: '.$message); }
 function insert_user($name,$role) { global $conn; query('INSERT INTO users(username,password,role) VALUES(?,?,?)',[$name,password_hash('TestShop2026!',PASSWORD_DEFAULT),$role]); return (int)$conn->insert_id; }
+$auditColumn=one("SELECT COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='products' AND COLUMN_NAME='audit_status'");
+check($auditColumn && $auditColumn['COLUMN_TYPE']==="enum('pending','approved','rejected')" && $auditColumn['IS_NULLABLE']==='NO' && $auditColumn['COLUMN_DEFAULT']==='approved','legacy audit status column restored');
+check(one('SELECT audit_status FROM products WHERE id=?',[$legacyProduct])['audit_status']==='approved','legacy product remains approved');
+check((int)one("SELECT COUNT(*) AS n FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='products' AND INDEX_NAME='idx_audit_status'")['n']===1,'legacy audit status index restored');
 $buyer=insert_user('qa_buyer','user'); $other=insert_user('qa_other','user'); $merchant=insert_user('qa_merchant','merchant'); $admin=insert_user('qa_admin','admin');
 query("INSERT INTO shops(user_id,shop_name,contact_phone,status) VALUES(?,'QA Shop','13800000000',1)",[$merchant]); $shop=(int)$conn->insert_id;
 query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'测试买家','13800000000','测试省测试市测试地址',1)",[$buyer]); $address=(int)$conn->insert_id;
