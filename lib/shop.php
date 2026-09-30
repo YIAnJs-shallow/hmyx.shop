@@ -15,7 +15,7 @@ function query($sql, $params = []) {
 function rows($sql, $params = []) { return query($sql, $params)->get_result()->fetch_all(MYSQLI_ASSOC); }
 function one($sql, $params = []) { return query($sql, $params)->get_result()->fetch_assoc(); }
 function uid() {
-    if (empty($_SESSION['user_id'])) { header('Location: user_login.php'); exit; }
+    if (empty($_SESSION['user_id'])) login_redirect(current_page_url());
     return (int)$_SESSION['user_id'];
 }
 function redirect_to($url, $message = '') {
