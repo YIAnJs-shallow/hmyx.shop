@@ -2,10 +2,10 @@
 
 ## 密钥与敏感信息（最高优先级）
 
-- 禁止在任何源码中硬编码 API Key、密码、Token、内网地址。高德 Key 等真实值只允许写在 `config/secrets.php`（已被 .gitignore 排除，禁止入库）。
-- 新增外部服务配置时，必须同步维护模板：真实值写入 `config/secrets.php`，并在 `config/secrets.example.php` 加注释占位。
-- 本机环境差异配置（数据库密码等）写 `config/database.local.php`（不入库）；公共连接逻辑只在 `config/db.php`。
-- 禁止删除或绕过 `.gitignore` 的任何排除项（secrets.php、database.local.php、backup_*/、*.sql、*.log 等）。
+- 禁止在任何源码中硬编码 API Key、密码、Token、内网地址。高德 Key 等真实值只允许写在 Web 根目录外的私有配置目录（默认 `<phpStudy 根目录>/private/my_project/secrets.php`）或受控环境变量中，禁止入库。
+- 新增外部服务配置时，必须同步维护模板：真实值写入 Web 根目录外的私有配置文件，并在 `config/secrets.example.php` 加注释占位。
+- 本机环境差异配置（数据库密码等）写到 Web 根目录外的 `<phpStudy 根目录>/private/my_project/database.local.php`（不入库）；公共连接逻辑只在 `config/db.php`。
+- 禁止删除或绕过 `.gitignore` 的任何排除项（旧路径的 secrets.php、database.local.php、backup_*/、*.sql、*.log 等）。
 - 严禁 `git add -f` 强制添加被忽略的敏感文件。
 
 ## 项目结构

@@ -37,11 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 }
 
 // ==================== 2. 后端逆地理地址解析接口 ====================
-// 高德 Web服务 Key：优先读环境变量 AMAP_KEY，其次读 config/secrets.php（不入库）
+// 高德 Web服务 Key：优先读环境变量 AMAP_KEY，其次读 Web 根目录外的私有配置文件。
 // 申请地址：https://console.amap.com/dev/key/app
 $AMAP_KEY = getenv('AMAP_KEY') ?: '';
-if ($AMAP_KEY === '' && file_exists(__DIR__ . '/config/secrets.php')) {
-    require_once __DIR__ . '/config/secrets.php';
+$secretsPath = project_private_config_dir() . '/secrets.php';
+if ($AMAP_KEY === '' && is_file($secretsPath)) {
+    require_once $secretsPath;
     $AMAP_KEY = defined('AMAP_KEY') ? AMAP_KEY : '';
 }
 

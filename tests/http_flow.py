@@ -77,7 +77,7 @@ guest.request('user_login.php', {'username': 'qa_admin', 'password': '123456'}, 
 check(True, 'missing CSRF rejected')
 html, url = guest.request('user_login.php', {'csrf_token': guest.token(), 'username': 'qa_admin', 'password': '123456', 'login_type': 'merchant'})
 check('user_login.php' in url and '错误' in html, 'universal admin password fails over HTTP')
-for path in ['tests/state.json', 'config/db.php', 'db_backup_20260918.sql', 'backup_20260918/index.php']:
+for path in ['tests/state.json', 'config/db.php', 'config/database.local.php', 'config/secrets.php', '.env', '.env.local', 'db_backup_20260918.sql', 'backup_20260918/index.php']:
     guest.request(path, expected=404)
 check(True, 'local development server blocks sensitive paths')
 

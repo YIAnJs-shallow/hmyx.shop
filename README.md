@@ -22,7 +22,29 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1 -DemoPayment
 
 不加 `-DemoPayment` 时关闭演示付款。phpStudy 中如需演示付款，需要为 PHP 进程设置 `SHOP_DEMO_PAYMENT=1` 并重启 PHP 服务。生产环境必须关闭此选项。
 
-当前本机连接信息保存在不应入库的 `config/database.local.php`；新环境可以参考 `config/database.example.php`。环境变量 `DB_HOST`、`DB_PORT`、`DB_USER`、`DB_PASSWORD`、`DB_NAME` 优先于本机配置。
+### 私有配置
+
+真实数据库配置和地图密钥不得放在 `WWW`、项目目录或其他 Web 根目录中。默认私有配置目录是项目同级的 `<phpStudy 根目录>/private/my_project/`；环境变量 `DB_HOST`、`DB_PORT`、`DB_USER`、`DB_PASSWORD`、`DB_NAME`、`AMAP_KEY` 优先于其中的文件。
+
+新环境可在项目目录执行以下命令创建**不含真实值**的模板文件，之后仅在 Web 根外填写真实配置：
+
+```powershell
+$private = (Join-Path (Split-Path (Split-Path $PWD -Parent) -Parent) 'private\my_project')
+New-Item -ItemType Directory -Force -Path $private
+Copy-Item .\config\database.example.php (Join-Path $private 'database.local.php')
+Copy-Item .\config\secrets.example.php (Join-Path $private 'secrets.php')
+```
+
+已有安装应先停止 phpStudy 或本地 PHP 服务，再创建同一目录并**移动**旧文件（不要打印、复制保留或提交其内容）：
+
+```powershell
+$private = (Join-Path (Split-Path (Split-Path $PWD -Parent) -Parent) 'private\my_project')
+New-Item -ItemType Directory -Force -Path $private
+Move-Item .\config\database.local.php (Join-Path $private 'database.local.php')
+Move-Item .\config\secrets.php (Join-Path $private 'secrets.php')
+```
+
+移动前确认 `$private` 不在 `WWW` 或任何站点根目录内，且 PHP 运行账户仅具有必要的读取权限。目标存在同名文件时不要使用 `-Force` 覆盖；移动后用 `Test-Path` 确认目标文件存在、项目 `config/` 下旧文件不存在，再重启服务。不要将私有目录配置为 Apache Alias、Nginx location 或虚拟目录。
 
 登录统一使用 `user_login.php`，管理员和商家选择“商户 / 管理员”入口。只认可使用 `password_hash()` 保存的密码；历史明文密码账户必须由管理员通过 CLI 重置后才能重新登录。部署此版本前，先在命令行执行 `php scripts/reset_password.php <用户名>` 为管理员和遗留账户设置新密码；该脚本拒绝 Web 请求，且不会在命令行参数或输出中暴露密码。
 
@@ -65,8 +87,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1 -DemoPayment
 - 未接入真实微信 / 支付宝收款或退款；演示付款不扣款，演示退款不转账。真实支付需要商户资质、密钥、回调验签及渠道对账后才能上线。
 - 物流展示真实保存的运单号和订单事件，未接入快递实时轨迹，不生成虚构位置。
 - 退款目前支持未发货演示订单的整单申请，拒绝后需联系商家；不含已发货退货、部分退款、优惠券、SKU 规格和运费模板。
-- 原地址地图与部分旧后台样式使用外部 CDN / 地图服务；手动填写地址和新交易页面不依赖地图。高德密钥仍使用现有 `config/secrets.php` / `AMAP_KEY`。
-- Apache 请启用 `.htaccess` 的访问规则；PHP 本地启动脚本已包含敏感目录拦截。若使用 Nginx，必须在站点配置中禁止访问备份、配置、测试、脚本、隐藏目录及 SQL 文件，并禁止上传目录执行脚本。可按实际站点前缀调整以下规则，并放在 PHP 通用匹配之前：
+- 原地址地图与部分旧后台样式使用外部 CDN / 地图服务；手动填写地址和新交易页面不依赖地图。高德密钥使用 `AMAP_KEY` 或 Web 根外 `<phpStudy 根目录>/private/my_project/secrets.php`，不得放在项目 `config/` 下。
+- Apache 请启用 `.htaccess` 的访问规则，并确认虚拟主机启用了 `mod_rewrite` 和 `AllowOverride FileInfo`（或 `All`）；PHP 本地启动脚本已包含敏感目录拦截。这些规则只是深度防御，不能替代 Web 根外存放真实配置。若使用 Nginx，必须在站点配置中禁止访问备份、配置、测试、脚本、隐藏目录及 SQL 文件，并禁止上传目录执行脚本。可按实际站点前缀调整以下规则，并放在 PHP 通用匹配之前：
 
 ```nginx
 location ~* /(?:backup_[^/]+|config|lib|scripts|tests|\.[^/]+)(?:/|$) { deny all; }

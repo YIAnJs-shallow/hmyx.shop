@@ -1,12 +1,19 @@
 <?php
 require_once __DIR__ . '/../lib/security.php';
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-$databaseLocal = is_file(__DIR__.'/database.local.php') ? require __DIR__.'/database.local.php' : [];
+if (!function_exists('project_private_config_dir')) {
+    function project_private_config_dir() {
+        $projectRoot = dirname(__DIR__);
+        return dirname(dirname($projectRoot)) . '/private/' . basename($projectRoot);
+    }
+}
+$databaseLocalPath = project_private_config_dir() . '/database.local.php';
+$databaseLocal = is_file($databaseLocalPath) ? require $databaseLocalPath : [];
 // 数据库连接参数
 $host = getenv('DB_HOST') ?: ($databaseLocal['host'] ?? '127.0.0.1');
 $db_user = getenv('DB_USER') ?: ($databaseLocal['user'] ?? 'root');
-$db_pass = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : ($databaseLocal['password'] ?? ''); // 填写你的 phpStudy 数据库密码（默认为 root）
-$db_name = getenv('DB_NAME') ?: ($databaseLocal['database'] ?? 'my_web_db'); // 填写你在 phpMyAdmin 中创建的数据库名
+$db_pass = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : ($databaseLocal['password'] ?? '');
+$db_name = getenv('DB_NAME') ?: ($databaseLocal['database'] ?? 'my_web_db');
 
 // 建立连接
 try {
@@ -19,7 +26,9 @@ try {
 
 // 检查连接
 if ($conn->connect_error) {
-    die("数据库连接失败: " . $conn->connect_error);
+    error_log($conn->connect_error);
+    http_response_code(503);
+    exit('数据库暂不可用，请检查数据库服务与连接配置。');
 }
 
 // 设置字符集，防止中文乱码
