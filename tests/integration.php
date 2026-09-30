@@ -25,8 +25,10 @@ query("INSERT INTO categories(category_name,parent_id) VALUES('测试分类',0)"
 query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('平台测试商品','19.90',10,?,1,'approved')",[$category]); $p1=(int)$conn->insert_id;
 query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('店铺测试商品','30.10',10,?,?,1,'approved')",[$category,$shop]); $p2=(int)$conn->insert_id;
 $_SESSION=['user_id'=>$buyer,'role'=>'user'];
-check(!verify_account_password('123456',password_hash('different-password',PASSWORD_DEFAULT)),'universal password bypass removed');
-check(verify_account_password('old-exact-password','old-exact-password'),'legacy password exact match only');
+check(!verify_account_password('123456',password_hash('different-password',PASSWORD_DEFAULT)),'wrong hash password rejected');
+check(verify_account_password('TestShop2026!',password_hash('TestShop2026!',PASSWORD_DEFAULT)),'hash password accepted');
+check(!verify_account_password('old-exact-password','old-exact-password'),'legacy plaintext password rejected');
+check(account_password_needs_reset('old-exact-password'),'legacy plaintext password requires reset');
 check(cents('19.90')===1990 && money(3001)==='30.01','integer money arithmetic');
 rejects(function(){ quantity(-1); },'negative quantity rejected');
 rejects(function(){ quantity('1.5'); },'fractional quantity rejected');

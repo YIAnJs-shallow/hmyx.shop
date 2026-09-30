@@ -24,7 +24,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1 -DemoPayment
 
 当前本机连接信息保存在不应入库的 `config/database.local.php`；新环境可以参考 `config/database.example.php`。环境变量 `DB_HOST`、`DB_PORT`、`DB_USER`、`DB_PASSWORD`、`DB_NAME` 优先于本机配置。
 
-登录统一使用 `user_login.php`，管理员和商家选择“商户 / 管理员”入口。只认可账号实际密码；原有任意账号使用通用测试密码的绕过已删除。已有明文密码仅允许精确匹配，并在成功登录后升级为哈希。
+登录统一使用 `user_login.php`，管理员和商家选择“商户 / 管理员”入口。只认可使用 `password_hash()` 保存的密码；历史明文密码账户必须由管理员通过 CLI 重置后才能重新登录。部署此版本前，先在命令行执行 `php scripts/reset_password.php <用户名>` 为管理员和遗留账户设置新密码；该脚本拒绝 Web 请求，且不会在命令行参数或输出中暴露密码。
 
 ## 数据库与备份
 

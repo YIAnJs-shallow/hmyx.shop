@@ -20,20 +20,14 @@ function csrf_check() {
         exit('请求已过期或来源无效，请刷新页面重试。');
     }
 }
+function account_password_needs_reset($stored) {
+    return !is_string($stored) || !password_get_info($stored)['algo'];
+}
 function verify_account_password($input, $stored) {
-    if (password_get_info($stored)['algo']) return password_verify($input, $stored);
-    // Only exact matches for pre-existing plaintext accounts; migrate on login.
-    return $stored !== '' && hash_equals($stored, $input);
+    return is_string($input) && !account_password_needs_reset($stored) && password_verify($input, $stored);
 }
 function login_account($user, $input) {
-    global $conn;
     if (!verify_account_password($input, $user['password'])) return false;
-    if (password_needs_rehash($user['password'], PASSWORD_DEFAULT)) {
-        $hash = password_hash($input, PASSWORD_DEFAULT);
-        $stmt = $conn->prepare('UPDATE users SET password = ? WHERE id = ?');
-        $stmt->bind_param('si', $hash, $user['id']);
-        $stmt->execute();
-    }
     session_regenerate_id(true);
     $_SESSION = ['user_id' => (int)$user['id'], 'username' => $user['username'], 'role' => $user['role']];
     return true;
