@@ -36,6 +36,9 @@ function quantity($value) {
 function status_name($status) {
     return ['pending'=>'待付款','paid'=>'待发货','shipped'=>'已发货','completed'=>'已完成','cancelled'=>'已取消'][$status] ?? $status;
 }
+function after_sale_status_name($status) {
+    return ['pending'=>'待商家处理','approved'=>'商家已同意，请寄回商品','rejected'=>'商家已拒绝','received'=>'商家已收货，待支付渠道退款','refunded'=>'退货退款已完成'][$status] ?? $status;
+}
 function can_manage_order($order, $userId) {
     if (($_SESSION['role'] ?? '') === 'admin') return true;
     return ($_SESSION['role'] ?? '') === 'merchant' && !empty($order['shop_id']) &&
@@ -157,6 +160,23 @@ function change_order($id, $actor, $action, $data = []) {
                 query("UPDATE orders SET status='cancelled' WHERE id=?",[$id]);
             }
             query('UPDATE refund_requests SET status=?,processed_at=NOW() WHERE id=?',[$action==='refund_approve'?'approved':'rejected',(int)$request['id']]);
+        } elseif ($action === 'after_sale' && $owner && in_array($order['status'], ['shipped','completed'], true)) {
+            $reason = trim($data['reason'] ?? '');
+            if (mb_strlen($reason) < 2 || mb_strlen($reason) > 500) throw new DomainException('退货原因需为 2 至 500 个字符');
+            query("INSERT INTO after_sale_requests(order_id,user_id,reason,status) VALUES(?,?,?,'pending')", [$id,$actor,$reason]);
+        } elseif (in_array($action, ['after_sale_approve','after_sale_reject'], true) && $manager && in_array($order['status'], ['shipped','completed'], true)) {
+            $request = one("SELECT * FROM after_sale_requests WHERE order_id=? AND status='pending' FOR UPDATE", [$id]);
+            if (!$request) throw new DomainException('没有待处理的退货退款申请');
+            query('UPDATE after_sale_requests SET status=?,processed_at=NOW() WHERE id=?', [$action === 'after_sale_approve' ? 'approved' : 'rejected', (int)$request['id']]);
+        } elseif ($action === 'after_sale_receive' && $manager && in_array($order['status'], ['shipped','completed'], true)) {
+            $request = one("SELECT * FROM after_sale_requests WHERE order_id=? AND status='approved' FOR UPDATE", [$id]);
+            if (!$request) throw new DomainException('没有待确认收货的退货申请');
+            if ($order['payment_method'] === 'demo') {
+                release_stock($order);
+                query("UPDATE after_sale_requests SET status='refunded',received_at=NOW() WHERE id=?", [(int)$request['id']]);
+            } else {
+                query("UPDATE after_sale_requests SET status='received',received_at=NOW() WHERE id=?", [(int)$request['id']]);
+            }
         } else { throw new DomainException('无权操作或订单状态已改变，请刷新查看'); }
         $conn->commit();
     } catch (Throwable $e) { $conn->rollback(); throw $e; }

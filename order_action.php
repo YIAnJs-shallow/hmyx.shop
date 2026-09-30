@@ -5,7 +5,7 @@ if ($_SERVER['REQUEST_METHOD']!=='POST') { http_response_code(405); header('Allo
 $action=$_POST['action'] ?? '';
 if ($action==='checkout_cart') redirect_to('checkout.php');
 $id=(int)($_POST['order_id'] ?? 0);
-$target=in_array($action,['ship','refund_approve','refund_reject'],true)?'admin_orders.php':'my_orders.php';
+$target=in_array($action,['ship','refund_approve','refund_reject','after_sale_approve','after_sale_reject','after_sale_receive'],true)?'admin_orders.php':'my_orders.php';
 try {
     expire_orders($userId);
     change_order($id,$userId,$action,$_POST);
