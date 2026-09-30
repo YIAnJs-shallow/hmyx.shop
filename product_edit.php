@@ -114,6 +114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $category_id = intval($_POST['category_id'] ?? 0);
     $price = floatval($_POST['price'] ?? 0);
     $stock = intval($_POST['stock'] ?? 0);
+    $expected_stock_raw = (string)($_POST['expected_stock'] ?? '');
+    $expected_stock = intval($expected_stock_raw);
     $detail = trim($_POST['detail'] ?? '');
     $status = (($_POST['submit_action'] ?? 'publish') === 'draft') ? 0 : 1;
 
@@ -122,38 +124,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // PHP7.3 mysqlnd 下 bind_param 混合 NULL 会破坏 'd' 类型参数，价格改用字符串绑定
     $price_str = number_format($price, 2, '.', '');
 
-    // 图片：未上传新图则保留原图
-    $image_url = $product['image_url'] ?? '';
+    if ($price <= 0 || $price > 99999999.99 || $stock < 0 || $stock > 100000000 || $expected_stock < 0 || $expected_stock > 100000000 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', (string)($_POST['price'] ?? '')) || !preg_match('/^\d+$/D', (string)($_POST['stock'] ?? '')) || !preg_match('/^\d+$/D', $expected_stock_raw)) {
+        $msg = '价格须大于零且最多两位小数，库存须为非负整数！';
+        $msg_type = 'error';
+    } elseif (empty($title) || mb_strlen($title) > 100) {
+        $msg = '请填写商品名称！';
+        $msg_type = 'error';
+    } else {
+        $transactionStarted = false;
+        try {
+            $lock_sql = $is_admin
+                ? "SELECT stock, image_url FROM products WHERE id = ? FOR UPDATE"
+                : "SELECT stock, image_url FROM products WHERE id = ? AND shop_id = ? FOR UPDATE";
+            if ($db instanceof PDO) {
+                $db->beginTransaction();
+                $transactionStarted = true;
+                $stmt = $db->prepare($lock_sql);
+                $stmt->execute($is_admin ? [$product_id] : [$product_id, $shop_id]);
+                $locked_product = $stmt->fetch(PDO::FETCH_ASSOC);
+            } elseif ($db instanceof mysqli) {
+                $db->begin_transaction();
+                $transactionStarted = true;
+                $stmt = $db->prepare($lock_sql);
+                if (!$stmt) throw new Exception('SQL 预处理失败');
+                if ($is_admin) {
+                    $stmt->bind_param('i', $product_id);
+                } else {
+                    $stmt->bind_param('ii', $product_id, $shop_id);
+                }
+                $stmt->execute();
+                $locked_product = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
+            }
 
-    if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
-        try { $image_url = save_image_upload($_FILES['image']); }
-        catch (DomainException $e) { $msg = $e->getMessage(); $msg_type = 'error'; }
-    }
+            if (!$locked_product) {
+                throw new RuntimeException('product_not_found');
+            }
+            if ((int)$locked_product['stock'] !== $expected_stock) {
+                if ($db instanceof PDO) $db->rollBack(); else $db->rollback();
+                $transactionStarted = false;
+                $msg = '库存已被订单操作更新，请刷新页面后重新确认并保存。';
+                $msg_type = 'error';
+            } else {
+                $image_url = $locked_product['image_url'] ?? '';
+                if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
+                    $image_url = save_image_upload($_FILES['image']);
+                }
 
-    if ($msg_type !== 'error') {
-        if ($price <= 0 || $price > 99999999.99 || $stock < 0 || $stock > 100000000 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', (string)($_POST['price'] ?? '')) || !preg_match('/^\d+$/D', (string)($_POST['stock'] ?? ''))) {
-            $msg = '价格须大于零且最多两位小数，库存须为非负整数！';
-            $msg_type = 'error';
-        } elseif (empty($title) || mb_strlen($title) > 100) {
-            $msg = '请填写商品名称！';
-            $msg_type = 'error';
-        } else {
-            try {
                 // 审核策略：管理员编辑无需重审；商家编辑后回到待审核状态
                 $audit_status = $is_admin ? 'approved' : 'pending';
+                $sql = $is_admin
+                    ? "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ? WHERE id = ?"
+                    : "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ? WHERE id = ? AND shop_id = ?";
                 if ($db instanceof PDO) {
-                    $sql = $is_admin
-                        ? "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ? WHERE id = ?"
-                        : "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ? WHERE id = ? AND shop_id = ?";
                     $params = [$title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status, $product_id];
                     if (!$is_admin) $params[] = $shop_id;
                     $stmt = $db->prepare($sql);
                     $stmt->execute($params);
-                    $ok = $stmt->rowCount() >= 0; // 值未变化时 rowCount 为 0，也视为成功
                 } elseif ($db instanceof mysqli) {
-                    $sql = $is_admin
-                        ? "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ? WHERE id = ?"
-                        : "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ? WHERE id = ? AND shop_id = ?";
                     $stmt = $db->prepare($sql);
                     if (!$stmt) throw new Exception('SQL 预处理失败');
                     if ($is_admin) {
@@ -162,21 +190,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmt->bind_param("sisissisii", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $product_id, $shop_id);
                     }
                     $stmt->execute();
-                    $ok = true;
+                    $stmt->close();
                 }
 
-                if (!empty($ok)) {
-                    $success_tip = $is_admin ? '商品修改成功！' : '商品修改成功，已重新提交管理员审核！';
-                    echo "<script>alert('{$success_tip}'); location.href='{$back_url}';</script>";
-                    exit();
-                } else {
-                    $msg = '修改失败，请重试';
-                    $msg_type = 'error';
-                }
-            } catch (Exception $e) {
-                $msg = '修改失败：' . $e->getMessage();
-                $msg_type = 'error';
+                if ($db instanceof PDO) $db->commit(); else $db->commit();
+                $transactionStarted = false;
+                $success_tip = $is_admin ? '商品修改成功！' : '商品修改成功，已重新提交管理员审核！';
+                echo "<script>alert('{$success_tip}'); location.href='{$back_url}';</script>";
+                exit();
             }
+        } catch (Exception $e) {
+            if ($transactionStarted) {
+                if ($db instanceof PDO) $db->rollBack(); else $db->rollback();
+            }
+            error_log('product_edit_failed: ' . $e->getMessage());
+            $msg = '修改失败，请稍后重试。';
+            $msg_type = 'error';
         }
     }
 }
@@ -218,6 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <form action="product_edit.php?id=<?= $product['id'] ?>" method="POST" enctype="multipart/form-data"><?php echo csrf_field(); ?>
             <input type="hidden" name="id" value="<?= $product['id'] ?>">
+            <input type="hidden" name="expected_stock" value="<?= intval($product['stock']) ?>">
 
             <div class="mb-3">
                 <label class="form-label fw-bold small">商品名称 <span class="text-danger">*</span></label>
@@ -246,8 +276,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="number" step="0.01" min="0.01" required name="price" class="form-control" value="<?= htmlspecialchars($product['price']) ?>">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label fw-bold small">库存数量</label>
+                    <label class="form-label fw-bold small">当前可售库存</label>
                     <input type="number" min="0" name="stock" class="form-control" value="<?= intval($product['stock']) ?>">
+                    <small class="text-muted">不含已下单但尚未释放的数量；如库存已变动，请刷新后重新确认。</small>
                 </div>
             </div>
 

@@ -186,4 +186,30 @@ new_order = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)['order_id'][
 buyer.request('order_action.php', {'csrf_token': buyer.token('pay.php?order_id=' + new_order), 'action': 'cancel', 'order_id': new_order})
 html, _ = buyer.request('detail.php?id=' + new_product)
 check('库存 5 件' in html, 'cancelled buy-now returns inventory to storefront')
+
+edit_html, _ = merchant.request('product_edit.php?id=' + new_product)
+stale_token = re.search(r'name="csrf_token" value="([^"]+)"', edit_html).group(1)
+stale_stock = re.search(r'name="expected_stock" value="(\d+)"', edit_html).group(1)
+html, url = buyer.request('checkout.php?product_id=' + new_product + '&quantity=1&price=0.01')
+form = Forms(html).forms[0]['fields']; form.update(address_id=str(state['address']), submit_order='1')
+_, url = buyer.request('checkout.php', form)
+stale_order = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)['order_id'][0]
+html, _ = merchant.request('product_edit.php?id=' + new_product, {
+    'csrf_token': stale_token, 'id': new_product, 'expected_stock': stale_stock,
+    'title': '陈旧库存编辑', 'price': '12.34', 'stock': stale_stock,
+    'detail': '不应写入', 'submit_action': 'publish'
+})
+check('库存已被订单操作更新' in html, 'stale product edit is rejected after order reserves stock')
+html, _ = buyer.request('detail.php?id=' + new_product)
+check(title in html and '陈旧库存编辑' not in html and '库存 4 件' in html, 'stale edit leaves product and reserved inventory unchanged')
+buyer.request('order_action.php', {'csrf_token': buyer.token('pay.php?order_id=' + stale_order), 'action': 'cancel', 'order_id': stale_order})
+edit_html, _ = merchant.request('product_edit.php?id=' + new_product)
+fresh_token = re.search(r'name="csrf_token" value="([^"]+)"', edit_html).group(1)
+fresh_stock = re.search(r'name="expected_stock" value="(\d+)"', edit_html).group(1)
+html, _ = merchant.request('product_edit.php?id=' + new_product, {
+    'csrf_token': fresh_token, 'id': new_product, 'expected_stock': fresh_stock,
+    'title': '库存同步编辑', 'price': '12.34', 'stock': fresh_stock,
+    'detail': '库存恢复后保存', 'submit_action': 'publish'
+})
+check('库存同步编辑' in html and '待审核' in html, 'refreshed stock snapshot permits product edit')
 print(str(checks) + ' HTTP flow assertions passed.')
