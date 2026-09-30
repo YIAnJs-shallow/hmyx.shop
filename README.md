@@ -87,7 +87,7 @@ Move-Item .\config\secrets.php (Join-Path $private 'secrets.php')
 - 未接入真实微信 / 支付宝收款或退款；演示付款不扣款，演示退款不转账。真实支付需要商户资质、密钥、回调验签及渠道对账后才能上线。
 - 物流展示真实保存的运单号和订单事件，未接入快递实时轨迹，不生成虚构位置。
 - 退款目前支持未发货演示订单的整单申请，拒绝后需联系商家；不含已发货退货、部分退款、优惠券、SKU 规格和运费模板。
-- 原地址地图与部分旧后台样式使用外部 CDN / 地图服务；手动填写地址和新交易页面不依赖地图。高德密钥使用 `AMAP_KEY` 或 Web 根外 `<phpStudy 根目录>/private/my_project/secrets.php`，不得放在项目 `config/` 下。
+- 原地址地图与部分旧后台样式使用外部 CDN / 地图服务；手动填写地址和新交易页面不依赖地图。高德密钥使用 `AMAP_KEY` 或 Web 根外 `<phpStudy 根目录>/private/my_project/secrets.php`，不得放在项目 `config/` 下。逆地理请求会强制验证 TLS 证书和主机名；phpStudy 的 PHP 必须配置可信 CA（优先在 `php.ini` 设置 `curl.cainfo`，必要时设置 `openssl.cafile`）并重启服务。证书校验失败时不得关闭 TLS 绕过，地址页面会安全降级为手动补充地址。
 - Apache 请启用 `.htaccess` 的访问规则，并确认虚拟主机启用了 `mod_rewrite` 和 `AllowOverride FileInfo`（或 `All`）；PHP 本地启动脚本已包含敏感目录拦截。这些规则只是深度防御，不能替代 Web 根外存放真实配置。若使用 Nginx，必须在站点配置中禁止访问备份、配置、测试、脚本、隐藏目录及 SQL 文件，并禁止上传目录执行脚本。可按实际站点前缀调整以下规则，并放在 PHP 通用匹配之前：
 
 ```nginx

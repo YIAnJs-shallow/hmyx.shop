@@ -83,10 +83,11 @@ function httpGetJson($url) {
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 8);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
     $response = curl_exec($ch);
-    $err = curl_error($ch);
+    if ($response === false) error_log('reverse_geocode_request_failed errno='.curl_errno($ch));
     curl_close($ch);
     if ($response === false) return null;
     return json_decode($response, true);
