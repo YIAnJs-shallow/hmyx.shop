@@ -4,9 +4,11 @@ if (session_status() === PHP_SESSION_NONE) {
     require_once __DIR__ . '/lib/security.php';
 }
 
-// 【关键修复】后台拦截：未登录，或者登录的不是管理员（role != 'admin'）
-if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'admin') {
-    echo "<script>alert('越权操作：请先以管理员身份登录！'); location.href='login.html';</script>";
+if (!isset($_SESSION['user_id'])) {
+    login_redirect(current_page_url());
+}
+if (($_SESSION['role'] ?? '') !== 'admin') {
+    echo "<script>alert('无管理员权限，已返回个人中心。'); location.href='user_center.php';</script>";
     exit();
 }
 

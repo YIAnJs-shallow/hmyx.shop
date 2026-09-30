@@ -84,6 +84,8 @@ class Client:
 guest = Client()
 guest.request('index.php')
 guest.request('detail.php?id=' + str(state['platform_product']))
+html, url = guest.request('addresses.php')
+check('user_login.php?next=addresses.php' in url and '统一登录页面' in html, 'protected page redirects directly to login with safe return path')
 guest.request('user_login.php', {'username': 'qa_admin', 'password': '123456'}, expected=403)
 check(True, 'missing CSRF rejected')
 html, url = guest.request('user_login.php', {'csrf_token': guest.token(), 'username': 'qa_admin', 'password': '123456', 'login_type': 'merchant'})

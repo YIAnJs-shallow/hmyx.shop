@@ -9,8 +9,7 @@ if (!$db) {
 }
 
 if (!isset($_SESSION['user_id'])) {
-    header("Location: login.html");
-    exit();
+    login_redirect(current_page_url());
 }
 
 $user_id = $_SESSION['user_id'];

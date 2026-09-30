@@ -32,6 +32,24 @@ function login_account($user, $input) {
     $_SESSION = ['user_id' => (int)$user['id'], 'username' => $user['username'], 'role' => $user['role']];
     return true;
 }
+function safe_next_url($url) {
+    if (!is_string($url) || $url === '' || strlen($url) > 500 || preg_match('/[\r\n]/', $url)) return '';
+    $parts = parse_url($url);
+    if ($parts === false || isset($parts['scheme'], $parts['host'], $parts['user'], $parts['pass'], $parts['port'], $parts['fragment'])) return '';
+    $path = $parts['path'] ?? '';
+    if (!preg_match('/^[A-Za-z0-9_-]+\.php$/D', $path) || !is_file(__DIR__.'/../'.$path)) return '';
+    return $path . (isset($parts['query']) ? '?'.$parts['query'] : '');
+}
+function login_redirect($next = '') {
+    $target = safe_next_url($next);
+    header('Location: user_login.php'.($target === '' ? '' : '?next='.rawurlencode($target)), true, 303);
+    exit;
+}
+function current_page_url() {
+    $path = basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH));
+    $query = $_SERVER['QUERY_STRING'] ?? '';
+    return safe_next_url($path.($query === '' ? '' : '?'.$query));
+}
 function save_image_upload($file, $subdirectory = '') {
     if ($file['error'] !== UPLOAD_ERR_OK || $file['size'] > 5 * 1024 * 1024) throw new DomainException('图片上传失败或超过 5MB');
     $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);

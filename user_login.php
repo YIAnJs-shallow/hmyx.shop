@@ -9,6 +9,7 @@ if (!$db) {
 }
 
 $message = '';
+$next = safe_next_url($_POST['next'] ?? $_GET['next'] ?? '');
 // 记住当前选中的标签页（默认 customer）
 $active_tab = $_POST['login_type'] ?? 'customer';
 
@@ -45,8 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_SESSION['username'] = $user['username'];
             $_SESSION['role'] = $user['role'] ?? ($login_type === 'merchant' ? 'admin' : 'user');
 
-            // 登录成功直接跳转回个人中心！
-            header("Location: user_center.php");
+            header('Location: '.($next !== '' ? $next : 'user_center.php'), true, 303);
             exit();
         } else {
             $message = $login_type === 'merchant' ? '商户账号或密码错误！' : '客户账号或密码错误！';
@@ -113,6 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <?php endif; ?>
 
         <form action="user_login.php" method="POST"><?php echo csrf_field(); ?>
+            <input type="hidden" name="next" value="<?php echo h($next); ?>">
             <!-- 隐藏域：区分提交的是 customer 还是 merchant -->
             <input type="hidden" name="login_type" id="login_type" value="<?php echo htmlspecialchars($active_tab); ?>">
 
