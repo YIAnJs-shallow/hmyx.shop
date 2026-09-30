@@ -116,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($db instanceof mysqli) {
                     $stmt = $db->prepare("INSERT INTO products (shop_id, title, category_id, price, stock, detail, image_url, status, audit_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     if (!$stmt) throw new Exception('SQL 预处理失败');
-                    $stmt->bind_param("isissssis", $shop_id, $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status);
+                    $stmt->bind_param("isissisis", $shop_id, $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status);
                     $exec_ok = $stmt->execute();
                     $ok = $exec_ok && $stmt->affected_rows > 0;
                     if (!$exec_ok) $mysqli_err = $stmt->error;
