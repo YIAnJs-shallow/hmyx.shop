@@ -311,11 +311,10 @@ function showAjaxMsg(text, success) {
 function bulkAction(action) {
     const ids = getSelectedIds();
     if (ids.length === 0) { showAjaxMsg('请先选择商品', false); return; }
-    if (action === 'reject') {
-        const comment = document.getElementById('bulkComment').value.trim();
-        if (!comment) { showAjaxMsg('批量驳回时必须填写审核意见', false); return; }
-    }
-    const comment = action === 'reject' ? document.getElementById('bulkComment').value.trim() : document.getElementById('bulkComment').value.trim();
+    if (ids.length > 100) { showAjaxMsg('单次最多审核 100 个商品，请分批操作', false); return; }
+    const comment = document.getElementById('bulkComment').value.trim();
+    if (Array.from(comment).length > 255) { showAjaxMsg('审核意见不能超过 255 个字符', false); return; }
+    if (action === 'reject' && !comment) { showAjaxMsg('批量驳回时必须填写审核意见', false); return; }
     const label = action === 'approve' ? '通过' : '驳回';
     if (!confirm('确认将 ' + ids.length + ' 个商品批量' + label + '？')) return;
 
@@ -326,8 +325,8 @@ function bulkAction(action) {
     })
     .then(res => res.json())
     .then(data => {
-        showAjaxMsg(data.message, data.success);
-        if (data.success) {
+        showAjaxMsg(data.message, data.success === true);
+        if (data.success === true) {
             setTimeout(() => location.reload(), 1200);
         }
     })
