@@ -114,121 +114,6 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>惠蒙优选 - 精选优质商城</title>
     <link rel="stylesheet" href="css/style.css">
-    <style>
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8fafc; display: flex; flex-direction: column; min-height: 100vh; }
-        header { background: #fff; padding: 15px 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
-        
-        .search-bar-container {
-            background: #ffffff;
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
-            margin-bottom: 25px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
-        .search-form { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-        .search-input, .search-select {
-            padding: 10px 14px;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            font-size: 0.95rem;
-            outline: none;
-        }
-        .search-input { flex: 1; min-width: 200px; }
-        .search-btn {
-            background-color: #2563eb;
-            color: #fff;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-        }
-        .reset-btn {
-            background-color: #f1f5f9;
-            color: #64748b;
-            padding: 10px 16px;
-            border-radius: 6px;
-            text-decoration: none;
-            font-size: 0.9rem;
-        }
-        
-        .product-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .product-card {
-            background: #fff;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .product-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        }
-        .product-img-wrapper {
-            height: 180px;
-            width: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #f8fafc;
-            border-radius: 6px;
-            overflow: hidden;
-            margin-bottom: 12px;
-        }
-        .product-img-wrapper img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .product-title {
-            font-size: 1rem;
-            font-weight: bold;
-            color: #1e293b;
-            margin-bottom: 8px;
-            line-height: 1.3;
-        }
-        .product-price {
-            font-size: 1.15rem;
-            color: #dc2626;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .btn-buy-link {
-            display: block;
-            margin-top: 10px;
-            padding: 9px 0;
-            background-color: #2563eb;
-            color: #ffffff;
-            text-align: center;
-            border-radius: 6px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 0.9rem;
-            transition: background-color 0.2s;
-        }
-        .btn-buy-link:hover { background-color: #1d4ed8; }
-        .no-data { grid-column: 1 / -1; text-align: center; padding: 40px; color: #64748b; }
-
-        /* 底部 Footer 样式 */
-        .site-footer {
-            margin-top: auto;
-            background: #ffffff;
-            border-top: 1px solid #e2e8f0;
-            padding: 20px 0;
-            text-align: center;
-            color: #64748b;
-            font-size: 0.875rem;
-        }
-    </style>
 </head>
 <body>
         <header>
@@ -254,28 +139,22 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
             </a >
         </div>
         <nav>
-            <ul style="list-style: none; display: flex; gap: 20px; align-items: center; margin: 0;">
+            <ul>
                 <!-- 购物车 -->
                 <li>
                     <?php if ($is_logged_in): ?>
-                        <a href="cart.php" style="text-decoration: none; color: #334155; font-weight: bold;">🛒 购物车</a > <a href="favorites.php">我的收藏</a> <a href="my_orders.php">我的订单</a>
+                        <a href="cart.php">🛒 购物车</a><a href="favorites.php">我的收藏</a><a href="my_orders.php">我的订单</a>
                     <?php else: ?>
-                        <a href="javascript:void(0);" onclick="alert('请先登录账号！'); location.href='user_login.php';" style="text-decoration: none; color: #334155; font-weight: bold;">🛒 购物车</a >
+                        <a href="javascript:void(0);" onclick="alert('请先登录账号！'); location.href='user_login.php';">🛒 购物车</a>
                     <?php endif; ?>
                 </li>
-                
+
                 <!-- 个人中心 / 登录 入口 -->
                 <li>
                     <?php if ($is_logged_in): ?>
-                        <!-- 已登录：跳转 user_center.php -->
-                        <a href="user_center.php" style="text-decoration: none; color: #2563eb; font-weight: bold; background: #eff6ff; padding: 6px 14px; border-radius: 20px; border: 1px solid #bfdbfe; display: inline-block;">
-                            👤 个人中心
-                        </a >
+                        <a href="user_center.php" class="nav-cta">👤 个人中心</a>
                     <?php else: ?>
-                        <!-- 未登录：跳转 user_login.php（补全了 href="user_login.php"） -->
-                        <a href="user_login.php" style="text-decoration: none; color: #fff; font-weight: bold; background: #2563eb; padding: 6px 16px; border-radius: 20px; display: inline-block;">
-                            登录 / 注册
-                        </a >
+                        <a href="user_login.php" class="nav-cta">登录 / 注册</a>
                     <?php endif; ?>
                 </li>
             </ul>
@@ -307,14 +186,25 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
                 <select name="sort" class="search-select" aria-label="排序"><?php foreach(['newest'=>'最新上架','price_asc'=>'价格从低到高','price_desc'=>'价格从高到低'] as $key=>$label): ?><option value="<?php echo $key; ?>" <?php echo $sort===$key?'selected':''; ?>><?php echo $label; ?></option><?php endforeach; ?></select><button type="submit" class="search-btn">搜索</button>
                 
                 <?php if (!empty($keyword) || $category_id > 0): ?>
-                    <a href="index.php" class="reset-btn">重置条件</a >
+                    <a href="index.php" class="reset-btn">重置条件</a>
                 <?php endif; ?>
             </form>
         </div>
 
+        <?php if (empty($keyword) && $category_id <= 0 && !$is_logged_in): ?>
+        <!-- 新人专享横幅：通往落地页 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;background:linear-gradient(120deg,#4f46e5,#2563eb 55%,#7c3aed);color:#fff;border-radius:16px;padding:22px 28px;margin-bottom:28px;box-shadow:0 10px 28px -10px rgba(37,99,235,0.55);">
+            <div>
+                <div style="font-size:1.15rem;font-weight:800;letter-spacing:1px;margin-bottom:4px;">🎉 新人专享 · 三重好礼等你领</div>
+                <div style="font-size:0.9rem;color:rgba(255,255,255,0.85);">首单立减 ¥15 · 免运费 3 单 · 新人专享价</div>
+            </div>
+            <a href="welcome.php" style="background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;font-weight:800;padding:11px 28px;border-radius:999px;text-decoration:none;box-shadow:0 10px 24px -8px rgba(245,158,11,0.7);white-space:nowrap;">查看详情</a>
+        </div>
+        <?php endif; ?>
+
         <div class="page-header">
-            <h2 style="font-size: 1.25rem; color: #0f172a; margin-bottom: 15px;">
-                <?php 
+            <h2 class="section-title">
+                <?php
                     if (!empty($keyword)) {
                         echo '搜索结果："' . htmlspecialchars($keyword) . '"';
                     } else {
@@ -348,9 +238,9 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
                             <div class="product-price">￥<?php echo number_format($p_price, 2); ?></div>
                         </div>
                         
-                        <a href="detail.php?id=<?php echo $row['id']; ?>" class="btn-buy-link" style="background-color: #2563eb;">
+                        <a href="detail.php?id=<?php echo $row['id']; ?>" class="btn-buy-link">
                             👁️ 查看商品
-                        </a >
+                        </a>
                     </article>
                 <?php endwhile; ?>
             <?php else: ?>
@@ -359,7 +249,7 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
                 </div>
             <?php endif; ?>
         </div>
-        <nav style="display:flex;gap:20px;padding:24px 0;align-items:center;" aria-label="分页">
+        <nav class="pagination" aria-label="分页">
         <?php if($page>1): ?><a href="?<?php echo htmlspecialchars(http_build_query(['keyword'=>$keyword,'category_id'=>$category_id,'sort'=>$sort,'page'=>$page-1])); ?>">上一页</a><?php endif; ?>
         <span>第 <?php echo $page; ?> 页 · 共 <?php echo $total_products; ?> 件商品</span>
         <?php if($page*12<$total_products): ?><a href="?<?php echo htmlspecialchars(http_build_query(['keyword'=>$keyword,'category_id'=>$category_id,'sort'=>$sort,'page'=>$page+1])); ?>">下一页</a><?php endif; ?>
