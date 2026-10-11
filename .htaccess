@@ -1,4 +1,7 @@
 Options -Indexes
+# 根地址直接显示商城首页，覆盖虚拟主机中的新人页优先顺序。
+DirectoryIndex disabled
+DirectoryIndex index.php index.html
 <FilesMatch "(?i)^(?:\.env(?:\..*)?|.*\.(?:sql|zip|log|md|ini))$">
     Require all denied
 </FilesMatch>
