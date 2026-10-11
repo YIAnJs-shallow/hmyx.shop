@@ -10,7 +10,7 @@ $page=max(1,(int)($_GET['page'] ?? 1)); $offset=($page-1)*15;
 $count=one('SELECT COUNT(*) AS n FROM orders o WHERE '.$where,$params)['n'];
 $orders=rows('SELECT o.*,r.status AS refund_status,r.reason,a.status AS after_sale_status,a.reason AS after_sale_reason FROM orders o LEFT JOIN refund_requests r ON r.order_id=o.id LEFT JOIN after_sale_requests a ON a.order_id=o.id WHERE '.$where.' ORDER BY o.id DESC LIMIT 15 OFFSET '.$offset,$params);
 require __DIR__.'/inc/header.php';
-echo '<p><a href="index.php">返回店铺管理</a></p><nav class="tabs">'; foreach($states as $key=>$label) echo '<a class="'.($status===$key?'active':'').'" href="?status='.$key.'">'.$label.'</a>'; echo '</nav>';
+echo '<p><a href="index.php">返回后台首页</a></p><nav class="tabs">'; foreach($states as $key=>$label) echo '<a class="'.($status===$key?'active':'').'" href="?status='.$key.'">'.$label.'</a>'; echo '</nav>';
 if(!$orders) echo '<section class="card empty">暂无符合条件的订单</section>';
 foreach($orders as $order): $id=(int)$order['id']; ?>
 <section class="card"><h2><?=h($order['order_no'])?> <span class="badge"><?=h(status_name($order['status']))?></span></h2><p class="price">¥ <?=h($order['total_amount'])?></p>
