@@ -41,6 +41,7 @@ if (!empty($_SESSION['user_id'])) {
     $stmt_user->execute();
     $current_user = $stmt_user->get_result()->fetch_assoc();
     if ($current_user) { $_SESSION['role']=$current_user['role']; $_SESSION['username']=$current_user['username']; }
-    else { $_SESSION=[]; }
+    // 仅清除前台登录态，保留 $_SESSION['admin']（后台管理员登录互不干扰）
+    else { unset($_SESSION['user_id'], $_SESSION['username'], $_SESSION['role']); }
 }
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') csrf_check();

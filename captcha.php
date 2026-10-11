@@ -9,7 +9,12 @@ for ($i = 0; $i < 4; $i++) {
 }
 
 // 2. 存入 Session 供注册/登录校验使用（统一转为小写，忽略大小写敏感）
-$_SESSION['captcha_code'] = strtolower($code);
+// ?scope=admin 时写入独立键，避免前后台登录页验证码互相覆盖
+if (($_GET['scope'] ?? '') === 'admin') {
+    $_SESSION['captcha_admin'] = strtolower($code);
+} else {
+    $_SESSION['captcha_code'] = strtolower($code);
+}
 
 // 3. 创建验证码图片画布
 header('Content-Type: image/png');

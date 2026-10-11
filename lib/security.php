@@ -29,7 +29,9 @@ function verify_account_password($input, $stored) {
 function login_account($user, $input) {
     if (!verify_account_password($input, $user['password'])) return false;
     session_regenerate_id(true);
-    $_SESSION = ['user_id' => (int)$user['id'], 'username' => $user['username'], 'role' => $user['role']];
+    // 重建前台登录态时保留 admin 键，前后台可同时登录
+    $_SESSION = (isset($_SESSION['admin']) ? ['admin' => $_SESSION['admin']] : [])
+        + ['user_id' => (int)$user['id'], 'username' => $user['username'], 'role' => $user['role']];
     return true;
 }
 function safe_next_url($url) {
