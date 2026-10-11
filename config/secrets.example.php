@@ -7,3 +7,14 @@
 // 高德开放平台 Web服务 Key
 // 申请地址：https://console.amap.com/dev/key/app
 define('AMAP_KEY', '');
+
+// SMTP 发件配置（用于找回密码验证码邮件；也可改用同名环境变量）
+// 以 QQ 邮箱为例：SMTP_HOST=smtp.qq.com，SMTP_PORT=465，SMTP_SECURE='ssl'
+// SMTP_PASS 不是 QQ 密码，而是“授权码”：QQ 邮箱网页版 → 设置 → 账号 → 开启 SMTP 服务 → 生成授权码
+define('SMTP_HOST', '');        // SMTP 服务器地址，如 smtp.qq.com / smtp.163.com
+define('SMTP_PORT', 465);       // 端口：SSL 一般 465，STARTTLS 一般 587
+define('SMTP_SECURE', 'ssl');   // 加密方式：'ssl' 或 'tls'（STARTTLS）
+define('SMTP_USER', '');        // 发件邮箱账号，如 xxx@qq.com
+define('SMTP_PASS', '');        // SMTP 授权码（QQ/163 等邮箱在设置中生成的授权码，非登录密码）
+define('MAIL_FROM', '');        // 发件人地址，一般与 SMTP_USER 相同
+define('MAIL_FROM_NAME', '惠蒙优选'); // 发件人显示名

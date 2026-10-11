@@ -143,4 +143,23 @@ query("CREATE TABLE IF NOT EXISTS admin_login_attempts (
 add_column('audit_records','admin_user_id','int NULL');
 query('ALTER TABLE audit_records MODIFY admin_id int NULL');
 
+// ===== 找回密码：用户邮箱唯一化 + 邮箱验证码表 =====
+// 历史空字符串邮箱归一为 NULL（NULL 不参与唯一索引），保证一邮箱一账号
+query("UPDATE users SET email=NULL WHERE email=''");
+if (!one('SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME=?', ['users','uk_email'])) {
+    query('ALTER TABLE users ADD UNIQUE KEY uk_email (email)');
+}
+// 验证码只存 sha256 哈希；failed_attempts/locked_until 实现“连错5次锁30分钟”
+query("CREATE TABLE IF NOT EXISTS password_reset_codes (
+    id bigint AUTO_INCREMENT PRIMARY KEY,
+    email varchar(100) NOT NULL,
+    code_hash char(64) NOT NULL,
+    expires_at datetime NOT NULL,
+    failed_attempts int NOT NULL DEFAULT 0,
+    locked_until datetime NULL,
+    used_at datetime NULL,
+    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_email_id (email, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 echo "Migration complete.\n";

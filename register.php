@@ -13,6 +13,7 @@ $success = false;
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = trim($_POST['username'] ?? '');
+    $email = trim($_POST['email'] ?? '');
     $password = trim($_POST['password'] ?? '');
     $confirm_password = trim($_POST['confirm_password'] ?? '');
     $captcha = strtolower(trim($_POST['captcha'] ?? ''));
@@ -23,11 +24,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     if (empty($captcha) || $captcha !== $session_captcha) {
         $message = '验证码错误或已过期，请重新输入！';
-    } 
+    }
     // 2. 基础非空校验
-    elseif (empty($username) || empty($password) || empty($confirm_password)) {
+    elseif (empty($username) || empty($email) || empty($password) || empty($confirm_password)) {
         $message = '所有必填字段不能为空！';
-    } 
+    }
+    // 2.5 邮箱格式校验
+    elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 100) {
+        $message = '请输入有效的邮箱地址！';
+    }
     // 3. 双重密码校验
     elseif ($password !== $confirm_password) {
         $message = '两次输入的密码不一致，请重新确认！';
@@ -52,15 +57,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($exists) {
             $message = '该用户名已被使用，请换一个！';
         } else {
+            // 6. 邮箱唯一性校验（找回密码按邮箱定位账号）
+            if ($db instanceof mysqli) {
+                $check_email = $db->prepare("SELECT id FROM users WHERE email = ?");
+                $check_email->bind_param("s", $email);
+                $check_email->execute();
+                $email_exists = $check_email->get_result()->num_rows > 0;
+            } else {
+                $check_email = $db->prepare("SELECT id FROM users WHERE email = ?");
+                $check_email->execute([$email]);
+                $email_exists = (bool)$check_email->fetch();
+            }
+            if ($email_exists) {
+                $message = '该邮箱已被注册，请换一个！';
+            } else {
             $hash_pass = password_hash($password, PASSWORD_DEFAULT);
 
             if ($db instanceof mysqli) {
-                $ins = $db->prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'user')");
-                $ins->bind_param("ss", $username, $hash_pass);
+                $ins = $db->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, 'user')");
+                $ins->bind_param("sss", $username, $email, $hash_pass);
                 $exec_res = $ins->execute();
             } else {
-                $ins = $db->prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'user')");
-                $exec_res = $ins->execute([$username, $hash_pass]);
+                $ins = $db->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, 'user')");
+                $exec_res = $ins->execute([$username, $email, $hash_pass]);
             }
 
             if ($exec_res) {
@@ -68,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $message = '注册成功！请点击下方“前往登录”进行登录。';
             } else {
                 $message = '注册失败，请稍后再试！';
+            }
             }
         }
     }
@@ -114,6 +134,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="input-group">
                 <label>账号/用户名</label>
                 <input type="text" name="username" required placeholder="请输入新账号">
+            </div>
+
+            <div class="input-group">
+                <label>注册邮箱</label>
+                <input type="email" name="email" required maxlength="100" placeholder="用于找回密码" value="<?php echo h($_POST['email'] ?? ''); ?>">
+                <div class="pwd-tip">必填：忘记密码时将通过该邮箱接收验证码</div>
             </div>
 
             <div class="input-group">

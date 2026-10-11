@@ -129,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <?php echo $active_tab === 'merchant' ? '商 户 登 录' : '客 户 登 录'; ?>
             </button>
         </form><p style="text-align:center"><a href="admin/login.php">管理员独立登录 →</a></p>
+        <p style="text-align:center"><a href="forgot_password.php">忘记密码？</a></p>
 
         <div class="links">
             <a href="index.php">没有账号？去注册</a >
