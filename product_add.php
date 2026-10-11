@@ -2,6 +2,7 @@
 require_once __DIR__ . '/lib/security.php';
 
 require_once 'config/db.php';
+if (($_SESSION['role'] ?? '') === 'admin') { header('Location: admin/login.php', true, 303); exit; }
 $db = isset($pdo) ? $pdo : (isset($conn) ? $conn : null);
 
 if (!$db) {

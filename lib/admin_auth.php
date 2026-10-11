@@ -33,7 +33,7 @@ function refresh_admin_session() {
     $stmt->bind_param('i', $admin_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
-    if (!$row || $row['status'] !== 'active') { unset($_SESSION['admin']); return; }
+    if (!$row || $row['status'] !== 'active' || admin_lock_remaining($row) > 0) { unset($_SESSION['admin']); return; }
 
     $role_id = (int)$row['role_id'];
     $stmt = $conn->prepare('SELECT p.permission_code FROM admin_role_permissions rp
@@ -100,7 +100,7 @@ function require_super_admin() {
 
 // ============ 审计 ============
 
-function audit_log($action, $target_type = '', $target_id = '', $detail = [], $status = 'success') {
+function audit_log($action, $target_type = '', $target_id = '', $detail = [], $status = 'success', $strict = false) {
     global $conn;
     $admin = $_SESSION['admin'] ?? [];
     $admin_id = isset($admin['id']) ? (int)$admin['id'] : null;
@@ -110,7 +110,8 @@ function audit_log($action, $target_type = '', $target_id = '', $detail = [], $s
     $target_id = is_array($target_id) ? implode(',', $target_id) : (string)$target_id;
     $json = json_encode($detail, JSON_UNESCAPED_UNICODE);
     if (!is_string($json)) $json = '';
-    $json = substr($json, 0, 1000);
+    if (strlen($json) > 1000) $json = json_encode(['summary'=>mb_strcut($json, 0, 700, 'UTF-8')], JSON_UNESCAPED_UNICODE);
+    $target_id = substr($target_id, 0, 64);
     $status = $status === 'failure' ? 'failure' : 'success';
     $ip = admin_client_ip();
     $ua = admin_user_agent();
@@ -121,6 +122,7 @@ function audit_log($action, $target_type = '', $target_id = '', $detail = [], $s
         $stmt->bind_param('issssssss', $admin_id, $username, $action, $target_type, $target_id, $json, $status, $ip, $ua);
         $stmt->execute();
     } catch (Exception $e) {
+        if ($strict) throw $e;
         error_log('audit_log failed: ' . $e->getMessage()); // 审计失败不阻断业务，但必须留痕到错误日志
     }
 }
@@ -146,8 +148,8 @@ function admin_current_page_url() {
 function admin_safe_next_url($url) {
     if (!is_string($url) || $url === '' || strlen($url) > 500 || preg_match('/[\r\n]/', $url)) return '';
     $parts = parse_url($url);
-    if ($parts === false || isset($parts['scheme'], $parts['host'], $parts['user'], $parts['pass'], $parts['port'], $parts['fragment'])) return '';
-    $path = basename($parts['path'] ?? '');
+    if ($parts === false || array_intersect(['scheme','host','user','pass','port','fragment'], array_keys($parts))) return '';
+    $path = $parts['path'] ?? '';
     if (!preg_match('/^[A-Za-z0-9_-]+\.php$/D', $path) || !is_file(__DIR__ . '/../admin/' . $path)) return '';
     return $path . (isset($parts['query']) ? '?' . $parts['query'] : '');
 }

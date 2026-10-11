@@ -16,14 +16,14 @@ $active_tab = $_POST['login_type'] ?? 'customer';
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
-    $login_type = $_POST['login_type'] ?? 'customer'; // customer (客户) 或 merchant (商户/管理员)
+    $login_type = $_POST['login_type'] ?? 'customer'; // customer (客户) 或 merchant (商户)
 
     if (empty($username) || empty($password)) {
         $message = '账号或密码不能为空！';
     } else {
         // 根据登录类型区分查询角色
         if ($login_type === 'merchant') {
-            $role_condition = "(role = 'admin' OR role = 'merchant')";
+            $role_condition = "role = 'merchant'";
         } else {
             $role_condition = "(role = 'user' OR role = 'customer')";
         }
@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($user && login_account($user, $password)) {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
-            $_SESSION['role'] = $user['role'] ?? ($login_type === 'merchant' ? 'admin' : 'user');
+            $_SESSION['role'] = $user['role'] ?? ($login_type === 'merchant' ? 'merchant' : 'user');
 
             header('Location: '.($next !== '' ? $next : 'user_center.php'), true, 303);
             exit();
@@ -118,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <input type="hidden" name="login_type" id="login_type" value="<?php echo htmlspecialchars($active_tab); ?>">
 
             <div class="input-group">
-                <label id="username-label"><?php echo $active_tab === 'merchant' ? '商户 / 管理员账号' : '客户账号'; ?></label>
+                <label id="username-label"><?php echo $active_tab === 'merchant' ? '商户账号' : '客户账号'; ?></label>
                 <input type="text" name="username" placeholder="请输入账号" required>
             </div>
             <div class="input-group">
@@ -128,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <button type="submit" id="submit-btn" class="btn-submit" style="background-color: <?php echo $active_tab === 'merchant' ? '#0f172a' : '#2563eb'; ?>;">
                 <?php echo $active_tab === 'merchant' ? '商 户 登 录' : '客 户 登 录'; ?>
             </button>
-        </form>
+        </form><p style="text-align:center"><a href="admin/login.php">管理员独立登录 →</a></p>
 
         <div class="links">
             <a href="index.php">没有账号？去注册</a >
@@ -149,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if (type === 'merchant') {
                 btnCustomer.classList.remove('active');
                 btnMerchant.classList.add('active');
-                userLabel.innerText = '商户 / 管理员账号';
+                userLabel.innerText = '商户账号';
                 submitBtn.innerText = '商 户 登 录';
                 submitBtn.style.backgroundColor = '#0f172a';
             } else {

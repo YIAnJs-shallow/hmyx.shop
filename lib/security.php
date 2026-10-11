@@ -27,6 +27,7 @@ function verify_account_password($input, $stored) {
     return is_string($input) && !account_password_needs_reset($stored) && password_verify($input, $stored);
 }
 function login_account($user, $input) {
+    if (($user['role'] ?? '') === 'admin') return false;
     if (!verify_account_password($input, $user['password'])) return false;
     session_regenerate_id(true);
     // 重建前台登录态时保留 admin 键，前后台可同时登录

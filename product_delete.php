@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/lib/shop.php';
+if (($_SESSION['role'] ?? '') === 'admin') { header('Location: admin/login.php', true, 303); exit; }
 $userId=uid(); $id=(int)($_POST['id'] ?? $_GET['id'] ?? 0);
 $p=one('SELECT p.*,s.user_id AS merchant_id FROM products p LEFT JOIN shops s ON s.id=p.shop_id WHERE p.id=?',[$id]);
 if(!$p || (($_SESSION['role'] ?? '')!=='admin' && !(($_SESSION['role'] ?? '')==='merchant' && (int)$p['merchant_id']===$userId))) { http_response_code(403); exit('无权操作此商品'); }

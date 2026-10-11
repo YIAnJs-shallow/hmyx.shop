@@ -40,7 +40,7 @@ function after_sale_status_name($status) {
     return ['pending'=>'待商家处理','approved'=>'商家已同意，请寄回商品','rejected'=>'商家已拒绝','received'=>'商家已收货，待支付渠道退款','refunded'=>'退货退款已完成'][$status] ?? $status;
 }
 function can_manage_order($order, $userId) {
-    if (($_SESSION['role'] ?? '') === 'admin') return true;
+
     return ($_SESSION['role'] ?? '') === 'merchant' && !empty($order['shop_id']) &&
         one('SELECT id FROM shops WHERE id=? AND user_id=? AND status=1', [(int)$order['shop_id'], $userId]);
 }
@@ -130,7 +130,9 @@ function change_order($id, $actor, $action, $data = []) {
         $order = one('SELECT * FROM orders WHERE id=? FOR UPDATE', [$id]);
         if (!$order) throw new DomainException('订单不存在');
         $owner = (int)$order['user_id'] === $actor;
-        $manager = can_manage_order($order, $actor);
+         $adminPermissions = ['ship'=>'order.ship','refund_approve'=>'order.refund','refund_reject'=>'order.refund','after_sale_approve'=>'order.refund','after_sale_reject'=>'order.refund','after_sale_receive'=>'order.refund'];
+        $backend = $actor === 0 && defined('ADMIN_ORDER_CONTEXT') && ADMIN_ORDER_CONTEXT && function_exists('is_admin_logged_in') && is_admin_logged_in() && empty($_SESSION['admin']['must_change_password']) && isset($adminPermissions[$action]) && admin_has_permission($adminPermissions[$action]);
+        $manager = $backend || can_manage_order($order, $actor);
         if ($action === 'cancel' && $owner && $order['status'] === 'pending') {
             release_stock($order);
             query("UPDATE orders SET status='cancelled' WHERE id=?", [$id]);
@@ -147,6 +149,7 @@ function change_order($id, $actor, $action, $data = []) {
         } elseif ($action === 'receive' && $owner && $order['status'] === 'shipped') {
             query("UPDATE orders SET status='completed',completed_at=NOW() WHERE id=?", [$id]);
         } elseif ($action === 'refund' && $owner && $order['status'] === 'paid') {
+            if (one('SELECT id FROM refund_requests WHERE order_id=?', [$id])) throw new DomainException('已提交退款申请');
             if ($order['payment_method'] !== 'demo') throw new DomainException('此订单需联系商家核实支付后办理退款');
             $reason = trim($data['reason'] ?? '');
             if (mb_strlen($reason)<2 || mb_strlen($reason)>500) throw new DomainException('退款原因需为 2 至 500 个字符');
@@ -161,6 +164,7 @@ function change_order($id, $actor, $action, $data = []) {
             }
             query('UPDATE refund_requests SET status=?,processed_at=NOW() WHERE id=?',[$action==='refund_approve'?'approved':'rejected',(int)$request['id']]);
         } elseif ($action === 'after_sale' && $owner && in_array($order['status'], ['shipped','completed'], true)) {
+            if (one('SELECT id FROM after_sale_requests WHERE order_id=?', [$id])) throw new DomainException('已提交售后申请');
             $reason = trim($data['reason'] ?? '');
             if (mb_strlen($reason) < 2 || mb_strlen($reason) > 500) throw new DomainException('退货原因需为 2 至 500 个字符');
             query("INSERT INTO after_sale_requests(order_id,user_id,reason,status) VALUES(?,?,?,'pending')", [$id,$actor,$reason]);
@@ -178,6 +182,7 @@ function change_order($id, $actor, $action, $data = []) {
                 query("UPDATE after_sale_requests SET status='received',received_at=NOW() WHERE id=?", [(int)$request['id']]);
             }
         } else { throw new DomainException('无权操作或订单状态已改变，请刷新查看'); }
+        if ($backend) audit_log('order.' . $action, 'order', $id, ['previous_status'=>$order['status']], 'success', true);
         $conn->commit();
     } catch (Throwable $e) { $conn->rollback(); throw $e; }
 }

@@ -140,4 +140,7 @@ query("CREATE TABLE IF NOT EXISTS admin_login_attempts (
     KEY idx_ip_time (ip, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+add_column('audit_records','admin_user_id','int NULL');
+query('ALTER TABLE audit_records MODIFY admin_id int NULL');
+
 echo "Migration complete.\n";

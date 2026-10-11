@@ -10,7 +10,7 @@ PATTERNS = [
 SKIP_PREFIXES = ('#', 'javascript:', 'mailto:', 'tel:', 'http:', 'https:', '//')
 errors = []
 
-for path in ROOT.glob('*'):
+for path in list(ROOT.glob('*')) + list((ROOT / 'admin').rglob('*.php')):
     if path.suffix.lower() not in {'.php', '.html', '.js'} or not path.is_file():
         continue
     text = path.read_text(encoding='utf-8')
@@ -21,7 +21,7 @@ for path in ROOT.glob('*'):
                 continue
             if not re.fullmatch(r'[A-Za-z0-9_./-]+\.(?:php|html|js)', target):
                 continue
-            if not (ROOT / target.lstrip('/')).is_file():
+            if not ((ROOT if target.startswith('/') else (ROOT / 'admin' if path.parent.name == 'inc' else path.parent)) / target.lstrip('/')).is_file():
                 errors.append(f'{path.relative_to(ROOT)}: missing local target {target}')
 
 if errors:

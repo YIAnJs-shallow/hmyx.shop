@@ -73,7 +73,15 @@ class Client:
 
     def token(self, path='user_login.php'):
         html, _ = self.request(path)
-        return re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+        match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+        if not match:
+            match = re.search(r"formData.append\('csrf_token',\s*\"([^\"]+)\"", html)
+        if not match:
+            match = re.search(r"['\"]X-CSRF-Token['\"]:\s*['\"]([^'\"]+)['\"]", html, re.I)
+        if not match:
+            match = re.search(r'name="csrf-token" content="([^"]+)"', html)
+        assert match, ('missing token', path)
+        return match.group(1)
 
     def login(self, username, merchant=False):
         html, url = self.request('user_login.php', {'csrf_token': self.token(), 'username': username,
@@ -85,9 +93,9 @@ guest = Client()
 guest.request('index.php')
 guest.request('detail.php?id=' + str(state['platform_product']))
 html, url = guest.request('addresses.php')
-check('user_login.php?next=addresses.php' in url and '统一登录页面' in html, 'protected page redirects directly to login with safe return path')
+check('user_login.php?next=addresses.php' in url and '账号登录' in html, 'protected page redirects directly to login with safe return path')
 html, url = guest.request('my_orders.php?status=completed')
-check('user_login.php?next=my_orders.php%3Fstatus%3Dcompleted' in url and '统一登录页面' in html, 'order page preserves login return path')
+check('user_login.php?next=my_orders.php%3Fstatus%3Dcompleted' in url and '账号登录' in html, 'order page preserves login return path')
 guest.request('user_login.php', {'username': 'qa_admin', 'password': '123456'}, expected=403)
 check(True, 'missing CSRF rejected')
 html, url = guest.request('user_login.php', {'csrf_token': guest.token(), 'username': 'qa_admin', 'password': '123456', 'login_type': 'merchant'})
@@ -99,7 +107,8 @@ check(True, 'local development server blocks sensitive paths')
 buyer = Client(); buyer.login('qa_buyer')
 other = Client(); other.login('qa_other')
 merchant = Client(); merchant.login('qa_merchant', True)
-admin = Client(); admin.login('qa_admin', True)
+admin = Client()
+admin.opener.addheaders = [('Cookie', 'PHPSESSID=' + state['super_session'])]
 for path in ['index.php?sort=price_asc', 'cart.php', 'favorites.php', 'my_orders.php', 'addresses.php', 'shop_manage.php', 'user_center.php']:
     buyer.request(path)
 check(True, 'buyer navigation renders and POST forms contain CSRF')
@@ -117,7 +126,7 @@ else:
         and not parsed_geo.get('address'),
         'reverse geocoding failure does not return a placeholder address'
     )
-for path in ['admin.php', 'admin_dashboard.php', 'admin_users.php', 'admin_audit.php?tab=approved', 'category_add.php', 'product_add.php', 'product_edit.php?id=' + str(state['platform_product']), 'admin_orders.php']:
+for path in ['admin/products.php','admin/dashboard.php','admin/users.php','admin/product_audit.php?tab=approved','admin/orders.php','admin/roles.php','admin/admins.php','admin/audit.php']:
     admin.request(path)
 check(True, 'admin pages render and forms remain valid')
 for path in ['product_list.php', 'product_add.php', 'product_edit.php?id=' + str(state['shop_product']), 'admin_orders.php']:
@@ -174,7 +183,7 @@ merchant.request('product_add.php', {'csrf_token': merchant.token('product_add.p
                  'price': '8.88', 'stock': '3', 'detail': '驳回后不得直接上架', 'submit_action': 'publish'})
 html, _ = merchant.request('product_list.php')
 rejected_product = str(max(int(x) for x in re.findall(r'product_edit.php\?id=(\d+)', html) if int(x) != int(new_product)))
-admin.request('admin_audit.php', {'csrf_token': admin.token('admin_audit.php?tab=pending'),
+admin.request('admin/product_audit.php', {'csrf_token': admin.token('admin/product_audit.php?tab=pending'),
                'product_id': rejected_product, 'audit_action': 'reject', 'comment': '请补充商品说明'})
 response = merchant.ajax('product_list.php', {'csrf_token': merchant.token('product_list.php'), 'action': 'toggle_status',
                                                'is_ajax': '1', 'product_id': rejected_product})
@@ -183,15 +192,15 @@ html, _ = merchant.request('product_list.php')
 check(rejected_title in html and '审核未通过' in html and '请编辑后重新提交审核' in html, 'rejected product remains off shelf in merchant list')
 buyer.request('detail.php?id=' + rejected_product, expected=404)
 check(True, 'rejected product remains hidden from storefront')
-html, _ = admin.request('admin_audit.php', {'csrf_token': admin.token('admin_audit.php?tab=pending'),
+html, _ = admin.request('admin/product_audit.php', {'csrf_token': admin.token('admin/product_audit.php?tab=pending'),
                          'product_id': new_product, 'audit_action': 'approve', 'comment': '测试通过'})
-html, _ = admin.request('admin_audit.php', {'csrf_token': admin.token('admin_audit.php?tab=pending'),
+html, _ = admin.request('admin/product_audit.php', {'csrf_token': admin.token('admin/product_audit.php?tab=pending'),
                          'product_id': new_product, 'audit_action': 'approve', 'comment': '重复通过'})
 check('已审核或状态已变化' in html and '商品已通过审核' not in html, 'repeated approval is rejected')
-html, _ = admin.request('admin_audit.php', {'csrf_token': admin.token('admin_audit.php?tab=pending'),
+html, _ = admin.request('admin/product_audit.php', {'csrf_token': admin.token('admin/product_audit.php?tab=pending'),
                          'product_id': new_product, 'audit_action': 'reject', 'comment': '重复驳回'})
 check('已审核或状态已变化' in html and '商品已驳回并自动下架' not in html, 'repeated rejection is rejected')
-history, _ = admin.request('api_audit_history.php?product_id=' + new_product)
+history, _ = admin.request('admin/api_audit_history.php?product_id=' + new_product)
 history = json.loads(history)
 check(history['success'] is True and len(history['records']) == 1 and history['records'][0]['result'] == 'approved', 'repeated audit creates no additional record')
 html, _ = buyer.request('detail.php?id=' + new_product)
@@ -248,5 +257,17 @@ html, _ = merchant.request('product_edit.php?id=' + new_product, {
     'title': '库存同步编辑', 'price': '12.34', 'stock': fresh_stock,
     'detail': '库存恢复后保存', 'submit_action': 'publish'
 })
-check('库存同步编辑' in html and '待审核' in html, 'refreshed stock snapshot permits product edit')
+check('已重新提交管理员审核' in html, 'refreshed stock snapshot permits product edit')
+html, _ = merchant.request('product_list.php')
+check('库存同步编辑' in html and '待审核' in html, 'edited product persists and requires review')
+operator = Client()
+operator.opener.addheaders = [('Cookie', 'PHPSESSID=' + state['operator_session'])]
+for path in ['admin/products.php','admin/users.php','admin/roles.php','admin/admins.php']:
+    operator.request(path, expected=403)
+check(True, 'job administrator cannot access other modules or super controls')
+operator.request('admin/orders.php')
+operator.request('admin/order_action.php', {'csrf_token':operator.token('admin/orders.php'),'action':'refund_approve','order_id':'1'}, expected=403)
+check(True, 'revoked refund permission blocks direct POST')
+html, _ = admin.request('admin/audit.php')
+check('审计日志' in html, 'super administrator can inspect audit records')
 print(str(checks) + ' HTTP flow assertions passed.')

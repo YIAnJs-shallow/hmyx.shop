@@ -1,5 +1,6 @@
 <?php
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+ob_start(); // Session fixtures must be created before test output is flushed.
 require_once __DIR__.'/../lib/shop.php';
 $source = $db_name;
 $testDb = 'shop_test_'.date('Ymd_His').'_'.bin2hex(random_bytes(3));
@@ -21,6 +22,23 @@ $assertions = 0;
 function check($value,$message) { global $assertions; if (!$value) throw new RuntimeException('FAIL: '.$message); $assertions++; echo 'PASS: '.$message."\n"; }
 function rejects($fn,$message) { try { $fn(); } catch (DomainException $e) { check(true,$message); return; } throw new RuntimeException('FAIL: '.$message); }
 function insert_user($name,$role) { global $conn; query('INSERT INTO users(username,password,role) VALUES(?,?,?)',[$name,password_hash('TestShop2026!',PASSWORD_DEFAULT),$role]); return (int)$conn->insert_id; }
+require_once __DIR__.'/../lib/admin_auth.php';
+check(count(rows('SELECT id FROM admin_roles'))===5,'RBAC roles seeded idempotently');
+check(count(rows('SELECT id FROM admin_permissions'))===13,'RBAC permissions seeded idempotently');
+query("INSERT INTO admin_users(username,password,role_id,is_super) SELECT 'qa_super',?,id,1 FROM admin_roles WHERE role_code='super'",[password_hash(bin2hex(random_bytes(20)),PASSWORD_DEFAULT)]);
+$superId=(int)$conn->insert_id;
+query("INSERT INTO admin_users(username,password,role_id) SELECT 'qa_operator',?,id FROM admin_roles WHERE role_code='order_manager'",[password_hash(bin2hex(random_bytes(20)),PASSWORD_DEFAULT)]);
+$operatorId=(int)$conn->insert_id;
+$_SESSION['admin']=['id'=>$operatorId];refresh_admin_session();
+check(admin_has_permission('order.ship') && !admin_has_permission('admin.manage'),'job role has only assigned permissions');
+query('UPDATE admin_users SET status=? WHERE id=?',['disabled',$operatorId]);refresh_admin_session();check(!is_admin_logged_in(),'disabled admin immediately loses session');
+query('UPDATE admin_users SET status=? WHERE id=?',['active',$operatorId]);
+check(admin_safe_next_url('https://example.com/orders.php')==='' && admin_safe_next_url('../orders.php')==='','admin redirects reject external and traversal paths');
+check(validate_admin_password('short','operator')!=='' && validate_admin_password(bin2hex(random_bytes(12)).'Aa!','operator')==='','admin password policy enforced');
+$_SESSION['admin']=['id'=>$superId];refresh_admin_session();
+audit_log('test.audit','test','1',['text'=>str_repeat('中文',300)],'success',true);
+$audit=one("SELECT detail FROM admin_audit_logs WHERE action='test.audit'");check(json_decode($audit['detail'],true)!==null,'long audit detail remains valid JSON');
+try { query("INSERT INTO admin_users(username,password,role_id,is_super) SELECT 'qa_duplicate_super','unused',id,1 FROM admin_roles WHERE role_code='super'"); throw new RuntimeException('second super accepted'); } catch(mysqli_sql_exception $e) {check($e->getCode()===1062,'only one super administrator allowed');}
 $auditColumn=one("SELECT COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='products' AND COLUMN_NAME='audit_status'");
 check($auditColumn && $auditColumn['COLUMN_TYPE']==="enum('pending','approved','rejected')" && $auditColumn['IS_NULLABLE']==='NO' && $auditColumn['COLUMN_DEFAULT']==='approved','legacy audit status column restored');
 check(one('SELECT audit_status FROM products WHERE id=?',[$legacyProduct])['audit_status']==='approved','legacy product remains approved');
@@ -102,7 +120,7 @@ $_SESSION['role']='merchant'; change_order($afterSaleOnline,$merchant,'ship',['e
 $_SESSION['role']='user'; change_order($afterSaleOnline,$buyer,'receive'); change_order($afterSaleOnline,$buyer,'after_sale',['reason'=>'线上支付退货退款']);
 $_SESSION['role']='merchant'; change_order($afterSaleOnline,$merchant,'after_sale_approve'); change_order($afterSaleOnline,$merchant,'after_sale_receive');
 check(one('SELECT status FROM after_sale_requests WHERE order_id=?',[$afterSaleOnline])['status']==='received','online-payment after-sale awaits payment-channel refund');
-check((int)one('SELECT stock FROM products WHERE id=?',[$p2])===7,'online-payment after-sale does not restore stock');
+check((int)one('SELECT stock FROM products WHERE id=?',[$p2])['stock']===7,'online-payment after-sale does not restore stock');
 $_SESSION['role']='user';
 $expired=(int)create_orders($buyer,$p1,1,$address,'expired-order')[0];
 query('UPDATE orders SET created_at=NOW()-INTERVAL 4 HOUR WHERE id=?',[$expired]); expire_orders($buyer); expire_orders($buyer);
@@ -113,5 +131,23 @@ rejects(function()use($buyer,$p1,$address){create_orders($buyer,$p1,1,$address,'
 query("UPDATE products SET audit_status='approved' WHERE id=?",[$p1]);
 query('INSERT INTO favorites(user_id,product_id) VALUES(?,?)',[$buyer,$p1]);
 check((int)one('SELECT COUNT(*) AS n FROM favorites WHERE user_id=?',[$buyer])['n']===1,'favorites persist');
-file_put_contents(__DIR__.'/state.json',json_encode(['database'=>$testDb,'buyer'=>$buyer,'other'=>$other,'merchant'=>$merchant,'admin'=>$admin,'address'=>$address,'platform_product'=>$p1,'shop_product'=>$p2,'shop'=>$shop,'completed_item'=>(int)$item['id']],JSON_PRETTY_PRINT));
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+$backendOrder=(int)create_orders($buyer,$p2,1,$address,'backend-order')[0];change_order($backendOrder,$buyer,'pay');
+$_SESSION['role']='admin';
+rejects(function()use($backendOrder,$admin){change_order($backendOrder,$admin,'ship',['express_company'=>'测试','express_no'=>'TEST112233']);},'legacy front administrator cannot manage orders');
+define('ADMIN_ORDER_CONTEXT',true);
+$_SESSION['admin']=['id'=>$operatorId];refresh_admin_session();
+change_order($backendOrder,0,'ship',['express_company'=>'测试','express_no'=>'TEST112233']);
+check(one('SELECT status FROM orders WHERE id=?',[$backendOrder])['status']==='shipped','independent order administrator can ship');
+check((int)one("SELECT COUNT(*) n FROM admin_audit_logs WHERE action='order.ship' AND target_id=?",[(string)$backendOrder])['n']===1,'backend shipment writes audit record');
+query('DELETE rp FROM admin_role_permissions rp JOIN admin_permissions p ON p.id=rp.permission_id JOIN admin_users a ON a.role_id=rp.role_id WHERE a.id=? AND p.permission_code=?',[$operatorId,'order.refund']);refresh_admin_session();
+check(!admin_has_permission('order.refund'),'revoked permission takes effect immediately');
+$_SESSION['admin']['must_change_password']=1;
+rejects(function()use($backendOrder){change_order($backendOrder,0,'after_sale_approve');},'forced password reset cannot execute backend actions');
+$superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
+session_save_path(sys_get_temp_dir());
+foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {
+    session_id($sid);session_start();$_SESSION=['admin'=>['id'=>$aid]];refresh_admin_session();csrf_token();session_write_close();
+}
+file_put_contents(__DIR__.'/state.json',json_encode(['database'=>$testDb,'buyer'=>$buyer,'other'=>$other,'merchant'=>$merchant,'admin'=>$admin,'address'=>$address,'platform_product'=>$p1,'shop_product'=>$p2,'shop'=>$shop,'completed_item'=>(int)$item['id'],'super_id'=>$superId,'operator_id'=>$operatorId,'super_session'=>$superSession,'operator_session'=>$operatorSession],JSON_PRETTY_PRINT));
 echo "$assertions integration assertions passed. Test database: $testDb\n";

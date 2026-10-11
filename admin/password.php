@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../lib/security.php';
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../lib/admin_auth.php';
+require_once __DIR__ . '/../lib/shop.php';
 require_admin_login(); // 首登强制改密时 require_admin_login 会把用户重定向到这里
 
 $message = '';
@@ -29,9 +30,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = '新密码不能与原密码相同。';
     } else {
         $hash = password_hash($new_password, PASSWORD_DEFAULT);
-        query('UPDATE admin_users SET password=?, must_change_password=0 WHERE id=?', [$hash, $admin_id]);
+        $conn->begin_transaction();
+        try {
+            query('UPDATE admin_users SET password=?, must_change_password=0 WHERE id=?', [$hash, $admin_id]);
+            audit_log('admin.password.change', 'admin', (string)$admin_id, [], 'success', true);
+            $conn->commit();
+        } catch (Throwable $e) { $conn->rollback(); throw $e; }
+        session_regenerate_id(true);
         $_SESSION['admin']['must_change_password'] = 0;
-        audit_log('admin.password.change', 'admin', (string)$admin_id);
+
         $message = '密码修改成功，正在进入后台…';
         $message_ok = true;
         header('refresh:2;url=index.php');
