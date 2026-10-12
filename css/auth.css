@@ -1,12 +1,13 @@
-/* ===== 登录/注册页共用样式（左右分屏布局，纯手写 CSS，无框架） ===== */
+/* ===== 登录/注册页共用样式（Stripe/Linear 风格深色玻璃拟态，纯手写 CSS） ===== */
 
 * { box-sizing: border-box; }
 
 body.auth-page {
     margin: 0;
     min-height: 100vh;
+    background-color: #0a0f1e;  /* 深空蓝黑 */
+    color: #e2e8f0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background-color: #f1f5f9;
     display: flex;
     flex-direction: column;
 }
@@ -18,192 +19,260 @@ body.auth-page {
     min-height: 100vh;
 }
 
-/* 左区：品牌展示（深蓝渐变） */
+/* ==================== 左区：极光场景 ==================== */
 .auth-brand {
     position: relative;
     overflow: hidden;
     width: 45%;
-    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-    color: #fff;
     display: flex;
     flex-direction: column;
     justify-content: center;
     padding: 60px 56px;
+    background: #0a0f1e;
 }
 
-/* 品牌区内容层：保证在气泡/光晕之上可交互 */
+/* 品牌内容层：位于三层背景之上 */
 .auth-brand > .brand-name,
 .auth-brand > .brand-slogan,
-.auth-brand > .brand-points { position: relative; z-index: 1; }
+.auth-brand > .brand-points { position: relative; z-index: 3; }
 
-/* 缓慢流动的径向渐变覆盖层（18s 匀速旋转，opacity .3） */
-.brand-glow {
-    position: absolute;
-    left: -50%;
-    top: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0) 45%);
-    opacity: 0.3;
-    pointer-events: none;
-    animation: brandGlowRotate 18s linear infinite;
-}
+/* --- 第一层（底）：极光色斑，巨大模糊光雾缓慢流动 --- */
+.aurora { position: absolute; inset: 0; pointer-events: none; }
 
-@keyframes brandGlowRotate {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-/* 漂浮气泡：半透明白色圆，绝对定位，仅 transform 动画 */
-.bubbles { position: absolute; inset: 0; pointer-events: none; }
-
-.bubble {
+.aurora span {
     position: absolute;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.10);
-    animation: bubbleFloat ease-in-out infinite alternate;
+    filter: blur(90px);
+    opacity: 0.35;
+    animation: aurora ease-in-out infinite alternate;
 }
 
-.bubble.b1 { width: 180px; height: 180px; left: 8%;  top: 12%; animation-duration: 12s; animation-delay: 0s; }
-.bubble.b2 { width: 90px;  height: 90px;  left: 62%; top: 8%;  background: rgba(255, 255, 255, 0.15); animation-duration: 9s;  animation-delay: -3s; }
-.bubble.b3 { width: 220px; height: 220px; left: 55%; top: 62%; background: rgba(255, 255, 255, 0.08); animation-duration: 16s; animation-delay: -6s; }
-.bubble.b4 { width: 60px;  height: 60px;  left: 30%; top: 78%; background: rgba(255, 255, 255, 0.15); animation-duration: 10s; animation-delay: -2s; }
-.bubble.b5 { width: 120px; height: 120px; left: 12%; top: 58%; background: rgba(255, 255, 255, 0.12); animation-duration: 14s; animation-delay: -8s; }
-.bubble.b6 { width: 76px;  height: 76px;  left: 78%; top: 38%; background: rgba(255, 255, 255, 0.12); animation-duration: 11s; animation-delay: -5s; }
+.aurora .a1 { width: 520px; height: 520px; left: -8%;  top: 4%;   background: #3b82f6; animation-duration: 18s; }
+.aurora .a2 { width: 600px; height: 600px; left: 38%; top: 42%;  background: #8b5cf6; animation-duration: 20s; animation-delay: -6s; }
+.aurora .a3 { width: 400px; height: 400px; left: 10%; top: 58%;  background: #06b6d4; animation-duration: 14s; animation-delay: -11s; }
 
-@keyframes bubbleFloat {
-    0%   { transform: translate(0, 0); }
-    25%  { transform: translate(18px, -22px); }
-    50%  { transform: translate(-14px, 12px); }
-    75%  { transform: translate(22px, 16px); }
-    100% { transform: translate(-18px, -30px); }
+@keyframes aurora {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(120px, -80px) scale(1.18); }
+    100% { transform: translate(-150px, 90px) scale(1.3); }
 }
 
+/* --- 第二层：星点（box-shadow 生成，两层不同尺寸缓慢闪烁） --- */
+.stars { position: absolute; inset: 0; pointer-events: none; }
+
+.stars span {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: 50%;
+    background: transparent;
+}
+
+.stars .star-s1 {
+    width: 1px; height: 1px;
+    box-shadow:
+        24px 40px #fff, 90px 18px #fff, 160px 76px #fff, 220px 30px #fff,
+        300px 120px #fff, 380px 55px #fff, 460px 90px #fff, 540px 25px #fff,
+        620px 140px #fff, 60px 180px #fff, 140px 240px #fff, 230px 200px #fff,
+        320px 290px #fff, 410px 230px #fff, 500px 320px #fff, 590px 260px #fff,
+        40px 350px #fff, 130px 430px #fff, 240px 390px #fff, 350px 480px #fff,
+        450px 420px #fff, 560px 370px #fff;
+    animation: twinkle 8s ease-in-out infinite alternate;
+}
+
+.stars .star-s2 {
+    width: 2px; height: 2px;
+    box-shadow:
+        55px 60px #fff, 185px 45px #fff, 265px 95px #fff, 345px 30px #fff,
+        425px 110px #fff, 505px 70px #fff, 585px 155px #fff, 105px 150px #fff,
+        205px 265px #fff, 295px 185px #fff, 395px 275px #fff, 485px 210px #fff,
+        75px 300px #fff, 175px 410px #fff, 285px 350px #fff, 375px 445px #fff,
+        475px 380px #fff, 545px 440px #fff, 615px 320px #fff, 25px 250px #fff;
+    animation: twinkle 12s ease-in-out infinite alternate;
+    animation-delay: -4s;
+}
+
+@keyframes twinkle {
+    from { opacity: 0.2; }
+    to   { opacity: 1; }
+}
+
+/* --- 第三层：透视地平线网格，向视点缓慢平移 --- */
+.grid-layer {
+    position: absolute;
+    left: -60%;
+    right: -60%;
+    bottom: -2%;
+    height: 55%;
+    pointer-events: none;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    transform: perspective(600px) rotateX(60deg);
+    transform-origin: top center;
+    animation: gridMove 20s linear infinite;
+}
+
+@keyframes gridMove {
+    from { background-position: 0 0; }
+    to   { background-position: 0 40px; }
+}
+
+/* --- 品牌文案排版 --- */
 .brand-name {
-    font-size: 2.4rem;
+    font-size: 42px;
     font-weight: bold;
-    margin: 0 0 12px 0;
+    margin: 0 0 14px 0;
     letter-spacing: 2px;
+    background: linear-gradient(90deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
 }
 
-/* Slogan 打字机：逐字出现（steps），光标 border-right 闪烁 */
 .brand-slogan {
-    font-size: 1.05rem;
-    color: rgba(255, 255, 255, 0.85);
-    margin: 0 0 48px 0;
-    white-space: nowrap;
-    overflow: hidden;
-    border-right: 2px solid rgba(255, 255, 255, 0.85);
-    animation: typewriter 5s steps(10, end) infinite, cursorBlink 1s step-end infinite;
+    margin: 0 0 44px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
-@keyframes typewriter {
-    0%   { width: 0; }
-    60%  { width: 10em; }  /* 前 3s 逐字打出，后 2s 停留展示 */
-    100% { width: 10em; }
-}
+.slogan-main { font-size: 28px; font-weight: 600; color: rgba(255, 255, 255, 0.92); }
+.slogan-sub  { font-size: 18px; color: rgba(255, 255, 255, 0.7); }
 
-@keyframes cursorBlink {
-    0%, 100% { border-right-color: rgba(255, 255, 255, 0.85); }
-    50%      { border-right-color: transparent; }
-}
-
-.brand-points { list-style: none; margin: 0; padding: 0; }
+/* --- 卖点：玻璃拟态横条卡片 --- */
+.brand-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
 
 .brand-points li {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 14px;
-    margin-bottom: 28px;
-    animation: pointIn 500ms ease-out both;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: transform 250ms ease, border-color 250ms ease;
 }
 
-.brand-points li:nth-child(1) { animation-delay: 0.2s; }
-.brand-points li:nth-child(2) { animation-delay: 0.4s; }
-.brand-points li:nth-child(3) { animation-delay: 0.6s; }
-
-@keyframes pointIn {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
+.brand-points li:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
-.point-icon { font-size: 1.6rem; line-height: 1.4; }
+.point-icon { font-size: 1.5rem; line-height: 1.2; }
 
 .point-title {
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
-    margin: 0 0 4px 0;
+    margin: 0 0 2px 0;
+    color: rgba(255, 255, 255, 0.92);
 }
 
-.point-desc {
-    font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.75);
-    margin: 0;
-}
+.point-desc { font-size: 0.8rem; color: rgba(255, 255, 255, 0.6); margin: 0; }
 
-/* 右区：表单卡片（入场淡入上移一次） */
+/* ==================== 右区：玻璃拟态 3D 卡片 ==================== */
 .auth-form {
     flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
     padding: 40px 24px;
-    animation: cardIn 400ms ease-out both;
+    animation: cardIn 600ms cubic-bezier(.16, 1, .3, 1) both;
 }
 
 @keyframes cardIn {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(40px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .auth-card {
-    background: #ffffff;
+    position: relative;
     width: 400px;
     max-width: 100%;
     padding: 36px 32px;
-    border-radius: 24px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
-    animation: cardFloat 6s ease-in-out infinite;  /* 极缓慢悬浮呼吸 */
+    border-radius: 20px;
+    background: rgba(17, 25, 40, 0.72);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
 }
 
-/* 输入聚焦时暂停卡片悬浮，避免与输入体验冲突 */
-.auth-form:focus-within .auth-card { animation-play-state: paused; }
+/* 卡片背后缓慢旋转的渐变光环 */
+.auth-card::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 23px;
+    background: conic-gradient(#3b82f6, #8b5cf6, #06b6d4, #3b82f6);
+    filter: blur(40px);
+    opacity: 0.5;
+    z-index: -1;
+    animation: haloSpin 20s linear infinite;
+    pointer-events: none;
+}
 
-@keyframes cardFloat {
-    0%, 100% { transform: translateY(0); }
-    50%      { transform: translateY(-3px); }
+@keyframes haloSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
 }
 
 .auth-card h2 {
     text-align: center;
     margin: 0 0 20px 0;
-    color: #0f172a;
+    color: #f1f5f9;
     font-size: 1.5rem;
 }
 
-/* 选项卡切换 */
+/* 选项卡：胶囊滑块 */
 .tab-box {
+    position: relative;
     display: flex;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 22px;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+/* 胶囊滑块：默认停留在第一个标签下，第二个标签激活时滑过去 */
+.tab-box::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: calc(50% - 4px);
+    height: calc(100% - 8px);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    transform: translateX(0);
+    transition: transform 250ms cubic-bezier(.16, 1, .3, 1);
+    pointer-events: none;
+}
+
+.tab-box:has(.tab-btn:nth-child(2).active)::before { transform: translateX(100%); }
+
 .tab-btn {
+    position: relative;
+    z-index: 1;
     flex: 1;
     padding: 10px;
     text-align: center;
     background: none;
     border: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
     font-size: 0.95rem;
     font-weight: bold;
     color: #64748b;
     cursor: pointer;
-    transition: color 200ms ease, border-color 200ms ease;
+    transition: color 200ms ease;
 }
 
-.tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+.tab-btn.active { color: #f1f5f9; }
 
 .tab-pane { display: none; }
 .tab-pane.active { display: block; animation: paneIn 150ms ease-out both; }
@@ -213,31 +282,46 @@ body.auth-page {
     to   { opacity: 1; }
 }
 
-/* 输入组 */
-.input-group { margin-bottom: 16px; }
+/* 输入组：浮动 label（仅 CSS，不改 DOM） */
+.input-group { position: relative; margin-bottom: 18px; }
 
 .input-group label {
-    display: block;
-    margin-bottom: 6px;
+    position: absolute;
+    left: 12px;
+    top: 11px;
     font-size: 14px;
-    color: #475569;
-    font-weight: 600;
+    color: #94a3b8;
+    pointer-events: none;
+    transition: transform 200ms ease, font-size 200ms ease, color 200ms ease;
+    transform-origin: left center;
+    z-index: 1;
 }
 
 .input-group input {
     width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    box-sizing: border-box;
-    outline: none;
+    padding: 24px 12px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #f1f5f9;
     font-size: 14px;
+    outline: none;
     transition: border-color 200ms ease, box-shadow 200ms ease;
 }
 
+.input-group input::placeholder { color: transparent; }  /* 占位文案隐藏，由浮动 label 承担 */
+
+/* 聚焦或已输入内容时：label 上浮缩小为 12px 蓝字 */
+.input-group:has(input:focus) label,
+.input-group:has(input:not(:placeholder-shown)) label {
+    transform: translateY(-12px) scale(0.86);
+    font-size: 12px;
+    color: #60a5fa;
+}
+
 .input-group input:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
 }
 
 /* 验证码输入行 */
@@ -247,41 +331,48 @@ body.auth-page {
 .btn-code {
     padding: 10px 12px;
     white-space: nowrap;
-    background: #fff;
-    color: #2563eb;
-    border: 1px solid #2563eb;
-    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #93c5fd;
+    border: 1px solid rgba(147, 197, 253, 0.35);
+    border-radius: 10px;
     font-size: 13px;
     cursor: pointer;
     transition: background 200ms ease, color 200ms ease;
 }
 
-.btn-code:hover:not(:disabled) { background: #2563eb; color: #fff; }
-.btn-code:disabled { color: #94a3b8; border-color: #cbd5e1; cursor: not-allowed; }
+.btn-code:hover:not(:disabled) { background: rgba(59, 130, 246, 0.25); color: #fff; }
+.btn-code:disabled { color: #64748b; border-color: rgba(255, 255, 255, 0.1); cursor: not-allowed; }
 
 /* 图形验证码行 */
 .captcha-box { display: flex; gap: 10px; align-items: center; }
 .captcha-box input { flex: 1; }
-.captcha-img { cursor: pointer; border: 1px solid #cbd5e1; border-radius: 8px; height: 40px; }
+.captcha-img { cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 10px; height: 40px; }
 
-/* 提交按钮 */
+/* 提交按钮：渐变底 + 光泽扫过 */
 .btn-submit {
     position: relative;
     overflow: hidden;
     width: 100%;
-    padding: 11px;
-    background: #2563eb;
-    color: #fff;
+    padding: 12px;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     font-weight: bold;
     font-size: 1rem;
     cursor: pointer;
     margin-top: 10px;
-    transition: background 200ms ease, transform 200ms ease;
+    color: #fff;
+    background: linear-gradient(90deg, #2563eb, #7c3aed, #2563eb);
+    background-size: 200% 100%;
+    background-position: 0 0;
+    transition: background-position 300ms ease, box-shadow 300ms ease, transform 200ms ease;
 }
 
-.btn-submit:hover { background: #1d4ed8; transform: translateY(-1px); }
+.btn-submit:hover {
+    background-position: 100% 0;
+    box-shadow: 0 8px 30px rgba(99, 102, 241, 0.45);
+    transform: translateY(-2px);
+}
+
 .btn-submit:active { transform: translateY(0); }
 
 /* hover 时一道 45° 斜向高光扫过（600ms 一次） */
@@ -314,7 +405,7 @@ body.auth-page {
 }
 
 .links a, .links button {
-    color: #2563eb;
+    color: #93c5fd;
     text-decoration: none;
     background: none;
     border: none;
@@ -325,52 +416,46 @@ body.auth-page {
 
 .links a:hover, .links button:hover { text-decoration: underline; }
 
-/* 提示/消息 */
-.tip, .pwd-tip { font-size: 12px; color: #64748b; margin-top: 4px; }
+/* 卡片内散落链接（如“忘记密码”）深色适配 */
+.auth-card p a { color: #93c5fd; }
+
+/* 提示/消息（深色适配） */
+.tip, .pwd-tip { font-size: 12px; color: #94a3b8; margin-top: 4px; }
 
 .msg {
-    background: #fef2f2;
-    color: #dc2626;
+    background: rgba(248, 113, 113, 0.12);
+    color: #fca5a5;
     padding: 10px;
-    border-radius: 8px;
+    border-radius: 10px;
     margin-bottom: 15px;
     text-align: center;
     font-size: 13px;
-    border: 1px solid #fecaca;
+    border: 1px solid rgba(248, 113, 113, 0.3);
 }
 
-.msg-succ { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+.msg-succ { background: rgba(74, 222, 128, 0.12); color: #86efac; border-color: rgba(74, 222, 128, 0.3); }
 
-/* 页脚 */
+/* 页脚（深色背景适配） */
 .auth-footer {
     text-align: center;
     font-size: 12px;
-    color: #94a3b8;
+    color: #475569;
     padding: 12px 0;
 }
 
-/* 响应式：≤768px 隐藏左区，表单全宽贴边（左区动画随之不渲染） */
+/* 响应式：≤768px 隐藏左区（极光场景不渲染），表单卡片在深色背景上直接呈现 */
 @media (max-width: 768px) {
     .auth-brand { display: none; }
     .auth-wrap { min-height: 100vh; }
     .auth-form { padding: 12px; align-items: flex-start; padding-top: 6vh; }
-    .auth-card { box-shadow: none; margin: 12px; width: auto; }
+    .auth-card { margin: 12px; width: auto; }
 }
 
-/* 尊重系统“减少动态效果”偏好：全部动画/过渡禁用 */
+/* 尊重系统“减少动态效果”偏好：动画时长归零，快速跳到末帧 */
 @media (prefers-reduced-motion: reduce) {
-    .auth-brand,
-    .brand-glow,
-    .bubble,
-    .brand-slogan,
-    .brand-points li,
-    .auth-form,
-    .auth-card,
-    .tab-pane.active,
-    .btn-submit,
-    .btn-submit::after {
-        animation: none !important;
-        transition: none !important;
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
     }
-    .brand-slogan { width: auto; }  /* 打字机禁用后完整展示文本 */
 }
