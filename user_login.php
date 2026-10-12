@@ -175,8 +175,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <p style="text-align:center"><a href="forgot_password.php">忘记密码？</a></p>
 
         <div class="links">
-            <a href="index.php">没有账号？去注册</a >
-            <a href="user_center.php">← 返回个人中心</a >
+            <a href="register.php">没有账号？去注册</a >
+            <a href="index.php">← 返回首页</a >
         </div>
     </div>
 
