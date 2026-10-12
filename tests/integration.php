@@ -383,6 +383,9 @@ check(strpos($indexHtml,'登录后享新人礼包')!==false && strpos($indexHtml
 // 13) 三栏容器类存在：index.php 使用 .home-grid，shop.css 提供对应布局
 $shopCss=file_get_contents(__DIR__.'/../css/shop.css');
 check(strpos($indexHtml,'home-grid')!==false && strpos($indexHtml,'cat-panel')!==false && strpos($indexHtml,'side-rail')!==false && strpos($shopCss,'.home-grid')!==false,'three-column home grid container classes exist');
+// 14) 分类子面板遮挡修复：css 中 .cat-subs 规则 z-index>=80 且存在鼠标路径桥 ::before
+preg_match('/\.cat-subs\{[^}]*\}/',$shopCss,$catSubsRule);
+check(!empty($catSubsRule) && preg_match('/z-index:\s*(\d+)/',$catSubsRule[0],$zMatch) && (int)$zMatch[1]>=80 && strpos($catSubsRule[0],'max-height:70vh')!==false && strpos($shopCss,'.cat-subs::before')!==false,'cat subs panel has z-index>=80, viewport cap and hover bridge pseudo-element');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());

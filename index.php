@@ -130,13 +130,17 @@ $my_searches = $is_logged_in && !empty($_SESSION['user_id'])
 $best_sellers = best_sellers(10);
 $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
 
-// 6. 右栏用户服务区：未读消息角标（与 page_start 同一查询）+ 未使用优惠券张数（各一次 COUNT）
+// 6. 右栏用户服务区：未读消息角标（与 page_start 同一查询）+ 未使用优惠券（一次查询取行，PHP 内算张数与最近到期的一张）
 $unread_count = 0;
 $coupon_count = 0;
+$coupon_nearest = null;
 if (!empty($_SESSION['user_id'])) {
     $unread_count = (int)one('SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND read_at IS NULL', [(int)$_SESSION['user_id']])['n'];
-    $coupon_count = (int)one('SELECT COUNT(*) AS n FROM user_coupons uc JOIN coupons c ON c.id=uc.coupon_id
-        WHERE uc.user_id=? AND uc.status=\'unused\' AND (c.expire_at IS NULL OR c.expire_at>NOW())', [(int)$_SESSION['user_id']])['n'];
+    $unused_coupons = rows('SELECT c.title, c.expire_at FROM user_coupons uc JOIN coupons c ON c.id=uc.coupon_id
+        WHERE uc.user_id=? AND uc.status=\'unused\' AND (c.expire_at IS NULL OR c.expire_at>NOW())
+        ORDER BY c.expire_at IS NULL, c.expire_at ASC', [(int)$_SESSION['user_id']]);
+    $coupon_count = count($unused_coupons);
+    if ($coupon_count > 0) $coupon_nearest = $unused_coupons[0];
 }
 ?>
 <!DOCTYPE html>
@@ -422,6 +426,9 @@ if (!empty($_SESSION['user_id'])) {
             <section class="card">
                 <h3>🎟️ 我的优惠券</h3>
                 <p class="coupon-count"><?php echo $coupon_count; ?> 张未使用</p>
+                <?php if ($coupon_nearest): ?>
+                    <p class="coupon-nearest">最近到期：<?php echo h($coupon_nearest['title']); ?><?php if (!empty($coupon_nearest['expire_at'])): ?>（<?php echo h(date('Y-m-d', strtotime($coupon_nearest['expire_at']))); ?>）<?php endif; ?></p>
+                <?php endif; ?>
                 <a href="my_coupons.php">去领券 →</a>
             </section>
             <?php endif; ?>
