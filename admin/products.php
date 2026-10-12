@@ -3,6 +3,9 @@ require __DIR__.'/inc/auth.php'; require_permission('product.view'); require __D
 $page_title='商品管理';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     require_permission('product.manage');
+    $id=(int)($_POST['id'] ?? 0);$action=$_POST['action'] ?? '';
+    // 敏感操作（删除/下架商品）：执行前需重新输入当前管理员密码
+    if (in_array($action,['off','delete'],true)) require_admin_confirm_password('products.php','product',$id);
     admin_transaction(function() {
         $id=(int)($_POST['id'] ?? 0); $action=$_POST['action'] ?? '';
         if ($action==='create') {
@@ -36,5 +39,5 @@ require __DIR__.'/inc/header.php'; ?>
 <?php foreach($products as $p): ?><section class="card"><h2><?=h($p['title'])?></h2><p>编号 <?=(int)$p['id']?> · ¥ <?=h($p['price'])?> · 库存 <?=(int)$p['stock']?> · <?=h($p['audit_status'])?> · <?=(int)$p['status']?'上架':'下架'?></p>
 <?php if(admin_has_permission('product.manage')): ?>
 <form method="post"><?=csrf_field()?><input type="hidden" name="id" value="<?=(int)$p['id']?>"><input type="hidden" name="expected_stock" value="<?=(int)$p['stock']?>"><label>名称 <input name="title" maxlength="100" value="<?=h($p['title'])?>" required></label><label>价格 <input name="price" value="<?=h($p['price'])?>" required></label><label>库存 <input name="stock" type="number" min="0" value="<?=(int)$p['stock']?>" required></label><button name="action" value="update">保存</button></form>
-<?=admin_form('off',$p['id'],'下架')?><?php if($p['audit_status']==='approved'): ?><?=admin_form('on',$p['id'],'上架')?><?php endif; endif; ?></section><?php endforeach; ?>
+<?=admin_form('off',$p['id'],'下架','<input type="password" name="admin_confirm_password" required autocomplete="current-password" placeholder="当前管理员密码">')?><?php if($p['audit_status']==='approved'): ?><?=admin_form('on',$p['id'],'上架')?><?php endif; endif; ?></section><?php endforeach; ?>
 <?php admin_pagination($page,$count);require __DIR__.'/inc/footer.php'; ?>

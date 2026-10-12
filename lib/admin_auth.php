@@ -3,6 +3,12 @@
 // 依赖 config/db.php（$conn）与 lib/security.php，页面经 admin/inc/auth.php 统一加载
 if (!isset($conn)) { http_response_code(503); exit('数据库未连接'); }
 
+// 后台 IP 白名单常量放在 Web 根目录外的 secrets.php（模板见 config/secrets.example.php）
+if (!defined('ADMIN_ALLOWED_IPS')) {
+    $admin_secrets_path = project_private_config_dir() . '/secrets.php';
+    if (is_file($admin_secrets_path)) require_once $admin_secrets_path;
+}
+
 if (!function_exists('validate_admin_password')) {
     // 管理员强密码策略：>=10 位，大写/小写/数字/特殊字符至少三类，不含用户名
     function validate_admin_password($password, $username) {
@@ -20,6 +26,36 @@ if (!function_exists('validate_admin_password')) {
 
 function admin_client_ip() { return (string)($_SERVER['REMOTE_ADDR'] ?? ''); }
 function admin_user_agent() { return substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255); }
+
+// ============ L0 IP 白名单层 ============
+
+// 登录失败计数基准：用于账号不存在路径的耗时对齐（不区分“账号不存在/密码错”）
+if (!defined('ADMIN_LOGIN_TIMING_HASH')) define('ADMIN_LOGIN_TIMING_HASH', '$2y$10$L2EbDhP/ZUKYA5IrkUD3huNpi2a3iMg5bVsLGIWjBzVF3MoMfLcae');
+
+// 白名单：逗号分隔的 IPv4/IPv6 字面量精确匹配；常量未定义时默认仅允许本机回环
+function admin_allowed_ip_list() {
+    $raw = defined('ADMIN_ALLOWED_IPS') ? (string)ADMIN_ALLOWED_IPS : '127.0.0.1,::1';
+    $list = [];
+    foreach (explode(',', $raw) as $ip) {
+        $ip = strtolower(trim($ip));
+        if ($ip !== '') $list[] = $ip;
+    }
+    return $list === [] ? ['127.0.0.1', '::1'] : $list;
+}
+
+function admin_ip_allowed($ip = null) {
+    $ip = strtolower(trim((string)($ip !== null ? $ip : ($_SERVER['REMOTE_ADDR'] ?? ''))));
+    if ($ip === '') return false;
+    return in_array($ip, admin_allowed_ip_list(), true);
+}
+
+// 后台所有入口统一调用：非白名单 IP 一律 404（与不存在的页面表现一致，不暴露后台存在性）
+function admin_require_allowed_ip() {
+    if (admin_ip_allowed()) return;
+    audit_log('admin.ip.denied', 'login', '', ['ip' => admin_client_ip()], 'failure');
+    http_response_code(404);
+    exit;
+}
 
 // ============ L1 认证层 ============
 
@@ -128,6 +164,46 @@ function audit_log($action, $target_type = '', $target_id = '', $detail = [], $s
 }
 
 // ============ 登录辅助 ============
+
+// 管理员密码错误锁定阈值：连续 3 次锁 24 小时（阈值在代码里定，不改 admin_users 表结构）
+if (!defined('ADMIN_LOGIN_MAX_FAILURES')) define('ADMIN_LOGIN_MAX_FAILURES', 3);
+if (!defined('ADMIN_LOCK_HOURS')) define('ADMIN_LOCK_HOURS', 24);
+
+// 记录一次管理员密码错误：达到阈值则锁定并返回 true（锁定提示不透露剩余次数）
+function admin_record_login_failure(array $admin) {
+    $failed = (int)($admin['failed_attempts'] ?? 0) + 1;
+    if ($failed >= ADMIN_LOGIN_MAX_FAILURES) {
+        query('UPDATE admin_users SET failed_attempts=0, locked_until=DATE_ADD(NOW(), INTERVAL ? HOUR) WHERE id=?', [ADMIN_LOCK_HOURS, (int)$admin['id']]);
+        return true;
+    }
+    query('UPDATE admin_users SET failed_attempts=? WHERE id=?', [$failed, (int)$admin['id']]);
+    return false;
+}
+
+// ============ 敏感操作二次确认 ============
+
+// 校验 POST 的 admin_confirm_password 是否为当前管理员密码；失败记审计（严格模式供测试/事务内使用）
+function admin_confirm_password_valid($password, $target_type = '', $target_id = '') {
+    if (!is_admin_logged_in() || !is_string($password) || $password === '') {
+        if (is_admin_logged_in()) audit_log('admin.confirm.failed', $target_type, $target_id, ['reason' => 'empty_or_missing'], 'failure');
+        return false;
+    }
+    $row = one('SELECT password FROM admin_users WHERE id=? LIMIT 1', [(int)$_SESSION['admin']['id']]);
+    if ($row === null || !password_verify($password, $row['password'])) {
+        audit_log('admin.confirm.failed', $target_type, $target_id, ['reason' => 'wrong_password'], 'failure');
+        return false;
+    }
+    return true;
+}
+
+// 页面级守卫：敏感操作（删除/下架商品、改用户角色、重置用户密码等）执行前必须二次确认
+function require_admin_confirm_password($return_url, $target_type = '', $target_id = '') {
+    if (admin_confirm_password_valid($_POST['admin_confirm_password'] ?? null, $target_type, $target_id)) return;
+    $_SESSION['admin_notice'] = '管理员密码确认失败，操作未执行。';
+    header('Location: ' . $return_url, true, 303);
+    exit;
+}
+
 
 // 返回剩余锁定秒数（0 = 未锁定）
 function admin_lock_remaining($row) {

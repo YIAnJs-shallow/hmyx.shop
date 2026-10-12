@@ -18,3 +18,8 @@ define('SMTP_USER', '');        // 发件邮箱账号，如 xxx@qq.com
 define('SMTP_PASS', '');        // SMTP 授权码（QQ/163 等邮箱在设置中生成的授权码，非登录密码）
 define('MAIL_FROM', '');        // 发件人地址，一般与 SMTP_USER 相同
 define('MAIL_FROM_NAME', '惠蒙优选'); // 发件人显示名
+
+// 管理后台 IP 白名单：逗号分隔的 IPv4/IPv6 字面量精确匹配
+// 非白名单 IP 访问 admin/ 目录任何入口（含登录页）一律返回 404；未定义该常量时默认仅允许本机
+// 示例：'127.0.0.1,::1,192.168.1.100'（支持 IPv4 与 IPv6 字面量，不支持网段）
+define('ADMIN_ALLOWED_IPS', '127.0.0.1,::1');

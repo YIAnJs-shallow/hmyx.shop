@@ -172,7 +172,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <button type="submit" class="btn-submit">登 录</button>
         </form>
 
-        <p style="text-align:center"><a href="admin/login.php">管理员独立登录 →</a></p>
         <p style="text-align:center"><a href="forgot_password.php">忘记密码？</a></p>
 
         <div class="links">

@@ -6,6 +6,9 @@ require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../lib/admin_auth.php';
 require_once __DIR__ . '/../../lib/shop.php'; // query()/rows()/one() 辅助函数
 
+// L0 IP 白名单：非白名单 IP 与不存在的页面表现一致（404），不暴露后台存在性
+admin_require_allowed_ip();
+
 refresh_admin_session();
 
 // 后台安全响应头

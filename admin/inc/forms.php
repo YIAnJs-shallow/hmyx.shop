@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/auth.php'; // 直接访问本文件时也走 IP 白名单等入口守卫
 function admin_form($action, $id, $label, $extra = '') {
     return '<form method="post" class="inline">'.csrf_field().'<input type="hidden" name="id" value="'.(int)$id.'">'.$extra.'<button name="action" value="'.h($action).'">'.h($label).'</button></form>';
 }

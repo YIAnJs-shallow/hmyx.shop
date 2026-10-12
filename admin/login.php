@@ -4,6 +4,9 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../lib/admin_auth.php';
 require_once __DIR__ . '/../lib/shop.php'; // query() 辅助函数
 
+// L0 IP 白名单：非白名单 IP 返回 404（与不存在的页面一致）
+admin_require_allowed_ip();
+
 // 已登录直接进入后台
 if (is_admin_logged_in()) { refresh_admin_session(); if (is_admin_logged_in()) { header('Location: index.php', true, 303); exit; } }
 
@@ -31,25 +34,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $admin = $stmt->get_result()->fetch_assoc();
 
         if (!$admin) {
+            // 与密码错误路径耗时对齐：同样做一次哈希校验，不区分“账号不存在/密码错”
+            password_verify($password, ADMIN_LOGIN_TIMING_HASH);
             query('INSERT INTO admin_login_attempts (username, ip, success) VALUES (?,?,0)', [$username, $ip]);
             audit_log('admin.login.failed', 'login', $username, ['reason' => 'no_such_user'], 'failure');
             $message = '用户名或密码错误。';
         } elseif (($lock = admin_lock_remaining($admin)) > 0) {
-            // 3. 锁定期内一律拒绝（即使密码正确）
+            // 3. 锁定期内一律拒绝（即使密码正确；提示不透露剩余时间/次数）
             query('INSERT INTO admin_login_attempts (username, ip, success) VALUES (?,?,0)', [$username, $ip]);
             audit_log('admin.login.locked', 'login', $username, ['remaining_seconds' => $lock], 'failure');
-            $message = '账号已锁定，请 ' . ceil($lock / 60) . ' 分钟后再试。';
+            $message = '账号已锁定，请稍后再试。';
         } elseif (!verify_account_password($password, $admin['password'])) {
-            // 4. 密码错误：计数 +1，15 分钟内失败 5 次锁 15 分钟
-            $failed = (int)$admin['failed_attempts'] + 1;
-            if ($failed >= 5) {
-                query('UPDATE admin_users SET failed_attempts=0, locked_until=DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE id=?', [$admin['id']]);
-            } else {
-                query('UPDATE admin_users SET failed_attempts=? WHERE id=?', [$failed, $admin['id']]);
-            }
+            // 4. 密码错误：计数 +1，连续 3 次锁 24 小时（提示不透露剩余次数）
+            $locked = admin_record_login_failure($admin);
             query('INSERT INTO admin_login_attempts (username, ip, success) VALUES (?,?,0)', [$username, $ip]);
-            audit_log('admin.login.failed', 'login', $username, ['reason' => 'wrong_password', 'attempt' => $failed], 'failure');
-            $message = '用户名或密码错误。' . ($failed >= 5 ? '失败次数过多，账号已锁定 15 分钟。' : '');
+            audit_log('admin.login.failed', 'login', $username, ['reason' => 'wrong_password', 'locked' => $locked], 'failure');
+            $message = '用户名或密码错误。' . ($locked ? '失败次数过多，账号已锁定。' : '');
         } elseif ($admin['status'] !== 'active') {
             audit_log('admin.login.failed', 'login', $username, ['reason' => 'disabled'], 'failure');
             $message = '该账号已被禁用，请联系超级管理员。';

@@ -1,5 +1,6 @@
 <?php
 // 后台布局头部：菜单按权限动态渲染（$page_title 由页面设置）
+require_once __DIR__ . '/auth.php'; // 直接访问本文件时也走 IP 白名单等入口守卫
 if (!isset($_SESSION['admin'])) { http_response_code(403); exit('未登录'); }
 $current_page = basename($_SERVER['PHP_SELF']);
 $admin_menu = [

@@ -335,6 +335,34 @@ query('UPDATE users SET email=? WHERE id=?',[$emailAcct,$buyer]);
 $foundAcct=find_user_by_login_identifier($emailAcct);
 check($foundAcct!==null && (int)$foundAcct['id']===$buyer,'account login accepts email identifier');
 check(find_user_by_login_identifier('qa_buyer')!==null,'account login still accepts username identifier');
+// ===== 管理后台登录安全加固 =====
+// 6) IP 白名单：非白名单 IP 访问后台一律 404（函数级断言，伪造 REMOTE_ADDR，不依赖真实 HTTP 头）
+$origRemoteAddr=$_SERVER['REMOTE_ADDR'] ?? null;
+$_SERVER['REMOTE_ADDR']='203.0.113.66';
+check(admin_ip_allowed()===false,'admin panel rejects non-whitelisted IP (entry guard returns 404)');
+$_SERVER['REMOTE_ADDR']=' 127.0.0.1 ';
+check(admin_ip_allowed()===true,'admin panel allows whitelisted loopback IPv4 (trimmed exact match)');
+$_SERVER['REMOTE_ADDR']='::1';
+check(admin_ip_allowed()===true,'admin panel allows whitelisted loopback IPv6');
+if ($origRemoteAddr===null) unset($_SERVER['REMOTE_ADDR']); else $_SERVER['REMOTE_ADDR']=$origRemoteAddr;
+// 7) 管理员连续 3 次密码错误锁 24 小时，未达 3 次不锁
+query("INSERT INTO admin_users(username,password,role_id) SELECT 'qa_lock',?,id FROM admin_roles WHERE role_code='order_manager'",[password_hash('LockTest#2026!',PASSWORD_DEFAULT)]);
+$lockId=(int)$conn->insert_id;
+$lockRow=one('SELECT * FROM admin_users WHERE id=?',[$lockId]);
+check(admin_record_login_failure($lockRow)===false && admin_record_login_failure(one('SELECT * FROM admin_users WHERE id=?',[$lockId]))===false,'two wrong passwords do not lock admin account');
+check((int)one('SELECT failed_attempts FROM admin_users WHERE id=?',[$lockId])['failed_attempts']===2,'failed attempts counted before lock');
+check(admin_record_login_failure(one('SELECT * FROM admin_users WHERE id=?',[$lockId]))===true,'third consecutive wrong password locks admin account');
+$lockRow=one('SELECT * FROM admin_users WHERE id=?',[$lockId]);
+check(admin_lock_remaining($lockRow)>23*3600 && (int)$lockRow['failed_attempts']===0,'admin lock window is about 24 hours and counter resets');
+// 8) 敏感操作二次确认：错误密码不执行且审计有记录
+query('UPDATE admin_users SET password=? WHERE id=?',[password_hash('Confirm#2026!',PASSWORD_DEFAULT),$superId]);
+$_SESSION['admin']=['id'=>$superId];refresh_admin_session();
+$confirmProductId=(int)one("SELECT id FROM products WHERE status=1 ORDER BY id LIMIT 1")['id'];
+check(admin_confirm_password_valid('wrong-confirm-password','product',$confirmProductId)===false,'sensitive operation blocked when confirm password is wrong (delete/off would not execute)');
+check(one("SELECT id FROM admin_audit_logs WHERE action='admin.confirm.failed' AND target_type='product' AND target_id=? AND status='failure'",[$confirmProductId])!==null,'failed sensitive-operation confirmation is audited');
+check(admin_confirm_password_valid('Confirm#2026!')===true,'sensitive operation allowed when confirm password matches current admin');
+// 9) 前台登录页不再暴露后台登录入口
+check(strpos(file_get_contents(__DIR__.'/../user_login.php'),'admin/login.php')===false,'front login page no longer exposes admin login link');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
