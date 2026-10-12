@@ -3,6 +3,14 @@ require_once __DIR__ . '/lib/security.php';
 require_once 'config/db.php';
 require_once __DIR__ . '/lib/shop.php';
 
+// 清空我的搜索记录（仅删除当前登录用户自己的 search_logs）
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'clear_search_history') {
+    csrf_check();
+    if (!empty($_SESSION['user_id'])) query('DELETE FROM search_logs WHERE user_id=?', [(int)$_SESSION['user_id']]);
+    header('Location: index.php', true, 303);
+    exit;
+}
+
 // 1. 获取顶级分类及其二级细分分类
 $cat_sql = "SELECT c1.id AS main_id, c1.category_name AS main_name, 
                    c2.id AS sub_id, c2.category_name AS sub_name 
@@ -34,6 +42,10 @@ if ($cat_result && $cat_result->num_rows > 0) {
 
 // 2. 获取搜索和筛选参数
 $keyword = isset($_GET['keyword']) ? trim($_GET['keyword']) : '';
+// GET 搜索时写入搜索日志（未登录 user_id 记 NULL），供联想词与热门搜索统计
+if ($keyword !== '' && mb_strlen($keyword) >= 2 && mb_strlen($keyword) <= 100) {
+    query('INSERT INTO search_logs(user_id,keyword) VALUES(?,?)', [!empty($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, $keyword]);
+}
 $category_id = isset($_GET['category_id']) ? intval($_GET['category_id']) : 0;
 
 // 只展示已上架且审核通过的商品
@@ -108,6 +120,12 @@ $result = $stmt->get_result();
 // 4. 检查是否登录
 $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
 
+// 搜索联想数据：近 7 日热门搜索 Top 5；已登录用户另取个人最近 10 条去重搜索词
+$hot_searches = rows('SELECT keyword, COUNT(*) AS n FROM search_logs WHERE created_at >= NOW() - INTERVAL 7 DAY GROUP BY keyword ORDER BY n DESC, keyword ASC LIMIT 5');
+$my_searches = $is_logged_in && !empty($_SESSION['user_id'])
+    ? rows('SELECT keyword, MAX(id) AS last_id FROM search_logs WHERE user_id=? GROUP BY keyword ORDER BY last_id DESC LIMIT 10', [(int)$_SESSION['user_id']])
+    : [];
+
 // 5. 首页推荐板块数据：热销榜 + 猜你喜欢
 $best_sellers = best_sellers(10);
 $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
@@ -169,9 +187,9 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
     </header>
 
     <main class="container" style="max-width: 1200px; margin: 20px auto; padding: 0 15px; width: 100%; box-sizing: border-box;">
-        <div class="search-bar-container">
+        <div class="search-bar-container" style="position: relative;">
             <form action="index.php" method="GET" class="search-form">
-                <input type="text" name="keyword" class="search-input" placeholder="🔍 输入商品名称关键词搜索..." value="<?php echo htmlspecialchars($keyword); ?>">
+                <input type="text" name="keyword" id="search-keyword" class="search-input" autocomplete="off" placeholder="🔍 输入商品名称关键词搜索..." value="<?php echo htmlspecialchars($keyword); ?>">
                 
                 <select name="category_id" class="search-select">
     <option value="0">全部分类</option>
@@ -196,7 +214,25 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
                     <a href="index.php" class="reset-btn">重置条件</a>
                 <?php endif; ?>
             </form>
+            <ul id="search-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;list-style:none;margin:0;padding:0;background:#fff;border:1px solid #cbd5e1;border-top:none;border-radius:0 0 8px 8px;box-shadow:0 8px 16px rgba(15,23,42,.12);max-height:320px;overflow-y:auto;"></ul>
         </div>
+        <?php if (!empty($hot_searches) || !empty($my_searches)): ?>
+        <div class="search-trends" style="margin:-12px 0 20px;font-size:.85rem;color:#475569;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;">
+            <?php if (!empty($hot_searches)): ?>
+                <span style="font-weight:700;color:#1e293b;">🔥 热门搜索：</span>
+                <?php foreach ($hot_searches as $hs): ?>
+                    <a href="index.php?keyword=<?= urlencode($hs['keyword']); ?>" style="color:#2563eb;text-decoration:none;background:#eff6ff;border-radius:999px;padding:2px 12px;"><?= h($hs['keyword']); ?></a>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            <?php if (!empty($my_searches)): ?>
+                <span style="font-weight:700;color:#1e293b;">🕘 我的搜索：</span>
+                <?php foreach ($my_searches as $ms): ?>
+                    <a href="index.php?keyword=<?= urlencode($ms['keyword']); ?>" style="color:#334155;text-decoration:none;background:#f1f5f9;border-radius:999px;padding:2px 12px;"><?= h($ms['keyword']); ?></a>
+                <?php endforeach; ?>
+                <form method="post" action="index.php" style="display:inline;margin-left:4px;"><?= csrf_field(); ?><input type="hidden" name="action" value="clear_search_history"><button type="submit" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:.85rem;text-decoration:underline;padding:0;">清空我的搜索记录</button></form>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
 
         <?php if (empty($keyword) && $category_id <= 0 && !$is_logged_in): ?>
         <!-- 新人专享横幅：通往落地页 -->
@@ -313,5 +349,47 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
     <footer class="site-footer">
         <p>&copy; <?php echo date('Y'); ?> 惠蒙优选 All Rights Reserved.</p >
     </footer>
+
+    <script>
+    (function () {
+        var input = document.getElementById('search-keyword');
+        var box = document.getElementById('search-suggest');
+        if (!input || !box) return;
+        var timer = null, seq = 0;
+        function hide() { box.style.display = 'none'; box.innerHTML = ''; }
+        input.addEventListener('input', function () {
+            clearTimeout(timer);
+            var kw = input.value.trim();
+            if (kw.length < 2) { hide(); return; }
+            timer = setTimeout(function () {
+                var current = ++seq;
+                fetch('search_suggest.php?keyword=' + encodeURIComponent(kw))
+                    .then(function (res) { return res.json(); })
+                    .then(function (list) {
+                        if (current !== seq || !Array.isArray(list) || !list.length) { hide(); return; }
+                        box.innerHTML = '';
+                        list.forEach(function (word) {
+                            var li = document.createElement('li');
+                            li.textContent = word;
+                            li.style.cssText = 'padding:8px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;';
+                            li.addEventListener('mouseenter', function () { li.style.background = '#eff6ff'; });
+                            li.addEventListener('mouseleave', function () { li.style.background = '#fff'; });
+                            li.addEventListener('click', function () {
+                                input.value = word;
+                                hide();
+                                input.form.submit();
+                            });
+                            box.appendChild(li);
+                        });
+                        box.style.display = 'block';
+                    })
+                    .catch(function () { hide(); });
+            }, 300);
+        });
+        document.addEventListener('click', function (e) {
+            if (e.target !== input && !box.contains(e.target)) hide();
+        });
+    })();
+    </script>
 </body>
 </html>

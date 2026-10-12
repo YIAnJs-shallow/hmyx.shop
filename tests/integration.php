@@ -83,9 +83,9 @@ change_order($shopOrder,$merchant,'ship',['express_company'=>'测试快递','exp
 $_SESSION['role']='user'; change_order($shopOrder,$buyer,'receive');
 check(one('SELECT status FROM orders WHERE id=?',[$shopOrder])['status']==='completed','pay ship receive complete');
 $item=one('SELECT * FROM order_items WHERE order_id=?',[$shopOrder]);
-query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content) VALUES(?,?,?,?,?)',[$buyer,(int)$item['id'],$p2,5,'测试购买评价']);
+$firstReviewId=create_review($buyer,(int)$item['id'],5,'测试购买评价');
 check((int)one('SELECT COUNT(*) AS n FROM reviews WHERE product_id=?',[$p2])['n']===1,'review persists against purchased item');
-try { query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content) VALUES(?,?,?,?,?)',[$buyer,(int)$item['id'],$p2,5,'重复评价']); throw new RuntimeException('duplicate review accepted'); } catch(mysqli_sql_exception $e) {check($e->getCode()===1062,'duplicate review prevented');}
+rejects(function()use($buyer,$item){create_review($buyer,(int)$item['id'],5,'重复评价');},'duplicate review prevented');
 $refund=(int)create_orders($buyer,$p2,1,$address,'refund-order')[0]; change_order($refund,$buyer,'pay'); change_order($refund,$buyer,'refund',['reason'=>'测试未发货退款']);
 $_SESSION['role']='merchant';
 rejects(function()use($refund,$merchant){change_order($refund,$merchant,'ship',['express_company'=>'测试','express_no'=>'TEST54321']);},'refund request blocks shipment');
@@ -192,6 +192,18 @@ $_SESSION['role']='user'; change_order($afterSaleDone,$buyer,'after_sale_ship',[
 $_SESSION['role']='merchant'; change_order($afterSaleDone,$merchant,'after_sale_receive');
 check(one('SELECT status FROM after_sale_requests WHERE order_id=?',[$afterSaleDone])['status']==='refunded' && (int)one('SELECT stock FROM product_skus WHERE id=?',[$skuAfterSale])['stock']===3,'completed order can go through after-sale');
 check((int)one('SELECT COUNT(*) AS n FROM refund_requests')['n']===1,'after-sale flows do not affect refund-rate statistics');
+// ===== 评价升级 + 搜索联想：追评唯一性 / 商家回复仅一次 / 晒图 3 张上限 / 联想接口未登录可用 =====
+append_review($buyer,(int)$item['id'],'使用一个月后追加评价：依然很好用');
+rejects(function()use($buyer,$item){append_review($buyer,(int)$item['id'],'第二次追评');},'each first review allows only one follow-up');
+merchant_reply_review($merchant,$firstReviewId,'感谢您的评价，我们会持续改进');
+rejects(function()use($merchant,$firstReviewId){merchant_reply_review($merchant,$firstReviewId,'重复回复');},'merchant can reply to a review only once');
+$fourImages=['name'=>['a.jpg','b.jpg','c.jpg','d.jpg'],'type'=>['image/jpeg','image/jpeg','image/jpeg','image/jpeg'],'tmp_name'=>['','','',''],'error'=>[0,0,0,0],'size'=>[100,100,100,100]];
+rejects(function()use($fourImages){validate_review_images($fourImages);},'review allows at most 3 images');
+$_SESSION=[];
+query('INSERT INTO search_logs(keyword) VALUES("联想测试词"),("联想测试词"),("联想测试词")');
+$suggestJson=json_encode(search_suggest_words('联想测试'),JSON_UNESCAPED_UNICODE);
+check(json_decode($suggestJson,true)===['联想测试词'],'search suggest returns valid JSON keyword list without login');
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
 // ===== 订单留言：权限、内容校验、未读计数与已读状态 =====
 $_SESSION=['user_id'=>$buyer,'role'=>'user'];
 $msgOrder=(int)create_orders($buyer,$p2,1,$address,'message-order')[0]; change_order($msgOrder,$buyer,'pay');

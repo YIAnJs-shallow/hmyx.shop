@@ -371,3 +371,59 @@ function page_end() { echo '</main><footer>惠蒙优选 · 精选好物，安心
 function action_button($orderId, $action, $label) {
     return '<form class="inline" method="post" action="order_action.php">'.csrf_field().'<input type="hidden" name="order_id" value="'.(int)$orderId.'"><button name="action" value="'.h($action).'">'.h($label).'</button></form>';
 }
+// ===== 评价体系升级：首评唯一性由查询保证（唯一索引已降级为普通索引，以支持追评多行） =====
+function create_review($userId, $orderItemId, $rating, $content) {
+    $item = one("SELECT i.* FROM order_items i JOIN orders o ON o.id=i.order_id WHERE i.id=? AND o.user_id=? AND o.status='completed'", [(int)$orderItemId, $userId]);
+    if (!$item || !$item['product_id']) throw new DomainException('仅可评价本人已完成订单中的商品');
+    if (one('SELECT id FROM reviews WHERE order_item_id=? AND parent_id IS NULL', [(int)$orderItemId])) throw new DomainException('该商品订单已经评价过了');
+    $rating = (int)$rating;
+    if ($rating < 1 || $rating > 5) throw new DomainException('请选择 1 至 5 星');
+    $content = trim((string)$content);
+    if (mb_strlen($content) < 2 || mb_strlen($content) > 1000) throw new DomainException('评价内容为 2 至 1000 字');
+    query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content) VALUES(?,?,?,?,?)', [$userId, (int)$orderItemId, (int)$item['product_id'], $rating, $content]);
+    return (int)$GLOBALS['conn']->insert_id;
+}
+// 追评：parent_id 指向首评，rating 固定 0；每个首评仅允许一条（查询保证，不加唯一索引）
+function append_review($userId, $orderItemId, $content) {
+    $item = one("SELECT i.*,o.completed_at FROM order_items i JOIN orders o ON o.id=i.order_id WHERE i.id=? AND o.user_id=? AND o.status='completed' AND o.completed_at >= NOW() - INTERVAL 30 DAY", [(int)$orderItemId, $userId]);
+    if (!$item || !$item['product_id']) throw new DomainException('仅可在确认收货 30 天内追评本人已完成订单的商品');
+    $first = one('SELECT id FROM reviews WHERE order_item_id=? AND parent_id IS NULL', [(int)$orderItemId]);
+    if (!$first) throw new DomainException('请先评价商品后再追加评价');
+    if (one('SELECT id FROM reviews WHERE parent_id=?', [(int)$first['id']])) throw new DomainException('该商品订单已追加过评价');
+    $content = trim((string)$content);
+    if (mb_strlen($content) < 2 || mb_strlen($content) > 1000) throw new DomainException('追评内容为 2 至 1000 字');
+    query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content,parent_id) VALUES(?,?,?,0,?,?)', [$userId, (int)$orderItemId, (int)$item['product_id'], $content, (int)$first['id']]);
+    return (int)$GLOBALS['conn']->insert_id;
+}
+// 商家回复：仅本店商品的首评，每条仅可回复一次（replied_at 为准）
+function merchant_reply_review($merchantUserId, $reviewId, $content) {
+    $review = one('SELECT r.*,p.shop_id FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.id=? AND r.parent_id IS NULL', [(int)$reviewId]);
+    if (!$review || !$review['shop_id'] || !one('SELECT id FROM shops WHERE id=? AND user_id=? AND status=1', [(int)$review['shop_id'], $merchantUserId])) throw new DomainException('仅可回复本店商品的评价');
+    $content = trim((string)$content);
+    if (mb_strlen($content) < 2 || mb_strlen($content) > 500) throw new DomainException('回复内容需为 2 至 500 个字符');
+    $stmt = query('UPDATE reviews SET reply_content=?, replied_at=NOW() WHERE id=? AND replied_at IS NULL', [$content, (int)$reviewId]);
+    if ((int)$stmt->affected_rows !== 1) throw new DomainException('该评价已回复过，不能重复回复');
+    return true;
+}
+// 晒图：整理 $_FILES 多文件结构，超过 3 张直接拒绝（不落库）
+function validate_review_images($files) {
+    $list = [];
+    foreach ((array)($files['name'] ?? []) as $i => $name) {
+        if (($files['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
+        $list[] = ['name' => $name, 'type' => $files['type'][$i] ?? '', 'tmp_name' => $files['tmp_name'][$i] ?? '', 'error' => (int)($files['error'][$i] ?? UPLOAD_ERR_NO_FILE), 'size' => (int)($files['size'][$i] ?? 0)];
+    }
+    if (count($list) > 3) throw new DomainException('评价图片最多上传 3 张');
+    return $list;
+}
+// ===== 搜索联想：日志前缀热词 + 在售商品名合并去重，最多 8 条；未登录可访问 =====
+function search_suggest_words($keyword) {
+    $keyword = trim((string)$keyword);
+    if (mb_strlen($keyword) < 2 || mb_strlen($keyword) > 100) return [];
+    $like = addcslashes($keyword, "%_\\");
+    $words = [];
+    foreach (rows('SELECT keyword, COUNT(*) AS n FROM search_logs WHERE keyword LIKE ? GROUP BY keyword HAVING n >= 2 ORDER BY n DESC, keyword ASC LIMIT 5', [$like.'%']) as $row) $words[] = $row['keyword'];
+    foreach (rows("SELECT p.title FROM products p WHERE p.status=1 AND p.audit_status='approved' AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops s WHERE s.id=p.shop_id AND s.status=1)) AND p.title LIKE ? ORDER BY p.id DESC LIMIT 5", ['%'.$like.'%']) as $row) {
+        if (!in_array($row['title'], $words, true)) $words[] = $row['title'];
+    }
+    return array_slice($words, 0, 8);
+}

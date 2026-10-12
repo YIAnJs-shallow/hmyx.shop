@@ -239,4 +239,31 @@ add_column('order_items','sku_image','varchar(255) NULL');
 add_column('after_sale_requests','return_express_company','varchar(50) NULL');
 add_column('after_sale_requests','return_express_no','varchar(100) NULL');
 
+// ===== 评价体系升级：商家回复 / 追评 / 晒图 =====
+add_column('reviews','reply_content','varchar(500) NULL');
+add_column('reviews','replied_at','datetime NULL');
+add_column('reviews','parent_id','int NULL');
+// 追评需同一 order_item_id 存在多行（首评 + 追评），将唯一索引降级为普通索引；首评唯一性改由写入前查询保证
+$reviewItemIndex = one('SELECT NON_UNIQUE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME=?', ['reviews','order_item_id']);
+if ($reviewItemIndex && (int)$reviewItemIndex['NON_UNIQUE'] === 0) {
+    query('ALTER TABLE reviews DROP INDEX order_item_id, ADD INDEX idx_reviews_order_item (order_item_id)');
+}
+query('CREATE TABLE IF NOT EXISTS review_images (
+    id int AUTO_INCREMENT PRIMARY KEY,
+    review_id int NOT NULL,
+    image_url varchar(255) NOT NULL,
+    KEY idx_review_images_review (review_id),
+    FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+// ===== 搜索联想与历史：仅日志表，联想与热门搜索均实时统计（无缓存表） =====
+query('CREATE TABLE IF NOT EXISTS search_logs (
+    id bigint AUTO_INCREMENT PRIMARY KEY,
+    user_id int NULL,
+    keyword varchar(100) NOT NULL,
+    created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_search_logs_keyword (keyword),
+    KEY idx_search_logs_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
 echo "Migration complete.\n";

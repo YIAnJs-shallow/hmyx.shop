@@ -29,4 +29,13 @@ foreach($orders as $order): $id=(int)$order['id']; ?>
 <?php elseif($order['status']==='paid'): ?><form class="row" method="post" action="order_action.php"><?=csrf_field()?><input type="hidden" name="order_id" value="<?=$id?>"><label>快递公司 <input name="express_company" maxlength="50" required></label><label>运单号 <input name="express_no" pattern="[A-Za-z0-9-]{5,100}" maxlength="100" required></label><button name="action" value="ship">确认发货</button></form><?php endif; ?>
 <?php if($order['express_no']): ?><a href="express_detail.php?order_id=<?=$id?>"><?=h($order['express_company'])?> <?=h($order['express_no'])?></a><?php endif; ?>
 <p><a href="order_messages.php?order_id=<?=$id?>">订单留言<?php if(!empty($unreadMessages[$id])): ?>（<?=(int)$unreadMessages[$id]?> 条新留言）<?php endif; ?></a></p></section>
-<?php endforeach; ?><nav class="tabs"><?php if($page>1): ?><a href="?status=<?=h($status)?>&page=<?=$page-1?>">上一页</a><?php endif; ?><span>第 <?=$page?> 页 · 共 <?=(int)$count?> 笔</span><?php if($page*15<$count): ?><a href="?status=<?=h($status)?>&page=<?=$page+1?>">下一页</a><?php endif; ?></nav><?php page_end(); ?>
+<?php endforeach; ?><nav class="tabs"><?php if($page>1): ?><a href="?status=<?=h($status)?>&page=<?=$page-1?>">上一页</a><?php endif; ?><span>第 <?=$page?> 页 · 共 <?=(int)$count?> 笔</span><?php if($page*15<$count): ?><a href="?status=<?=h($status)?>&page=<?=$page+1?>">下一页</a><?php endif; ?></nav>
+<?php // 本店商品评价：每条首评仅可回复一次（已回复的只读展示）
+$shopReviews=rows('SELECT r.id,r.rating,r.content,r.reply_content,r.replied_at,r.created_at,u.username,p.title FROM reviews r JOIN products p ON p.id=r.product_id JOIN shops s ON s.id=p.shop_id JOIN users u ON u.id=r.user_id WHERE s.user_id=? AND s.status=1 AND r.parent_id IS NULL ORDER BY r.id DESC LIMIT 20',[$userId]);
+if($shopReviews): ?><section class="card"><h2>本店商品评价</h2>
+<?php foreach($shopReviews as $r): ?><article><strong><?=h($r['title'])?> · <?=h(mb_substr($r['username'],0,1))?>*** · <?=(int)$r['rating']?> 星</strong><p class="product-copy"><?=h($r['content'])?></p><small><?=h($r['created_at'])?></small>
+<?php if($r['reply_content']): ?><p class="notice">已回复：<?=h($r['reply_content'])?>（<?=h($r['replied_at'])?>）</p>
+<?php else: ?><form method="post" action="review_reply.php" class="row"><?=csrf_field()?><input type="hidden" name="review_id" value="<?=(int)$r['id']?>"><label>回复（2 至 500 字）<input name="reply" minlength="2" maxlength="500" required></label><button>回复评价</button></form><?php endif; ?>
+<hr class="divider"></article><?php endforeach; ?>
+</section><?php endif; ?>
+<?php page_end(); ?>
