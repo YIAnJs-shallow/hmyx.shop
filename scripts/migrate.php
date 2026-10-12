@@ -286,4 +286,20 @@ add_column('products','flash_start','datetime NULL');
 add_column('products','flash_end','datetime NULL');
 add_column('products','limit_per_user','int NOT NULL DEFAULT 0');
 
+// ===== 邮箱验证码登录：验证码只存 sha256 哈希，10 分钟有效、60 秒限发、连错 5 次锁 30 分钟（沿用 password_reset_codes 字段模式） =====
+query("CREATE TABLE IF NOT EXISTS email_login_codes (
+    id bigint AUTO_INCREMENT PRIMARY KEY,
+    email varchar(100) NOT NULL,
+    code_hash char(64) NOT NULL,
+    expires_at datetime NOT NULL,
+    used_at datetime NULL,
+    failed_attempts int NOT NULL DEFAULT 0,
+    locked_until datetime NULL,
+    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// ===== 企业/商户注册：店铺经营范围（注册页新增三项之一，与 shop_manage.php 申请入驻共用 shops 表） =====
+add_column('shops','business_scope','varchar(100) NOT NULL DEFAULT \'\'');
+
 echo "Migration complete.\n";

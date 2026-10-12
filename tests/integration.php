@@ -289,6 +289,53 @@ $lastRow=$csv[count($csv)-1];
 check($csv[0]===['订单号','下单时间','支付时间','订单状态','商品合计（元）','优惠金额（元）','实付金额（元）','运单号']
     && (int)trim($lastRow[1])===(int)$expected['n'] && $lastRow[6]==="\t".money((int)$expected['paid']),
     'statement csv header and summary row correct');
+// ===== 邮箱验证码登录（注册/登录二合一）+ 企业/商户注册事务 =====
+require_once __DIR__.'/../lib/email_login.php';
+require_once __DIR__.'/../lib/account.php';
+// 测试环境无法真实外发：用环境变量覆盖为不可达 SMTP（mailer 优先读 env），触发现有容错——发送失败不影响验证码落库
+putenv('SMTP_HOST=smtp.invalid.test');putenv('SMTP_PORT=25');putenv('SMTP_USER=qa');putenv('SMTP_PASS=qa');putenv('MAIL_FROM=qa@example.com');
+// 1) 新邮箱验证码登录自动建号（验证码真实落库；测试改写 code_hash 造已知码完成校验）
+$emailNew='qa_elogin_'.bin2hex(random_bytes(3)).'@example.com';
+check(email_login_issue($emailNew)==='sent','email login code issued and persisted despite smtp failure');
+$codeRow=one('SELECT id FROM email_login_codes WHERE email=? ORDER BY id DESC LIMIT 1',[$emailNew]);
+$known=str_pad((string)random_int(0,999999),6,'0',STR_PAD_LEFT);
+query('UPDATE email_login_codes SET code_hash=? WHERE id=?',[hash('sha256',$known),(int)$codeRow['id']]);
+check(email_login_verify($emailNew,$known)==='ok','known email login code verifies via hash and is consumed');
+$emailUser=email_login_find_or_create($emailNew);
+check((int)$emailUser['id']>0 && $emailUser['email']===$emailNew && $emailUser['role']==='user' && strpos($emailUser['username'],'qa_elogin_')===0,'email login auto-creates account for unregistered email');
+// 2) 错误验证码拒绝并累计失败次数
+$emailWrong='qa_ewrong_'.bin2hex(random_bytes(3)).'@example.com';
+email_login_issue($emailWrong);
+$wrongRow=one('SELECT id FROM email_login_codes WHERE email=? ORDER BY id DESC LIMIT 1',[$emailWrong]);
+query('UPDATE email_login_codes SET code_hash=? WHERE id=?',[hash('sha256','123456'),(int)$wrongRow['id']]);
+check(email_login_verify($emailWrong,'654321')==='invalid','wrong email login code rejected');
+check((int)one('SELECT failed_attempts FROM email_login_codes WHERE id=?',[(int)$wrongRow['id']])['failed_attempts']===1,'wrong email login code attempt is counted');
+// 3) 60 秒限发
+$emailRate='qa_erate_'.bin2hex(random_bytes(3)).'@example.com';
+check(email_login_issue($emailRate)==='sent','first email login code request allowed');
+check(email_login_issue($emailRate)==='rate_limited','resend within 60 seconds rejected');
+check((int)one('SELECT COUNT(*) AS n FROM email_login_codes WHERE email=?',[$emailRate])['n']===1,'rate limit inserts no duplicate code rows');
+// 4) 企业/商户注册：成功路径（merchant 账号 + status=1 店铺 + 新人券）与回滚完整性
+$bizName='qa_biz_'.bin2hex(random_bytes(3));$bizEmail=$bizName.'@example.com';
+$merchantRegId=register_merchant_account($bizName,$bizEmail,'Passw0rd123','QA企业店铺','13800000000','地方特产零售');
+$regUser=one('SELECT role FROM users WHERE id=?',[$merchantRegId]);
+$regShop=one('SELECT shop_name,status,business_scope FROM shops WHERE user_id=?',[$merchantRegId]);
+check($regUser['role']==='merchant' && $regShop!==null && (int)$regShop['status']===1 && $regShop['shop_name']==='QA企业店铺' && $regShop['business_scope']==='地方特产零售','merchant registration creates merchant user and shop atomically');
+check(one('SELECT id FROM user_coupons WHERE user_id=?',[$merchantRegId])!==null,'merchant registration grants new-user coupon');
+// 把新人券领光再注册：发券一步失败，事务整体回滚，不残留 users 行
+query('UPDATE coupons SET claimed_count=total_count WHERE is_newuser=1');
+$bizName2='qa_biz2_'.bin2hex(random_bytes(3));
+$rolledBack=false;
+try { register_merchant_account($bizName2,$bizName2.'@example.com','Passw0rd123','QA企业店铺二','13800000001','数码'); } catch (Throwable $e) { $rolledBack=true; }
+check($rolledBack && one('SELECT id FROM users WHERE username=?',[$bizName2])===null,'merchant registration rollback leaves no orphan users row');
+check(one('SELECT id FROM shops WHERE user_id=(SELECT id FROM users WHERE username=?)',[$bizName2])===null,'merchant registration rollback leaves no orphan shops row');
+// 5) 账号登录支持邮箱作为标识
+$emailAcct='qa_acct_'.bin2hex(random_bytes(3)).'@example.com';
+query('UPDATE users SET email=? WHERE id=?',[$emailAcct,$buyer]);
+$foundAcct=find_user_by_login_identifier($emailAcct);
+check($foundAcct!==null && (int)$foundAcct['id']===$buyer,'account login accepts email identifier');
+check(find_user_by_login_identifier('qa_buyer')!==null,'account login still accepts username identifier');
+putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
 foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {

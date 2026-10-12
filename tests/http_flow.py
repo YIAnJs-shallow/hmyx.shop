@@ -85,7 +85,7 @@ class Client:
 
     def login(self, username, merchant=False):
         html, url = self.request('user_login.php', {'csrf_token': self.token(), 'username': username,
-                                  'password': 'TestShop2026!', 'login_type': 'merchant' if merchant else 'customer'})
+                                  'password': 'TestShop2026!', 'login_type': 'account'})
         check('user_center.php' in url, 'login ' + username)
 
 
@@ -98,7 +98,7 @@ html, url = guest.request('my_orders.php?status=completed')
 check('user_login.php?next=my_orders.php%3Fstatus%3Dcompleted' in url and '账号登录' in html, 'order page preserves login return path')
 guest.request('user_login.php', {'username': 'qa_admin', 'password': '123456'}, expected=403)
 check(True, 'missing CSRF rejected')
-html, url = guest.request('user_login.php', {'csrf_token': guest.token(), 'username': 'qa_admin', 'password': '123456', 'login_type': 'merchant'})
+html, url = guest.request('user_login.php', {'csrf_token': guest.token(), 'username': 'qa_admin', 'password': '123456', 'login_type': 'account'})
 check('user_login.php' in url and '错误' in html, 'universal admin password fails over HTTP')
 for path in ['tests/state.json', 'config/db.php', 'config/database.local.php', 'config/secrets.php', '.env', '.env.local', 'db_backup_20260918.sql', 'backup_20260918/index.php']:
     guest.request(path, expected=404)

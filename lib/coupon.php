@@ -37,10 +37,10 @@ function coupon_preview($coupon, $grandTotalCents) {
     return max(0, $discount);
 }
 
-/** 领取公开优惠券（幂等：已领则返回提示） */
-function coupon_claim($userId, $couponId) {
+/** 领取公开优惠券（幂等：已领则返回提示）；$inOuterTransaction=true 时不自行开关事务，由外层事务保证原子性 */
+function coupon_claim($userId, $couponId, $inOuterTransaction = false) {
     global $conn;
-    $conn->begin_transaction();
+    if (!$inOuterTransaction) $conn->begin_transaction();
     try {
         $coupon = one('SELECT * FROM coupons WHERE id=? AND active=1 FOR UPDATE', [(int)$couponId]);
         if (!$coupon) throw new DomainException('优惠券不存在或已下架');
@@ -52,16 +52,19 @@ function coupon_claim($userId, $couponId) {
         $upd = query('UPDATE coupons SET claimed_count = claimed_count + 1 WHERE id=? AND claimed_count < total_count', [(int)$couponId]);
         if ($upd->affected_rows !== 1) throw new DomainException('该优惠券已被领完');
         query('INSERT INTO user_coupons(coupon_id, user_id) VALUES(?,?)', [(int)$couponId, (int)$userId]);
-        $conn->commit();
+        if (!$inOuterTransaction) $conn->commit();
         if (function_exists('notify')) notify((int)$userId, 'coupon', '优惠券领取成功', '您已成功领取「'.$coupon['title'].'」，下单时可在结算页选用。', 'my_coupons.php');
         return '领取成功：' . $coupon['title'];
-    } catch (Throwable $e) { $conn->rollback(); throw $e; }
+    } catch (Throwable $e) { if (!$inOuterTransaction) $conn->rollback(); throw $e; }
 }
 
-/** 新用户注册后自动发放新人券（幂等） */
-function coupon_grant_newuser($userId) {
+/** 新用户注册后自动发放新人券（幂等）；事务内调用时发券失败会抛异常以回滚整个注册 */
+function coupon_grant_newuser($userId, $inOuterTransaction = false) {
     foreach (rows('SELECT id FROM coupons WHERE is_newuser=1 AND active=1 AND (expire_at IS NULL OR expire_at > NOW())', []) as $c) {
-        try { coupon_claim($userId, (int)$c['id']); } catch (Throwable $e) { error_log('新人券发放失败: ' . $e->getMessage()); }
+        try { coupon_claim($userId, (int)$c['id'], $inOuterTransaction); } catch (Throwable $e) {
+            if ($inOuterTransaction) throw $e;
+            error_log('新人券发放失败: ' . $e->getMessage());
+        }
     }
 }
 
