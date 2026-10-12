@@ -243,6 +243,52 @@ query('DELETE rp FROM admin_role_permissions rp JOIN admin_permissions p ON p.id
 check(!admin_has_permission('order.refund'),'revoked permission takes effect immediately');
 $_SESSION['admin']['must_change_password']=1;
 rejects(function()use($backendOrder){change_order($backendOrder,0,'after_sale_approve');},'forced password reset cannot execute backend actions');
+// ===== 消息中心 / 商户对账单 / 限时特价与限购 =====
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+// 1) notify 各触发点写入（领券、发货带运单号、退款审批、买家留言→商户、商户回复→买家）
+$claimCouponId=(int)one('SELECT id FROM coupons WHERE title=? LIMIT 1',['满50减5'])['id'];
+coupon_claim($buyer,$claimCouponId);
+$notifyOrder=(int)create_orders($buyer,$p2,1,$address,'notify-order')[0]; change_order($notifyOrder,$buyer,'pay');
+$_SESSION['role']='merchant'; change_order($notifyOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'NOTIFY001']);
+$refundNotifyOrder=(int)create_orders($buyer,$p2,1,$address,'notify-refund')[0]; change_order($refundNotifyOrder,$buyer,'pay');
+change_order($refundNotifyOrder,$buyer,'refund',['reason'=>'通知测试用的退款申请']);
+change_order($refundNotifyOrder,$merchant,'refund_approve');
+send_order_message($notifyOrder,$buyer,'买家留言：通知中心触发测试');
+send_order_message($notifyOrder,$merchant,'商家回复：通知中心触发测试');
+check(one("SELECT id FROM user_notifications WHERE user_id=? AND type='coupon'",[$buyer])!==null
+    && one("SELECT id FROM user_notifications WHERE user_id=? AND type='order' AND title LIKE '%NOTIFY001%'",[$buyer])!==null
+    && one("SELECT id FROM user_notifications WHERE user_id=? AND type='refund'",[$buyer])!==null
+    && one("SELECT id FROM user_notifications WHERE user_id=? AND type='message' AND body LIKE '%买家留言：通知中心触发测试%'",[$merchant])!==null
+    && one("SELECT id FROM user_notifications WHERE user_id=? AND type='message' AND body LIKE '%商家回复：通知中心触发测试%'",[$buyer])!==null,
+    'all notify trigger points write notifications');
+// 2) 限时特价：区间内结算用特价，时段外回退原价
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status,flash_price_cents,flash_start,flash_end,limit_per_user) VALUES('特价限购商品','40.00',50,?,?,1,'approved',2500,NOW() - INTERVAL 1 HOUR,NOW() + INTERVAL 1 HOUR,2)",[$category,$shop]); $pFlash=(int)$conn->insert_id;
+$flashActive=(int)create_orders($buyer,$pFlash,1,$address,'flash-active')[0];
+query('UPDATE products SET flash_end=NOW() - INTERVAL 1 MINUTE WHERE id=?',[$pFlash]);
+$flashExpired=(int)create_orders($buyer,$pFlash,1,$address,'flash-expired')[0];
+check(one('SELECT price FROM order_items WHERE order_id=?',[$flashActive])['price']==='25.00' && one('SELECT price FROM order_items WHERE order_id=?',[$flashExpired])['price']==='40.00',
+    'flash price applies inside window and original price outside');
+// 3) 限购边界：恰好等于限额可下单
+$limitBuyer=insert_user('qa_limit_buyer','user');
+query('INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,\'限购买家\',\'13800000000\',\'测试省测试市测试地址\',1)',[$limitBuyer]); $limitAddress=(int)$conn->insert_id;
+$limitOrder=(int)create_orders($limitBuyer,$pFlash,2,$limitAddress,'limit-boundary')[0];
+check((int)one('SELECT COUNT(*) AS n FROM order_items WHERE order_id=?',[$limitOrder])['n']===1 && (int)one('SELECT quantity FROM order_items WHERE order_id=?',[$limitOrder])['quantity']===2,
+    'purchase exactly at per-user limit is allowed');
+// 4) 限购超量：下单被拒且未扣库存
+$stockBefore=(int)one('SELECT stock FROM products WHERE id=?',[$pFlash])['stock'];
+$overRejected=false;
+try { create_orders($limitBuyer,$pFlash,1,$limitAddress,'limit-over'); } catch (DomainException $e) { $overRejected=true; }
+check($overRejected && (int)one('SELECT stock FROM products WHERE id=?',[$pFlash])['stock']===$stockBefore && (int)one('SELECT COUNT(*) AS n FROM orders WHERE checkout_token=?',['limit-over'])['n']===0,
+    'purchase above per-user limit rejected without deducting stock');
+// 5) 对账单 CSV：列头与汇总行
+$csv=shop_statement_rows($shop,date('Y-m'));
+$expected=one("SELECT COUNT(*) AS n,COALESCE(ROUND(SUM(total_amount-discount_amount)*100),0) AS paid FROM orders WHERE shop_id=? AND status IN ('paid','shipped','completed','cancelled') AND created_at>=? AND created_at<?",
+    [$shop,date('Y-m-01 00:00:00'),date('Y-m-d H:i:s',strtotime(date('Y-m-01').' +1 month'))]);
+$lastRow=$csv[count($csv)-1];
+check($csv[0]===['订单号','下单时间','支付时间','订单状态','商品合计（元）','优惠金额（元）','实付金额（元）','运单号']
+    && (int)trim($lastRow[1])===(int)$expected['n'] && $lastRow[6]==="\t".money((int)$expected['paid']),
+    'statement csv header and summary row correct');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
 foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {

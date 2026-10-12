@@ -53,6 +53,7 @@ function coupon_claim($userId, $couponId) {
         if ($upd->affected_rows !== 1) throw new DomainException('该优惠券已被领完');
         query('INSERT INTO user_coupons(coupon_id, user_id) VALUES(?,?)', [(int)$couponId, (int)$userId]);
         $conn->commit();
+        if (function_exists('notify')) notify((int)$userId, 'coupon', '优惠券领取成功', '您已成功领取「'.$coupon['title'].'」，下单时可在结算页选用。', 'my_coupons.php');
         return '领取成功：' . $coupon['title'];
     } catch (Throwable $e) { $conn->rollback(); throw $e; }
 }

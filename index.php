@@ -306,10 +306,12 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         <div class="product-grid">
             <?php if ($result && $result->num_rows > 0): ?>
                 <?php while($row = $result->fetch_assoc()): ?>
-                    <?php 
+                    <?php
                         $p_name = $row['title'] ?? ($row['name'] ?? '未命名商品');
                         $p_img = $row['image_url'] ?? ($row['image'] ?? '');
                         $p_price = $row['price'] ?? '0.00';
+                        // 限时特价：区间内且低于原价时展示特价（划线原价）
+                        $p_flash = flash_price_cents($row);
                     ?>
                     <article class="product-card">
                         <div>
@@ -324,7 +326,7 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
                             <?php if (!empty($row['shop_name'])): ?>
                                 <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 4px;">🏪 <?php echo htmlspecialchars($row['shop_name']); ?></div>
                             <?php endif; ?>
-                            <div class="product-price">￥<?php echo number_format($p_price, 2); ?></div>
+                            <div class="product-price"><?php if ($p_flash !== null): ?><span style="text-decoration:line-through;color:#94a3b8;font-size:.8rem;margin-right:4px;">￥<?php echo number_format($p_price, 2); ?></span><strong style="color:#dc2626;">￥<?php echo number_format($p_flash / 100, 2); ?></strong><small style="color:#dc2626;"> 限时特价</small><?php else: ?>￥<?php echo number_format($p_price, 2); ?><?php endif; ?></div>
                         </div>
                         
                         <a href="detail.php?id=<?php echo $row['id']; ?>" class="btn-buy-link">

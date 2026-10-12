@@ -2,6 +2,8 @@
 require_once __DIR__ . '/lib/security.php';
 
 require_once 'config/db.php';
+
+require_once __DIR__ . '/lib/shop.php';
 if (($_SESSION['role'] ?? '') === 'admin') { header('Location: admin/login.php', true, 303); exit; }
 $db = isset($pdo) ? $pdo : (isset($conn) ? $conn : null);
 
@@ -173,7 +175,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // PHP7.3 mysqlnd 下 bind_param 混合 NULL 会破坏 'd' 类型参数，价格改用字符串绑定
     $price_str = number_format($price, 2, '.', '');
 
-    if ($sku_invalid) {
+    // 限时特价与限购：解析并校验（特价<原价、结束>开始、三者须同时填写）
+    $flash_cents = null; $flash_start = null; $flash_end = null; $limit_per_user = 0;
+    try {
+        list($flash_cents, $flash_start, $flash_end, $limit_per_user) = parse_flash_fields((int)round($price * 100), $_POST);
+    } catch (DomainException $e) {
+        $msg = $e->getMessage(); $msg_type = 'error';
+    }
+
+    if ($msg_type === 'error') {
+        // 特价/限购字段校验失败：$msg 已有提示，直接回到表单
+    } elseif ($sku_invalid) {
         $msg = '每个规格行须完整填写名称、大于零的价格（最多两位小数）与非负整数库存！';
         $msg_type = 'error';
     } elseif ($price <= 0 || $price > 99999999.99 || $stock < 0 || $stock > 100000000 || $expected_stock < 0 || $expected_stock > 100000000 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', (string)($_POST['price'] ?? '')) || !preg_match('/^\d+$/D', (string)($_POST['stock'] ?? '')) || !preg_match('/^\d+$/D', $expected_stock_raw)) {
@@ -226,10 +238,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // 审核策略：管理员编辑无需重审；商家编辑后回到待审核状态
                 $audit_status = $is_admin ? 'approved' : 'pending';
                 $sql = $is_admin
-                    ? "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ? WHERE id = ?"
-                    : "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ? WHERE id = ? AND shop_id = ?";
+                    ? "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ? WHERE id = ?"
+                    : "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ? WHERE id = ? AND shop_id = ?";
                 if ($db instanceof PDO) {
-                    $params = [$title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status, $product_id];
+                    $params = [$title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $product_id];
                     if (!$is_admin) $params[] = $shop_id;
                     $stmt = $db->prepare($sql);
                     $stmt->execute($params);
@@ -237,9 +249,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare($sql);
                     if (!$stmt) throw new Exception('SQL 预处理失败');
                     if ($is_admin) {
-                        $stmt->bind_param("sisissisi", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $product_id);
+                        $stmt->bind_param("sisissisisissi", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $product_id);
                     } else {
-                        $stmt->bind_param("sisissisii", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $product_id, $shop_id);
+                        $stmt->bind_param("sisissisisissii", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $product_id, $shop_id);
                     }
                     $stmt->execute();
                     $stmt->close();
@@ -379,6 +391,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <button type="button" id="sku-add" class="btn btn-outline-secondary btn-sm">+ 添加规格</button>
             </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">限时特价（元）</label>
+                    <input type="number" step="0.01" min="0.01" name="flash_price" class="form-control" placeholder="可空，须低于原价" value="<?= $product['flash_price_cents'] !== null ? sprintf('%d.%02d', intdiv((int)$product['flash_price_cents'], 100), (int)$product['flash_price_cents'] % 100) : '' ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">特价开始时间</label>
+                    <input type="datetime-local" name="flash_start" class="form-control" value="<?= $product['flash_start'] ? str_replace(' ', 'T', substr($product['flash_start'], 0, 16)) : '' ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">特价结束时间</label>
+                    <input type="datetime-local" name="flash_end" class="form-control" value="<?= $product['flash_end'] ? str_replace(' ', 'T', substr($product['flash_end'], 0, 16)) : '' ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">限购件数</label>
+                    <input type="number" min="0" name="limit_per_user" value="<?= (int)($product['limit_per_user'] ?? 0) ?>" class="form-control" placeholder="0 表示不限购">
+                </div>
+            </div>
+            <small class="text-muted d-block mb-3">特价与起止时间须同时填写；清空并保存即取消限时特价。</small>
 
             <div class="mb-3">
                 <label class="form-label fw-bold small">商品主图</label>

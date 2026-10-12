@@ -2,6 +2,8 @@
 require_once __DIR__ . '/lib/security.php';
 
 require_once 'config/db.php';
+
+require_once __DIR__ . '/lib/shop.php';
 if (($_SESSION['role'] ?? '') === 'admin') { header('Location: admin/login.php', true, 303); exit; }
 $db = isset($pdo) ? $pdo : (isset($conn) ? $conn : null);
 
@@ -92,6 +94,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // PHP7.3 mysqlnd 下 bind_param 混合 NULL 会破坏 'd' 类型参数，价格改用字符串绑定
     $price_str = number_format($price, 2, '.', '');
 
+    // 限时特价与限购：解析并校验（特价<原价、结束>开始、三者须同时填写）
+    $flash_cents = null; $flash_start = null; $flash_end = null; $limit_per_user = 0;
+    try {
+        list($flash_cents, $flash_start, $flash_end, $limit_per_user) = parse_flash_fields((int)round($price * 100), $_POST);
+    } catch (DomainException $e) {
+        $msg = $e->getMessage(); $msg_type = 'error';
+    }
+
     // 解析规格行：整行留空则忽略（沿用默认规格），只要填写就必须完整（名称/价格/库存）
     $sku_rows = [];
     $sku_invalid = false;
@@ -142,13 +152,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // 审核策略：管理员发布直接通过；商家发布需管理员审核
                 $audit_status = $is_admin ? 'approved' : 'pending';
                 if ($db instanceof PDO) {
-                    $stmt = $db->prepare("INSERT INTO products (shop_id, title, category_id, price, stock, detail, image_url, status, audit_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                    $stmt->execute([$shop_id, $title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status]);
+                    $stmt = $db->prepare("INSERT INTO products (shop_id, title, category_id, price, stock, detail, image_url, status, audit_status, flash_price_cents, flash_start, flash_end, limit_per_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $stmt->execute([$shop_id, $title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user]);
                     $ok = $stmt->rowCount() > 0;
                 } elseif ($db instanceof mysqli) {
-                    $stmt = $db->prepare("INSERT INTO products (shop_id, title, category_id, price, stock, detail, image_url, status, audit_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $stmt = $db->prepare("INSERT INTO products (shop_id, title, category_id, price, stock, detail, image_url, status, audit_status, flash_price_cents, flash_start, flash_end, limit_per_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     if (!$stmt) throw new Exception('SQL 预处理失败');
-                    $stmt->bind_param("isissisis", $shop_id, $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status);
+                    $stmt->bind_param("isissisisissi", $shop_id, $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user);
                     $exec_ok = $stmt->execute();
                     $ok = $exec_ok && $stmt->affected_rows > 0;
                     if (!$exec_ok) $mysqli_err = $stmt->error;
@@ -274,6 +284,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <button type="button" id="sku-add" class="btn btn-outline-secondary btn-sm">+ 添加规格</button>
             </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">限时特价（元）</label>
+                    <input type="number" step="0.01" min="0.01" name="flash_price" class="form-control" placeholder="可空，须低于原价">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">特价开始时间</label>
+                    <input type="datetime-local" name="flash_start" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">特价结束时间</label>
+                    <input type="datetime-local" name="flash_end" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">限购件数</label>
+                    <input type="number" min="0" name="limit_per_user" value="0" class="form-control" placeholder="0 表示不限购">
+                </div>
+            </div>
+            <small class="text-muted d-block mb-3">特价与起止时间须同时填写；活动期间展示价与结算价均用特价。</small>
 
             <div class="mb-3">
                 <label class="form-label fw-bold small">商品主图</label>

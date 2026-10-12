@@ -48,6 +48,48 @@ function can_manage_order($order, $userId) {
 function product_active_skus($productId, $lock = false) {
     return rows('SELECT * FROM product_skus WHERE product_id=? AND status=1 ORDER BY id'.($lock ? ' FOR UPDATE' : ''), [(int)$productId]);
 }
+// ===== 消息中心：站内通知写入（失败仅记日志，不影响主流程） =====
+function notify($userId, $type, $title, $body, $link = '') {
+    try {
+        query('INSERT INTO user_notifications(user_id,type,title,body,link) VALUES(?,?,?,?,?)',
+            [(int)$userId, $type, mb_substr($title, 0, 100), mb_substr($body, 0, 255), (string)$link]);
+    } catch (Throwable $e) { error_log('notify failed: '.$e->getMessage()); }
+}
+// ===== 限时特价：NOW() 落在 flash 区间且特价低于原价时生效（SKU 模式不参与） =====
+function flash_price_cents(array $product) {
+    $flash = (int)($product['flash_price_cents'] ?? 0);
+    if ($flash <= 0 || empty($product['flash_start']) || empty($product['flash_end'])) return null;
+    $now = date('Y-m-d H:i:s');
+    if ($product['flash_start'] > $now || $product['flash_end'] < $now) return null;
+    $original = (int)round(((float)$product['price']) * 100);
+    if ($flash >= $original) return null;
+    return $flash;
+}
+// 商户端特价/限购字段解析与校验：三者须同时填写，特价须低于原价，结束须晚于开始
+function parse_flash_fields($originalPriceCents, array $post) {
+    $raw = trim((string)($post['flash_price'] ?? ''));
+    $startRaw = trim((string)($post['flash_start'] ?? ''));
+    $endRaw = trim((string)($post['flash_end'] ?? ''));
+    $limitRaw = trim((string)($post['limit_per_user'] ?? '0'));
+    if ($limitRaw === '') $limitRaw = '0';
+    if (!preg_match('/^\d+$/D', $limitRaw) || (int)$limitRaw > 99999) throw new DomainException('限购件数须为 0 至 99999 的整数（0 表示不限购）');
+    $flash = null; $start = null; $end = null;
+    if ($raw !== '' || $startRaw !== '' || $endRaw !== '') {
+        if ($raw === '' || $startRaw === '' || $endRaw === '') throw new DomainException('特价、开始时间与结束时间须同时填写');
+        if (!preg_match('/^\d{1,8}(?:\.\d{1,2})?$/D', $raw) || (float)$raw <= 0) throw new DomainException('特价须为大于零的金额（最多两位小数）');
+        $parts = explode('.', $raw);
+        $flash = (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0');
+        foreach (['start' => $startRaw, 'end' => $endRaw] as $value) {
+            $value = str_replace('T', ' ', $value);
+            if (strlen($value) === 16) $value .= ':00';
+            if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $value) || strtotime($value) === false) throw new DomainException('特价起止时间格式无效');
+            if ($start === null) $start = $value; else $end = $value;
+        }
+        if ($flash >= (int)$originalPriceCents) throw new DomainException('特价必须低于商品原价');
+        if ($end <= $start) throw new DomainException('特价结束时间必须晚于开始时间');
+    }
+    return [$flash, $start, $end, (int)$limitRaw];
+}
 function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId = 0) {
     $suffix = $lock ? ' FOR UPDATE' : '';
     $lines = [];
@@ -65,6 +107,8 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId
             $lines[] = array_merge($product, ['quantity' => $qty, 'sku_id' => (int)$found['id'], 'sku_name' => $found['sku_name'], 'sku_image' => $found['image_url'] ?? null]);
         } else {
             if ($skuId) throw new DomainException('商品规格已失效，请重新选择');
+            $flash = flash_price_cents($product);
+            if ($flash !== null) $product['price'] = money($flash);
             $lines[] = array_merge($product, ['quantity' => $qty, 'sku_id' => 0, 'sku_name' => null, 'sku_image' => null]);
         }
     } else {
@@ -93,6 +137,10 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId
             } elseif ((int)$row['sku_id'] !== 0) {
                 throw new DomainException($line['title'].' 的规格已失效，请返回购物车处理');
             }
+            if (!$skus) {
+                $flash = flash_price_cents($line);
+                if ($flash !== null) $line['price'] = money($flash);
+            }
             $lines[] = $line;
         }
     }
@@ -118,6 +166,18 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
         if (!$address) throw new DomainException('请选择自己的有效收货地址');
         if (!$address['receiver_name'] || !$address['receiver_phone'] || !$address['receiver_address']) throw new DomainException('请先补全收货地址');
         $lines = checkout_lines($userId, $productId, $qty, true, $skuId);
+        // 限购校验：按 product_id 汇总本次数量与历史有效订单（不含已取消）数量
+        $limitTotals = [];
+        foreach ($lines as $line) {
+            $pid = (int)$line['id'];
+            if (!isset($limitTotals[$pid])) $limitTotals[$pid] = ['limit' => (int)($line['limit_per_user'] ?? 0), 'qty' => 0];
+            $limitTotals[$pid]['qty'] += (int)$line['quantity'];
+        }
+        foreach ($limitTotals as $pid => $info) {
+            if ($info['limit'] <= 0) continue;
+            $bought = (int)one("SELECT COALESCE(SUM(i.quantity),0) AS n FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.user_id=? AND i.product_id=? AND o.status<>'cancelled'", [$userId, $pid])['n'];
+            if ($bought + $info['qty'] > $info['limit']) throw new DomainException('该商品限购 '.$info['limit'].' 件');
+        }
         $groups = [];
         foreach ($lines as $line) $groups[(int)$line['shop_id']][] = $line;
         $ids = [];
@@ -205,6 +265,7 @@ function change_order($id, $actor, $action, $data = []) {
             $company = trim($data['express_company'] ?? ''); $number = trim($data['express_no'] ?? '');
             if (!$company || mb_strlen($company)>50 || !preg_match('/^[A-Za-z0-9-]{5,100}$/D',$number)) throw new DomainException('请填写快递公司及有效运单号');
             query("UPDATE orders SET status='shipped',express_company=?,express_no=?,shipped_at=NOW() WHERE id=?", [$company,$number,$id]);
+            notify((int)$order['user_id'], 'order', '您的订单已发货（运单号 '.$number.'）', '订单 '.$order['order_no'].' 已由'.$company.'发出，运单号 '.$number.'，请注意查收。', 'my_orders.php');
         } elseif ($action === 'receive' && $owner && $order['status'] === 'shipped') {
             query("UPDATE orders SET status='completed',completed_at=NOW() WHERE id=?", [$id]);
         } elseif ($action === 'refund' && $owner && $order['status'] === 'paid') {
@@ -222,6 +283,8 @@ function change_order($id, $actor, $action, $data = []) {
                 query("UPDATE orders SET status='cancelled' WHERE id=?",[$id]);
             }
             query('UPDATE refund_requests SET status=?,processed_at=NOW() WHERE id=?',[$action==='refund_approve'?'approved':'rejected',(int)$request['id']]);
+            notify((int)$order['user_id'], 'refund', $action==='refund_approve' ? '退款申请已同意' : '退款申请未被通过',
+                '订单 '.$order['order_no'].' 的退款申请'.($action==='refund_approve' ? '已由商家同意' : '被商家拒绝').($action==='refund_approve' ? '，退款将按原支付方式退回。' : '，如有疑问请与商家留言沟通。'), 'my_orders.php');
         } elseif ($action === 'after_sale' && $owner && in_array($order['status'], ['shipped','completed'], true)) {
             if (one('SELECT id FROM after_sale_requests WHERE order_id=?', [$id])) throw new DomainException('已提交售后申请');
             $reason = trim($data['reason'] ?? '');
@@ -281,6 +344,13 @@ function send_order_message($id, $actor, $content) {
     if ($length < 2 || $length > 500) throw new DomainException('留言内容需为 2 至 500 个字符');
     $senderId = $actor > 0 ? $actor : (int)($_SESSION['admin']['id'] ?? 0);
     query('INSERT INTO order_messages(order_id,sender_role,sender_id,content) VALUES(?,?,?,?)', [$id, $role, $senderId, $content]);
+    // 消息中心联动：买家留言通知商户，商户/管理员留言通知买家
+    if ($role === 'buyer' && !empty($order['shop_id'])) {
+        $shopOwner = one('SELECT user_id FROM shops WHERE id=?', [(int)$order['shop_id']]);
+        if ($shopOwner) notify((int)$shopOwner['user_id'], 'message', '您收到一条新的订单留言', '订单 '.$order['order_no'].' 买家留言：'.$content, 'order_messages.php?order_id='.(int)$id);
+    } elseif ($role === 'merchant' || $role === 'admin') {
+        notify((int)$order['user_id'], 'message', $role === 'merchant' ? '商家回复了您的订单留言' : '平台回复了您的订单留言', '订单 '.$order['order_no'].' 回复：'.$content, 'order_messages.php?order_id='.(int)$id);
+    }
     return (int)$GLOBALS['conn']->insert_id;
 }
 function order_message_unread_counts(array $orderIds, $role) {
@@ -362,7 +432,13 @@ function recommend_for_user($userId, $limit = 8) {
     return $items;
 }
 function page_start($title) {
-    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="addresses.php">收货地址</a><a href="user_center.php">个人中心</a>';
+    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="notifications.php">消息';
+    if (!empty($_SESSION['user_id'])) {
+        // 未读角标：一次性 COUNT 查询
+        $unread = (int)one('SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND read_at IS NULL', [(int)$_SESSION['user_id']])['n'];
+        if ($unread > 0) echo '<sup style="color:#dc2626;font-weight:700;">'.(int)$unread.'</sup>';
+    }
+    echo '</a><a href="addresses.php">收货地址</a><a href="user_center.php">个人中心</a>';
     if (in_array($_SESSION['role'] ?? '',['admin','merchant'],true)) echo '<a href="admin_orders.php">发货 / 售后</a>';
     echo '</nav></header><main><h1>'.h($title).'</h1>';
     if (isset($_SESSION['notice'])) { echo '<p class="notice" role="status">'.h($_SESSION['notice']).'</p>'; unset($_SESSION['notice']); }
@@ -414,6 +490,26 @@ function validate_review_images($files) {
     }
     if (count($list) > 3) throw new DomainException('评价图片最多上传 3 张');
     return $list;
+}
+// ===== 商户对账单：按自然月导出本店订单 CSV 行（页面输出与测试共用；金额以分为单位，数字列前加制表符防 Excel 科学计数） =====
+function shop_statement_rows($shopId, $month) {
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', (string)$month)) throw new DomainException('月份格式须为 Y-m');
+    $start = $month.'-01 00:00:00';
+    $end = date('Y-m-d H:i:s', strtotime($start.' +1 month'));
+    $orders = rows("SELECT order_no,created_at,paid_at,status,total_amount,discount_amount,express_no
+        FROM orders WHERE shop_id=? AND status IN ('paid','shipped','completed','cancelled') AND created_at>=? AND created_at<? ORDER BY id",
+        [(int)$shopId, $start, $end]);
+    $rows = [['订单号','下单时间','支付时间','订单状态','商品合计（元）','优惠金额（元）','实付金额（元）','运单号']];
+    $sales = 0; $discount = 0; $paid = 0;
+    foreach ($orders as $o) {
+        $s = (int)round(((float)$o['total_amount']) * 100);
+        $d = (int)round(((float)$o['discount_amount']) * 100);
+        $sales += $s; $discount += $d; $paid += $s - $d;
+        $rows[] = [$o['order_no'], (string)$o['created_at'], $o['paid_at'] !== null ? (string)$o['paid_at'] : '', status_name($o['status']),
+            "\t".money($s), "\t".money($d), "\t".money($s - $d), (string)($o['express_no'] ?? '')];
+    }
+    $rows[] = ['汇总', "\t".count($orders), '', '', "\t".money($sales), "\t".money($discount), "\t".money($paid), ''];
+    return $rows;
 }
 // ===== 搜索联想：日志前缀热词 + 在售商品名合并去重，最多 8 条；未登录可访问 =====
 function search_suggest_words($keyword) {

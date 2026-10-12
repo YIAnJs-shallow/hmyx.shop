@@ -266,4 +266,24 @@ query('CREATE TABLE IF NOT EXISTS search_logs (
     KEY idx_search_logs_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
+// ===== 消息中心：站内通知（未读角标与消息列表共用 KEY(user_id, read_at)） =====
+query("CREATE TABLE IF NOT EXISTS user_notifications (
+    id bigint AUTO_INCREMENT PRIMARY KEY,
+    user_id int NOT NULL,
+    type enum('message','order','refund','coupon') NOT NULL,
+    title varchar(100) NOT NULL,
+    body varchar(255) NOT NULL,
+    link varchar(255) NOT NULL DEFAULT '',
+    read_at datetime NULL,
+    created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_user_notifications (user_id, read_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// ===== 限时特价与限购：flash 区间内展示价用特价，limit_per_user=0 表示不限购 =====
+add_column('products','flash_price_cents','int NULL');
+add_column('products','flash_start','datetime NULL');
+add_column('products','flash_end','datetime NULL');
+add_column('products','limit_per_user','int NOT NULL DEFAULT 0');
+
 echo "Migration complete.\n";

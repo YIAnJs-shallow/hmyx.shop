@@ -41,7 +41,8 @@ $refundCount30=(int)one("SELECT (SELECT COUNT(*) FROM refund_requests r JOIN ord
 $refundRate=$totalOrders30>0?round($refundCount30/$totalOrders30*100,1):0.0;
 
 page_start('经营数据看板');
-echo '<p><a href="product_list.php">返回店铺管理</a></p>';
+$lastMonth=date('Y-m',strtotime('-1 month'));
+echo '<p><a href="product_list.php">返回店铺管理</a> · <a href="shop_export.php?month='.h($lastMonth).'">导出上月对账单（'.h($lastMonth).'）</a></p>';
 ?>
 <section class="card"><h2>近 30 日概览</h2>
 <div class="grid">
