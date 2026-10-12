@@ -20,7 +20,7 @@ $items=rows('SELECT i.*,COALESCE(i.product_title,p.title,\'历史商品\') AS ti
 <?php if($order['status']==='completed' && $item['product_id'] && !$item['review_id']): ?><a class="button" href="review.php?item_id=<?=(int)$item['id']?>">评价商品</a><?php elseif($item['review_id']): ?><span>已评价</span><?php endif; ?></div><?php endforeach; ?>
 <?php if(!$items): ?><p class="muted">历史订单未保存商品明细。</p><?php endif; ?>
 <p><?=h($order['receiver_name'])?> · <?=h($order['receiver_phone'])?> · <?=h($order['receiver_address'])?></p><hr class="divider"><div class="row"><strong class="price grow">¥ <?=h($order['total_amount'])?></strong><div class="actions">
-<?php if($order['status']==='pending'): ?><a class="button" href="pay.php?order_id=<?=$id?>">去付款</a><?=action_button($id,'cancel','取消订单')?><?php endif; ?>
+<?php if($order['status']==='pending'): ?><p class="muted"><?php $remain=(int)ceil((strtotime($order['created_at'])+10800-time())/3600); echo $remain>0 ? '约 '.$remain.' 小时后自动关闭' : '保留已超时，订单即将自动关闭'; ?></p><a class="button" href="pay.php?order_id=<?=$id?>">去付款</a><?=action_button($id,'cancel','取消订单')?><?php endif; ?>
 <?php if(in_array($order['status'],['shipped','completed'],true)): ?><a href="express_detail.php?order_id=<?=$id?>">查看物流</a><?php endif; ?>
 <?php if($order['status']==='shipped') echo action_button($id,'receive','确认已收货'); ?>
 <a href="order_messages.php?order_id=<?=$id?>">订单留言<?php if(!empty($unreadMessages[$id])): ?>（<?=(int)$unreadMessages[$id]?> 条新留言）<?php endif; ?></a>

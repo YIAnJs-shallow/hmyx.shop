@@ -40,7 +40,9 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
             <a href="index.php" class="btn-ghost-light">进入商城</a>
             <?php if ($is_logged_in): ?>
                 <a href="user_center.php" class="btn-login-top">👤 个人中心</a>
+                <a href="my_coupons.php" class="btn-ghost-light">查看我的优惠券</a>
             <?php else: ?>
+                <a href="register.php" class="btn-ghost-light">注册领新人礼包</a>
                 <a href="user_login.php" class="btn-login-top">登 录</a>
             <?php endif; ?>
         </div>
@@ -129,8 +131,10 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
         <p>加入惠蒙优选，好物与好礼，一站直达。</p>
         <?php if ($is_logged_in): ?>
             <a href="index.php" class="btn-hero-primary">进入商城逛逛</a>
+            <a href="my_coupons.php" class="btn-hero-ghost">查看我的优惠券</a>
         <?php else: ?>
             <a href="user_login.php" class="btn-hero-primary">立即登录 / 注册</a>
+            <a href="register.php" class="btn-hero-ghost">注册领新人礼包</a>
         <?php endif; ?>
     </section>
 
