@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/lib/security.php';
 require_once 'config/db.php';
+require_once __DIR__ . '/lib/shop.php';
 
 // 1. 获取顶级分类及其二级细分分类
 $cat_sql = "SELECT c1.id AS main_id, c1.category_name AS main_name, 
@@ -106,6 +107,10 @@ $result = $stmt->get_result();
 
 // 4. 检查是否登录
 $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
+
+// 5. 首页推荐板块数据：热销榜 + 猜你喜欢
+$best_sellers = best_sellers(10);
+$recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -113,6 +118,8 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>惠蒙优选 - 精选优质商城</title>
+    <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
+    <link rel="stylesheet" href="css/shop.css">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -200,6 +207,52 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
             </div>
             <a href="welcome.php" style="background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;font-weight:800;padding:11px 28px;border-radius:999px;text-decoration:none;box-shadow:0 10px 24px -8px rgba(245,158,11,0.7);white-space:nowrap;">查看详情</a>
         </div>
+        <?php endif; ?>
+
+        <?php if (!empty($best_sellers)): ?>
+        <!-- 热销榜：按有效订单累计销量排序 -->
+        <section class="card">
+            <h3>🔥 热销榜</h3>
+            <?php foreach ($best_sellers as $rank => $item): ?>
+                <div class="row">
+                    <span class="badge"><?php echo $rank + 1; ?></span>
+                    <a href="detail.php?id=<?php echo (int)$item['id']; ?>">
+                        <?php if (!empty($item['image_url']) && file_exists($item['image_url'])): ?>
+                            <img class="thumb" src="<?php echo h($item['image_url']); ?>" alt="<?php echo h($item['title']); ?>">
+                        <?php else: ?>
+                            <span class="thumb" style="display:inline-flex;align-items:center;justify-content:center;font-size:2rem;">📦</span>
+                        <?php endif; ?>
+                    </a>
+                    <div class="grow">
+                        <a href="detail.php?id=<?php echo (int)$item['id']; ?>"><?php echo h($item['title']); ?></a>
+                        <div class="muted">已售 <?php echo (int)$item['sold']; ?> 件</div>
+                    </div>
+                    <span class="price">￥<?php echo h(number_format((float)$item['price'], 2)); ?></span>
+                </div>
+            <?php endforeach; ?>
+        </section>
+        <?php endif; ?>
+
+        <?php if (!empty($recommend)): ?>
+        <!-- 猜你喜欢：基于收藏与历史购买类目，不足时由热销榜补齐 -->
+        <section class="card">
+            <h3>💡 猜你喜欢</h3>
+            <div class="grid">
+                <?php foreach ($recommend as $item): ?>
+                    <article class="card">
+                        <a href="detail.php?id=<?php echo (int)$item['id']; ?>">
+                            <?php if (!empty($item['image_url']) && file_exists($item['image_url'])): ?>
+                                <img class="thumb" style="width:100%;height:150px;" src="<?php echo h($item['image_url']); ?>" alt="<?php echo h($item['title']); ?>">
+                            <?php else: ?>
+                                <span class="thumb" style="display:inline-flex;width:100%;height:150px;align-items:center;justify-content:center;font-size:2.5rem;">📦</span>
+                            <?php endif; ?>
+                        </a>
+                        <h3 style="margin-top:10px;"><a href="detail.php?id=<?php echo (int)$item['id']; ?>"><?php echo h($item['title']); ?></a></h3>
+                        <div class="price">￥<?php echo h(number_format((float)$item['price'], 2)); ?></div>
+                    </article>
+                <?php endforeach; ?>
+            </div>
+        </section>
         <?php endif; ?>
 
         <div class="page-header">

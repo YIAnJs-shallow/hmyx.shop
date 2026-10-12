@@ -287,6 +287,68 @@ function order_message_mark_read($id, $role) {
     if ($column === null) return;
     query("UPDATE order_messages SET $column=1 WHERE order_id=? AND sender_role<>? AND $column=0", [$id, $role]);
 }
+// ===== 首页推荐：热销榜 / 猜你喜欢（仅用 orders(user_id,status)、order_items(order_id) 现有索引，不新增索引） =====
+// 热销榜：有效订单（paid/shipped/completed）的 order_items 按 (product_id, sku_id) 汇总销量，只保留当前在售且审核通过的商品
+function best_sellers($limit = 10) {
+    $limit = max(1, (int)$limit);
+    return rows("SELECT p.id, p.title, p.image_url, p.price, SUM(s.qty) AS sold
+        FROM (SELECT oi.product_id, oi.sku_id, SUM(oi.quantity) AS qty
+              FROM order_items oi
+              JOIN orders o ON o.id = oi.order_id
+              WHERE o.status IN ('paid','shipped','completed')
+              GROUP BY oi.product_id, oi.sku_id) s
+        JOIN products p ON p.id = s.product_id
+        WHERE p.status = 1 AND p.audit_status = 'approved'
+        GROUP BY p.id, p.title, p.image_url, p.price
+        ORDER BY sold DESC, p.id ASC
+        LIMIT $limit");
+}
+// 猜你喜欢：已登录用户按收藏+历史购买涉及的类目推荐在售商品（排除已购买），不足时用热销榜补齐；未登录直接回退热销榜
+function recommend_for_user($userId, $limit = 8) {
+    $userId = (int)$userId;
+    $limit = max(1, (int)$limit);
+    if ($userId <= 0) return array_slice(best_sellers($limit), 0, $limit);
+    $categoryIds = [];
+    foreach (rows("SELECT DISTINCT p.category_id FROM products p
+            JOIN favorites f ON f.product_id = p.id AND f.user_id = ?
+            WHERE p.category_id > 0
+            UNION
+            SELECT DISTINCT p.category_id FROM products p
+            JOIN order_items oi ON oi.product_id = p.id
+            JOIN orders o ON o.id = oi.order_id
+            WHERE o.user_id = ? AND o.status IN ('paid','shipped','completed') AND p.category_id > 0",
+            [$userId, $userId]) as $row) {
+        $categoryIds[] = (int)$row['category_id'];
+    }
+    if (!$categoryIds) return array_slice(best_sellers($limit), 0, $limit);
+    $in = implode(',', array_fill(0, count($categoryIds), '?'));
+    $items = rows("SELECT p.id, p.title, p.image_url, p.price, COALESCE(s.qty, 0) AS sold
+        FROM products p
+        LEFT JOIN (SELECT oi.product_id, SUM(oi.quantity) AS qty
+                   FROM order_items oi
+                   JOIN orders o ON o.id = oi.order_id
+                   WHERE o.status IN ('paid','shipped','completed')
+                   GROUP BY oi.product_id) s ON s.product_id = p.id
+        WHERE p.status = 1 AND p.audit_status = 'approved'
+          AND p.category_id IN ($in)
+          AND NOT EXISTS (SELECT 1 FROM order_items mine
+                          JOIN orders mo ON mo.id = mine.order_id
+                          WHERE mine.product_id = p.id AND mo.user_id = ?
+                            AND mo.status IN ('paid','shipped','completed'))
+        ORDER BY sold DESC, p.id DESC
+        LIMIT $limit", array_merge($categoryIds, [$userId]));
+    if (count($items) < $limit) {
+        $seen = [];
+        foreach ($items as $row) $seen[(int)$row['id']] = true;
+        foreach (best_sellers($limit) as $row) {
+            if (count($items) >= $limit) break;
+            if (isset($seen[(int)$row['id']])) continue;
+            $seen[(int)$row['id']] = true;
+            $items[] = $row;
+        }
+    }
+    return $items;
+}
 function page_start($title) {
     echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="addresses.php">收货地址</a><a href="user_center.php">个人中心</a>';
     if (in_array($_SESSION['role'] ?? '',['admin','merchant'],true)) echo '<a href="admin_orders.php">发货 / 售后</a>';
