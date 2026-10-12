@@ -73,35 +73,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>账号登录 - 惠蒙优选</title>
-    <link rel="stylesheet" href="css/auth.css?v=5">
+    <link rel="stylesheet" href="css/auth.css?v=6">
 </head>
 <body class="auth-page">
     <div class="auth-wrap">
-        <!-- 南极雪原星空：极光帘幕 / 漫天繁星 / 银河 / 雪原 / 流星 / 彗星（纯装饰） -->
-        <div class="sky-layer" aria-hidden="true">
-            <div class="aurora-veil">
-                <span class="aurora-band b1"></span>
-                <span class="aurora-band b2"></span>
-                <span class="aurora-band b3"></span>
-                <span class="aurora-band b4"></span>
-                <span class="aurora-band b5"></span>
-            </div>
-            <span class="aurora-arc"></span>
-            <div class="starfield far"></div>
-            <div class="starfield mid"></div>
-            <div class="starfield near"></div>
-            <div class="milky-way"><div class="mw-stars"></div></div>
-            <div class="snowfield"></div>
-            <span class="meteor m1"></span>
-            <span class="meteor m2"></span>
-            <span class="meteor m3"></span>
-            <span class="meteor m4"></span>
-            <span class="meteor m5"></span>
-            <span class="meteor m6"></span>
-            <span class="meteor m7"></span>
-            <span class="meteor m8"></span>
-            <div class="comet"><i class="comet-t2"></i><i class="comet-t3"></i></div>
-        </div>
+        <!-- Canvas 天空背景：极光帘幕 / 繁星 / 银河 / 流星 / 彗星 / 雪原（js/sky.js 绘制，纯装饰） -->
+        <canvas id="sky-canvas" aria-hidden="true"></canvas>
         <!-- 左区：品牌展示 -->
         <div class="auth-brand">
             <h1 class="brand-name">惠蒙优选</h1>
@@ -237,5 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }, 1000);
         }
     </script>
+
+    <script src="js/sky.js"></script>
 </body>
 </html>

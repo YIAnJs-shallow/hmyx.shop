@@ -363,6 +363,13 @@ check(one("SELECT id FROM admin_audit_logs WHERE action='admin.confirm.failed' A
 check(admin_confirm_password_valid('Confirm#2026!')===true,'sensitive operation allowed when confirm password matches current admin');
 // 9) 前台登录页不再暴露后台登录入口
 check(strpos(file_get_contents(__DIR__.'/../user_login.php'),'admin/login.php')===false,'front login page no longer exposes admin login link');
+// 10) 登录/注册页 Canvas 天空背景：js/sky.js 存在且两页面均引用；auth.css 无旧流星/极光/彗星 CSS 动画残留
+$skyJs=file_exists(__DIR__.'/../js/sky.js');
+$loginHtml=file_get_contents(__DIR__.'/../user_login.php');
+$registerHtml=file_get_contents(__DIR__.'/../register.php');
+check($skyJs && strpos($loginHtml,'js/sky.js')!==false && strpos($registerHtml,'js/sky.js')!==false,'js/sky.js exists and both auth pages include it');
+$authCss=file_get_contents(__DIR__.'/../css/auth.css');
+check(strpos($authCss,'@keyframes meteorFly')===false && strpos($authCss,'@keyframes aurora')===false && strpos($authCss,'@keyframes cometFly')===false && strpos($authCss,'@keyframes cometGlow')===false && strpos($authCss,'@keyframes twinkle')===false,'auth.css has no meteor/aurora/comet/twinkle CSS animation residue');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
