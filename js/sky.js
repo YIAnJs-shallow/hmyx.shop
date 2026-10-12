@@ -23,12 +23,7 @@
     var bands = [];                     // 极光光带参数表
     var mwFog = null;                   // 银河雾离屏贴图
     var snowImg = null;                 // 雪原反光离屏贴图
-    var meteors = [], meteorTrails = [];
     var simT = 0, lastTs = 0, rafId = 0, lastFrame = 0;
-
-    var METEOR_PERIOD = 28;             // 8 颗流星，3.5s 间隔循环
-    var METEOR_STEP = 3.5;
-    var METEOR_SWEEP = 0.6;             // 单颗划过历时（秒）
     var TRAIL_N = 20;                   // 流星拖尾采样点数
     var COMET_PERIOD = 40, COMET_DELAY = 4, COMET_SWEEP = 1.2;
 
@@ -112,19 +107,6 @@
             bands.push(b);
         }
 
-        /* 流星 8 颗：起点/长度沿袭原 CSS 布点（left 5%~75%，长 140~200px，-45°±抖动） */
-        meteors = [];
-        meteorTrails = [];
-        var spots = [[0.05, -0.04, 180], [0.20, 0.08, 160], [0.38, -0.02, 200], [0.55, 0.12, 150],
-                     [0.65, 0.02, 170], [0.14, -0.06, 190], [0.45, 0.10, 140], [0.75, 0.00, 160]];
-        for (i = 0; i < 8; i++) {
-            meteors.push({
-                x0: spots[i][0] * W, y0: spots[i][1] * H, len: spots[i][2],
-                delay: i * METEOR_STEP,
-                ang: (45 + (i % 5 - 2)) * Math.PI / 180   // 向左下，-43°~-47°
-            });
-            meteorTrails.push([]);
-        }
 
         /* 银河雾贴图（离屏，-25deg 淡雾长带） */
         mwFog = document.createElement('canvas');
@@ -211,43 +193,6 @@
         ctx.globalCompositeOperation = 'source-over';
     }
 
-    /* ---------- ③ 流星：8 颗 28s 循环（3.5s 间隔），历史点拖尾 + 头部光核 ---------- */
-    function drawMeteors(t) {
-        ctx.globalCompositeOperation = 'lighter';
-        var mi, m, p, hist, i, f, a;
-        for (mi = 0; mi < meteors.length; mi++) {
-            m = meteors[mi];
-            p = (t - m.delay) % METEOR_PERIOD;
-            if (p < 0) p += METEOR_PERIOD;
-            hist = meteorTrails[mi];
-            if (p > METEOR_SWEEP) {
-                if (hist.length) hist.length = 0;
-                continue;
-            }
-            var speed = m.len * 1.9;                 // 0.6s 内划过约 len*1.9 px
-            var hx = m.x0 - Math.cos(m.ang) * speed * p;
-            var hy = m.y0 + Math.sin(m.ang) * speed * p;
-            hist.push([hx, hy]);
-            if (hist.length > TRAIL_N) hist.shift();
-            for (i = 0; i < hist.length - 1; i++) { // 尾部渐隐拖尾
-                f = (i + 1) / hist.length;
-                ctx.strokeStyle = 'rgba(255,255,255,' + (0.55 * f * f).toFixed(3) + ')';
-                ctx.lineWidth = 2 * f + 0.3;
-                ctx.beginPath();
-                ctx.moveTo(hist[i][0], hist[i][1]);
-                ctx.lineTo(hist[i + 1][0], hist[i + 1][1]);
-                ctx.stroke();
-            }
-            ctx.shadowBlur = 10;                     // 头部亮白光核
-            ctx.shadowColor = 'rgba(255,255,255,0.9)';
-            ctx.fillStyle = '#fff';
-            ctx.beginPath();
-            ctx.arc(hx, hy, 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-        }
-        ctx.globalCompositeOperation = 'source-over';
-    }
 
     /* ---------- ③ 彗星：40s 一遇、4s 首现，1.2s 划过，长尾 + 3 分叉 + 中段爆闪 + 全屏微光 ---------- */
     function drawComet(t) {
@@ -361,7 +306,6 @@
         ctx.clearRect(0, 0, W, H);
         drawStars(t);
         drawAurora(t);
-        drawMeteors(t);
         drawComet(t);
         drawSnow(t);
     }
