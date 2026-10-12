@@ -83,6 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $db->begin_transaction();
                 $lock = $db->prepare('SELECT id FROM users WHERE id=? FOR UPDATE');
                 $lock->bind_param('i', $user_id); $lock->execute();
+                $lock->store_result(); // 取走加锁查询结果集，否则下一条查询报 Commands out of sync
                 $check_shop = $db->prepare('SELECT id FROM shops WHERE user_id=?');
                 $check_shop->bind_param('i', $user_id); $check_shop->execute();
                 if ($check_shop->get_result()->num_rows) throw new Exception('您已经拥有店铺');
