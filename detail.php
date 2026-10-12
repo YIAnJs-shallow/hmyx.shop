@@ -42,19 +42,4 @@ $flash=$skus ? null : flash_price_cents($p);
 })();
 </script>
 <?php endif; ?>
-<script>
-// 最近浏览：把当前商品 id 写入 localStorage hm_recent（去重、最新在前、最多 10 个），首页右栏读取展示
-(function () {
-    try {
-        var id = <?php echo json_encode($id); ?>;
-        var key = 'hm_recent';
-        var arr = JSON.parse(localStorage.getItem(key) || '[]');
-        if (!Array.isArray(arr)) arr = [];
-        arr = arr.filter(function (x) { return x !== id; });
-        arr.unshift(id);
-        arr = arr.slice(0, 10);
-        localStorage.setItem(key, JSON.stringify(arr));
-    } catch (e) { /* 隐私模式等 localStorage 不可用时静默跳过 */ }
-})();
-</script>
 <?php page_end(); ?>

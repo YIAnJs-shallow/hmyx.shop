@@ -370,22 +370,9 @@ $registerHtml=file_get_contents(__DIR__.'/../register.php');
 check($skyJs && strpos($loginHtml,'js/sky.js')!==false && strpos($registerHtml,'js/sky.js')!==false,'js/sky.js exists and both auth pages include it');
 $authCss=file_get_contents(__DIR__.'/../css/auth.css');
 check(strpos($authCss,'@keyframes meteorFly')===false && strpos($authCss,'@keyframes aurora')===false && strpos($authCss,'@keyframes cometFly')===false && strpos($authCss,'@keyframes cometGlow')===false && strpos($authCss,'@keyframes twinkle')===false,'auth.css has no meteor/aurora/comet/twinkle CSS animation residue');
-// 11) 首页三栏改造：recent_view 接口数据层只返回在售且审核通过的商品（JSON 可解码）
-query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('最近浏览下架商品','9.90',1,?,0,'approved')",[$category]); $recentOffShelf=(int)$conn->insert_id;
-query("UPDATE products SET audit_status='pending' WHERE id=?",[$pFlash]);
-$recentJson=json_encode(recent_view_products([$p1,$recentOffShelf,$pFlash]),JSON_UNESCAPED_UNICODE);
-$recentList=json_decode($recentJson,true);
-check(is_array($recentList) && count($recentList)===1 && (int)$recentList[0]['id']===$p1 && $recentList[0]['url']==='detail.php?id='.$p1,'recent view returns JSON containing only on-sale approved products');
-query("UPDATE products SET audit_status='approved' WHERE id=?",[$pFlash]);
-// 12) 未登录首页右栏含登录引导链接（源码级检查：登录/注册入口随新人礼包文案存在）
+// 11) 首页已回退三栏改造：不再引用 sky.js，无 home-grid 三栏容器
 $indexHtml=file_get_contents(__DIR__.'/../index.php');
-check(strpos($indexHtml,'登录后享新人礼包')!==false && strpos($indexHtml,'user_login.php')!==false && strpos($indexHtml,'register.php')!==false,'logged-out homepage side rail contains login guide links');
-// 13) 三栏容器类存在：index.php 使用 .home-grid，shop.css 提供对应布局
-$shopCss=file_get_contents(__DIR__.'/../css/shop.css');
-check(strpos($indexHtml,'home-grid')!==false && strpos($indexHtml,'cat-panel')!==false && strpos($indexHtml,'side-rail')!==false && strpos($shopCss,'.home-grid')!==false,'three-column home grid container classes exist');
-// 14) 分类子面板遮挡修复：css 中 .cat-subs 规则 z-index>=80 且存在鼠标路径桥 ::before
-preg_match('/\.cat-subs\{[^}]*\}/',$shopCss,$catSubsRule);
-check(!empty($catSubsRule) && preg_match('/z-index:\s*(\d+)/',$catSubsRule[0],$zMatch) && (int)$zMatch[1]>=80 && strpos($catSubsRule[0],'max-height:70vh')!==false && strpos($shopCss,'.cat-subs::before')!==false,'cat subs panel has z-index>=80, viewport cap and hover bridge pseudo-element');
+check(strpos($indexHtml,'js/sky.js')===false && strpos($indexHtml,'home-grid')===false,'homepage no longer references sky.js or the three-column home-grid layout');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());

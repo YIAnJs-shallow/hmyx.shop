@@ -511,33 +511,6 @@ function shop_statement_rows($shopId, $month) {
     $rows[] = ['汇总', "\t".count($orders), '', '', "\t".money($sales), "\t".money($discount), "\t".money($paid), ''];
     return $rows;
 }
-// ===== 最近浏览：批量取在售商品摘要（首页右栏与 recent_view.php 共用；单次 IN 查询，禁止循环查库） =====
-// 只返回 status=1 且审核通过（店铺须在营）的商品，按传入 id 顺序（即浏览时间倒序）输出，最多 10 条
-function recent_view_products(array $productIds) {
-    $ids = [];
-    foreach ($productIds as $pid) {
-        $pid = (int)$pid;
-        if ($pid > 0) $ids[$pid] = true;
-    }
-    if (!$ids) return [];
-    $ids = array_slice(array_keys($ids), 0, 10);
-    $in = implode(',', array_fill(0, count($ids), '?'));
-    $found = [];
-    foreach (rows("SELECT p.id, p.title, p.price, p.image_url FROM products p
-        WHERE p.id IN ($in) AND p.status = 1 AND p.audit_status = 'approved'
-          AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops s WHERE s.id = p.shop_id AND s.status = 1))", $ids) as $row) {
-        $found[(int)$row['id']] = [
-            'id' => (int)$row['id'],
-            'title' => (string)$row['title'],
-            'price' => (string)$row['price'],
-            'image_url' => $row['image_url'] ?: '',
-            'url' => 'detail.php?id=' . (int)$row['id'],
-        ];
-    }
-    $list = [];
-    foreach ($ids as $pid) if (isset($found[$pid])) $list[] = $found[$pid];
-    return $list;
-}
 // ===== 搜索联想：日志前缀热词 + 在售商品名合并去重，最多 8 条；未登录可访问 =====
 function search_suggest_words($keyword) {
     $keyword = trim((string)$keyword);
