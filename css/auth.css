@@ -136,7 +136,7 @@ body.auth-page {
     border-radius: 2px;
     background: linear-gradient(to left, transparent, rgba(255, 255, 255, 0.55) 45%, #fff 90%);
     opacity: 0;
-    animation: meteorFly 4s linear infinite;
+    animation: meteorFly 28s linear infinite;
 }
 
 /* 头部 8px 亮白光核 */
@@ -154,20 +154,21 @@ body.auth-page {
 }
 
 /* 8 颗各自起点 / 长度 / 角度（-45deg 附近 ±5deg 抖动）与序列延迟 */
-.meteor.m1 { top: -4%; left: 5%;  width: 180px; --r: -44deg; animation-delay: 0s;     }
-.meteor.m2 { top:  8%; left: 20%; width: 160px; --r: -46deg; animation-delay: -4.5s;  }
-.meteor.m3 { top: -2%; left: 38%; width: 200px; --r: -42deg; animation-delay: -9s;    }
-.meteor.m4 { top: 12%; left: 55%; width: 150px; --r: -48deg; animation-delay: -13.5s; }
-.meteor.m5 { top:  2%; left: 65%; width: 170px; --r: -45deg; animation-delay: -18s;  }
-.meteor.m6 { top: -6%; left: 14%; width: 190px; --r: -41deg; animation-delay: -22.5s; }
-.meteor.m7 { top: 10%; left: 45%; width: 140px; --r: -47deg; animation-delay: -27s;  }
-.meteor.m8 { top:  0%; left: 75%; width: 160px; --r: -43deg; animation-delay: -31.5s; }
+.meteor.m1 { top: -4%; left: 5%;  width: 180px; --r: -44deg; animation-delay: 0.0s;     }
+.meteor.m2 { top:  8%; left: 20%; width: 160px; --r: -46deg; animation-delay: -3.5s;  }
+.meteor.m3 { top: -2%; left: 38%; width: 200px; --r: -42deg; animation-delay: -7.0s;    }
+.meteor.m4 { top: 12%; left: 55%; width: 150px; --r: -48deg; animation-delay: -10.5s; }
+.meteor.m5 { top:  2%; left: 65%; width: 170px; --r: -45deg; animation-delay: -14.0s;  }
+.meteor.m6 { top: -6%; left: 14%; width: 190px; --r: -41deg; animation-delay: -17.5s; }
+.meteor.m7 { top: 10%; left: 45%; width: 140px; --r: -47deg; animation-delay: -21.0s;  }
+.meteor.m8 { top:  0%; left: 75%; width: 160px; --r: -43deg; animation-delay: -24.5s; }
 
 @keyframes meteorFly {
-    0%, 70%   { transform: translate(0, 0) rotate(var(--r, -45deg)); opacity: 0; }
-    72%       { transform: translate(-68px, 68px) rotate(var(--r, -45deg)); opacity: 1; }
-    84%       { transform: translate(-300px, 300px) rotate(var(--r, -45deg)); opacity: 0.9; }
-    85%, 100% { transform: translate(-340px, 340px) rotate(var(--r, -45deg)); opacity: 0; }
+    /* 周期 28s：0~0.6s(0~2.14%) 完成一次划过，其余时间静伏 */
+    0%         { transform: translate(0, 0) rotate(var(--r, -45deg)); opacity: 0; }
+    0.4%       { opacity: 1; }
+    1.6%       { transform: translate(-260px, 260px) rotate(var(--r, -45deg)); opacity: 1; }
+    2.14%,100% { transform: translate(-340px, 340px) rotate(var(--r, -45deg)); opacity: 0; }
 }
 
 /* --- 主角：《你的名字》风格紫色彗星，40s 一遇，加载 4s 后首次划过 ---
