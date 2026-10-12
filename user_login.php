@@ -215,6 +215,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     </script>
 
-    <script src="js/sky.js?v=8"></script>
+    <script src="js/sky.js?v=9"></script>
 </body>
 </html>

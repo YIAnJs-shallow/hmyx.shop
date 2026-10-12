@@ -1,5 +1,6 @@
-/* ===== 登录/注册页 Canvas 天空背景（南极雪原夜空） =====
+/* ===== Canvas 天空背景（南极雪原夜空）：登录/注册页全屏 + 首页 Hero 低密度 =====
  * 三层按帧序绘制：① 漫天繁星 + 银河雾 ② 极光帘幕 ③ 雪原反光
+ * 密度开关（data-density="low"）：首页 Hero 80 星 / 2 光带，无流星无彗星
  * 纯手写 Canvas 2D，无第三方库；requestAnimationFrame 驱动：
  *   - devicePixelRatio 上限 1.5
  *   - visibilitychange 页面隐藏即暂停循环
@@ -9,9 +10,16 @@
 (function () {
     'use strict';
 
+/* 密度配置：normal = 登录/注册页全屏（260 星 / 5 光带）；
+ * low = 首页 Hero 横幅（80 星 / 2 光带，无流星无彗星，动画节奏不变）。
+ * 通过 <canvas data-density="low"> 或全局 window.SKY_DENSITY 指定。 */
     var canvas = document.getElementById('sky-canvas');
     if (!canvas || !canvas.getContext) return;
     var ctx = canvas.getContext('2d');
+
+    var DENSITY = (canvas.getAttribute('data-density') || window.SKY_DENSITY || 'normal') === 'low' ? 'low' : 'normal';
+    var STAR_N = DENSITY === 'low' ? 80 : 260;   // 低密度：星星 80 颗
+    var BAND_N = DENSITY === 'low' ? 2 : 5;      // 低密度：极光 2 条光带
 
     var MAX_DPR = 1.5;
     var REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -48,8 +56,15 @@
 
     /* ---------- 初始化：画布 / 星表 / 光带 / 流星 / 离屏贴图 ---------- */
     function build() {
-        W = window.innerWidth;
-        H = window.innerHeight;
+        /* 画布尺寸：fixed 全屏（登录/注册页）取视口；嵌在容器内（首页 Hero）取父元素大小 */
+        if (window.getComputedStyle && window.getComputedStyle(canvas).position === 'fixed') {
+            W = window.innerWidth;
+            H = window.innerHeight;
+        } else {
+            var rect = canvas.parentElement.getBoundingClientRect();
+            W = Math.max(2, rect.width);
+            H = Math.max(2, rect.height);
+        }
         var dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
         canvas.width = Math.max(2, Math.round(W * dpr));
         canvas.height = Math.max(2, Math.round(H * dpr));
@@ -57,12 +72,12 @@
         canvas.style.height = H + 'px';
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        /* 星表：260 颗，35% 撒入 -25deg 银河对角带（高斯散布） */
+        /* 星表：normal 260 颗 / low 80 颗，35% 撒入 -25deg 银河对角带（高斯散布） */
         stars = [];
         var i, u, x, y, size, r, col;
         /* 银河中心线：右上 (0.9W, -0.1H) → 左下 (0.1W, 1.1H) */
         var ldx = -0.8 * W, ldy = 1.2 * H, llen = Math.hypot(ldx, ldy);
-        for (i = 0; i < 260; i++) {
+        for (i = 0; i < STAR_N; i++) {
             size = rand(0.5, 2.2);
             r = Math.random();
             col = STAR_COLORS[r < 0.7 ? 0 : (r < 0.9 ? 1 : 2)];
@@ -84,10 +99,10 @@
             });
         }
 
-        /* 极光光带：5 条铺满页宽 130%，各参数略异（k1≈0.008/w1≈0.6/k2≈0.02/w2≈1.4，A1≈60/A2≈25） */
+        /* 极光光带：normal 5 条 / low 2 条，铺满页宽 130%，各参数略异（k1≈0.008/w1≈0.6/k2≈0.02/w2≈1.4，A1≈60/A2≈25） */
         bands = [];
-        var bandW = W * 1.3 / 5;
-        for (i = 0; i < 5; i++) {
+        var bandW = W * 1.3 / BAND_N;
+        for (i = 0; i < BAND_N; i++) {
             var b = {
                 x0: -W * 0.15 + i * bandW,
                 w: bandW,

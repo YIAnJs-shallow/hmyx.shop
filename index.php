@@ -129,6 +129,15 @@ $my_searches = $is_logged_in && !empty($_SESSION['user_id'])
 // 5. 首页推荐板块数据：热销榜 + 猜你喜欢
 $best_sellers = best_sellers(10);
 $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
+
+// 6. 右栏用户服务区：未读消息角标（与 page_start 同一查询）+ 未使用优惠券张数（各一次 COUNT）
+$unread_count = 0;
+$coupon_count = 0;
+if (!empty($_SESSION['user_id'])) {
+    $unread_count = (int)one('SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND read_at IS NULL', [(int)$_SESSION['user_id']])['n'];
+    $coupon_count = (int)one('SELECT COUNT(*) AS n FROM user_coupons uc JOIN coupons c ON c.id=uc.coupon_id
+        WHERE uc.user_id=? AND uc.status=\'unused\' AND (c.expire_at IS NULL OR c.expire_at>NOW())', [(int)$_SESSION['user_id']])['n'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -186,11 +195,15 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         </nav>
     </header>
 
-    <main class="container" style="max-width: 1200px; margin: 20px auto; padding: 0 15px; width: 100%; box-sizing: border-box;">
-        <div class="search-bar-container" style="position: relative;">
+    <!-- 深空 Hero 横幅：低密度 Canvas 天空（js/sky.js data-density="low"）+ 渐变标语 + 搜索框整组迁入 -->
+    <section class="home-hero">
+        <canvas id="sky-canvas" class="hero-canvas" data-density="low" aria-hidden="true"></canvas>
+        <div class="hero-inner">
+            <h1 class="hero-brand">惠蒙优选 · 好货精选</h1>
+            <div class="search-bar-container" style="position: relative;">
             <form action="index.php" method="GET" class="search-form">
                 <input type="text" name="keyword" id="search-keyword" class="search-input" autocomplete="off" placeholder="🔍 输入商品名称关键词搜索..." value="<?php echo htmlspecialchars($keyword); ?>">
-                
+
                 <select name="category_id" class="search-select">
     <option value="0">全部分类</option>
     <?php foreach ($categories as $main_id => $main_cat): ?>
@@ -198,7 +211,7 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         <option value="<?php echo $main_id; ?>" <?php echo $category_id == $main_id ? 'selected' : ''; ?> style="font-weight: bold;">
             【<?php echo htmlspecialchars($main_cat['name']); ?>】
         </option>
-        
+
         <!-- 二级细分分类 -->
         <?php foreach ($main_cat['subs'] as $sub): ?>
             <option value="<?php echo $sub['id']; ?>" <?php echo $category_id == $sub['id'] ? 'selected' : ''; ?>>
@@ -209,13 +222,51 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
 </select>
 
                 <select name="sort" class="search-select" aria-label="排序"><?php foreach(['newest'=>'最新上架','price_asc'=>'价格从低到高','price_desc'=>'价格从高到低'] as $key=>$label): ?><option value="<?php echo $key; ?>" <?php echo $sort===$key?'selected':''; ?>><?php echo $label; ?></option><?php endforeach; ?></select><button type="submit" class="search-btn">搜索</button>
-                
+
                 <?php if (!empty($keyword) || $category_id > 0): ?>
                     <a href="index.php" class="reset-btn">重置条件</a>
                 <?php endif; ?>
             </form>
             <ul id="search-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;list-style:none;margin:0;padding:0;background:#fff;border:1px solid #cbd5e1;border-top:none;border-radius:0 0 8px 8px;box-shadow:0 8px 16px rgba(15,23,42,.12);max-height:320px;overflow-y:auto;"></ul>
         </div>
+        </div>
+    </section>
+
+    <!-- 京东式三栏布局：左分类面板 / 中内容 / 右用户服务区（仅首页使用） -->
+    <main class="home-grid">
+        <!-- 左栏：分类面板（hover 浮出二级分类） -->
+        <aside class="cat-panel">
+            <h3>全部商品分类</h3>
+            <?php
+                // 分类图标占位（emoji 循环取用）
+                $cat_icons = ['🛍️', '🍎', '📱', '👕', '🏠', '🎁', '📚', '🧸', '🔧', '💄'];
+                $icon_i = 0;
+            ?>
+            <?php foreach ($categories as $main_id => $main_cat): ?>
+                <?php
+                    $cat_active = ($category_id == $main_id) || in_array($category_id, array_column($main_cat['subs'] ?? [], 'id'));
+                ?>
+                <div class="cat-item<?php echo $cat_active ? ' active' : ''; ?>">
+                    <a href="index.php?category_id=<?php echo $main_id; ?>">
+                        <span><?php echo $cat_icons[$icon_i++ % count($cat_icons)]; ?></span>
+                        <span><?php echo htmlspecialchars($main_cat['name']); ?></span>
+                        <?php if (!empty($main_cat['subs'])): ?>
+                            <span class="cat-count"><?php echo count($main_cat['subs']); ?></span>
+                        <?php endif; ?>
+                    </a>
+                    <?php if (!empty($main_cat['subs'])): ?>
+                        <div class="cat-subs">
+                            <?php foreach ($main_cat['subs'] as $sub): ?>
+                                <a href="index.php?category_id=<?php echo $sub['id']; ?>" class="<?php echo $category_id == $sub['id'] ? 'active' : ''; ?>"><?php echo htmlspecialchars($sub['name']); ?></a>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </aside>
+
+        <!-- 中栏：热销榜 / 猜你喜欢 / 商品列表 -->
+        <div class="home-main-col">
         <?php if (!empty($hot_searches) || !empty($my_searches)): ?>
         <div class="search-trends" style="margin:-12px 0 20px;font-size:.85rem;color:#475569;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;">
             <?php if (!empty($hot_searches)): ?>
@@ -345,6 +396,42 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         <span>第 <?php echo $page; ?> 页 · 共 <?php echo $total_products; ?> 件商品</span>
         <?php if($page*12<$total_products): ?><a href="?<?php echo htmlspecialchars(http_build_query(['keyword'=>$keyword,'category_id'=>$category_id,'sort'=>$sort,'page'=>$page+1])); ?>">下一页</a><?php endif; ?>
         </nav>
+        </div><!-- /home-main-col -->
+
+        <!-- 右栏：用户服务区 -->
+        <aside class="side-rail">
+            <section class="card">
+                <?php if ($is_logged_in): ?>
+                    <p class="user-hi">Hi，<?php echo h($_SESSION['username'] ?? '用户'); ?></p>
+                    <div class="user-links">
+                        <a href="my_orders.php">📦 我的订单</a>
+                        <a href="my_coupons.php">🎟️ 我的优惠券</a>
+                        <a href="notifications.php">🔔 消息中心<?php if ($unread_count > 0): ?><span class="dot"><?php echo $unread_count; ?></span><?php endif; ?></a>
+                        <a href="addresses.php">📍 地址管理</a>
+                    </div>
+                <?php else: ?>
+                    <p class="user-hi">登录后享新人礼包</p>
+                    <div class="user-links">
+                        <a href="user_login.php" style="background:#08776b;color:#fff;">立即登录</a>
+                        <a href="register.php">免费注册</a>
+                    </div>
+                <?php endif; ?>
+            </section>
+
+            <?php if ($is_logged_in): ?>
+            <section class="card">
+                <h3>🎟️ 我的优惠券</h3>
+                <p class="coupon-count"><?php echo $coupon_count; ?> 张未使用</p>
+                <a href="my_coupons.php">去领券 →</a>
+            </section>
+            <?php endif; ?>
+
+            <section class="card">
+                <h3>🕘 最近浏览</h3>
+                <ul class="recent-list" id="recent-list"><li class="recent-empty">暂无浏览记录</li></ul>
+                <button type="button" class="recent-clear" id="recent-clear">清空浏览记录</button>
+            </section>
+        </aside>
     </main>
 
     <!-- 底部版权信息 -->
@@ -390,6 +477,58 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         });
         document.addEventListener('click', function (e) {
             if (e.target !== input && !box.contains(e.target)) hide();
+        });
+    })();
+    </script>
+
+    <!-- Hero 深空天空（低密度）与最近浏览（localStorage hm_recent + recent_view.php 批量查询） -->
+    <script src="js/sky.js?v=9"></script>
+    <script>
+    (function () {
+        // 最近浏览：读 localStorage hm_recent，POST recent_view.php 批量取在售商品摘要，渲染前 5 条（未登录可用）
+        var list = document.getElementById('recent-list');
+        var clearBtn = document.getElementById('recent-clear');
+        if (!list || !clearBtn) return;
+        var KEY = 'hm_recent';
+        function readIds() {
+            try { var a = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(a) ? a : []; }
+            catch (e) { return []; }
+        }
+        function render(items) {
+            list.innerHTML = '';
+            if (!items.length) {
+                var li = document.createElement('li');
+                li.className = 'recent-empty';
+                li.textContent = '暂无浏览记录';
+                list.appendChild(li);
+                return;
+            }
+            items.slice(0, 5).forEach(function (item) {
+                var li = document.createElement('li');
+                var a = document.createElement('a');
+                a.href = item.url;
+                a.textContent = item.title;
+                var price = document.createElement('span');
+                price.className = 'price';
+                price.textContent = '￥' + item.price;
+                li.appendChild(a);
+                li.appendChild(price);
+                list.appendChild(li);
+            });
+        }
+        var ids = readIds();
+        if (ids.length) {
+            var form = new FormData();
+            form.append('csrf_token', <?php echo json_encode(csrf_token()); ?>);
+            ids.slice(0, 10).forEach(function (id) { form.append('product_ids[]', id); });
+            fetch('recent_view.php', { method: 'POST', body: form })
+                .then(function (res) { return res.json(); })
+                .then(function (items) { render(Array.isArray(items) ? items : []); })
+                .catch(function () {});
+        }
+        clearBtn.addEventListener('click', function () {
+            try { localStorage.removeItem(KEY); } catch (e) {}
+            render([]);
         });
     })();
     </script>
