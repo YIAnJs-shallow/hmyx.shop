@@ -44,21 +44,57 @@ function can_manage_order($order, $userId) {
     return ($_SESSION['role'] ?? '') === 'merchant' && !empty($order['shop_id']) &&
         one('SELECT id FROM shops WHERE id=? AND user_id=? AND status=1', [(int)$order['shop_id'], $userId]);
 }
-function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false) {
+// 商品是否处于 SKU 模式：仅当存在 status=1 的规格记录时生效，否则沿用 products.price/stock 默认规格
+function product_active_skus($productId, $lock = false) {
+    return rows('SELECT * FROM product_skus WHERE product_id=? AND status=1 ORDER BY id'.($lock ? ' FOR UPDATE' : ''), [(int)$productId]);
+}
+function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId = 0) {
     $suffix = $lock ? ' FOR UPDATE' : '';
+    $lines = [];
     if ($productId) {
-        $lines = rows('SELECT p.*, ? AS quantity FROM products p WHERE p.id=?'.$suffix, [quantity($qty), $productId]);
-    } else {
-        $lines = rows('SELECT p.*, c.quantity FROM (SELECT product_id,SUM(quantity) AS quantity FROM cart WHERE user_id=? GROUP BY product_id) c LEFT JOIN products p ON p.id=c.product_id ORDER BY c.product_id', [$userId]);
-        // Lock each product in stable order; the user row serializes cart changes.
-        if ($lock) foreach ($lines as &$line) {
-            $product = one('SELECT * FROM products WHERE id=? FOR UPDATE', [(int)$line['id']]);
-            if (!$product) throw new DomainException('购物车商品已删除，请移除后重新结算');
-            $line = array_merge($product, ['quantity' => $line['quantity']]);
+        $product = one('SELECT p.* FROM products p WHERE p.id=?'.$suffix, [(int)$productId]);
+        if (!$product) throw new DomainException('没有可结算的商品');
+        $skus = product_active_skus($productId, $lock);
+        if ($skus) {
+            $found = null;
+            foreach ($skus as $sku) if ((int)$sku['id'] === (int)$skuId) $found = $sku;
+            if (!$found) throw new DomainException('请选择有效的商品规格');
+            // SKU 行的价格与库存以 product_skus 为准（锁粒度为该 sku 行）
+            $product['price'] = money((int)$found['price_cents']);
+            $product['stock'] = (int)$found['stock'];
+            $lines[] = array_merge($product, ['quantity' => $qty, 'sku_id' => (int)$found['id'], 'sku_name' => $found['sku_name']]);
+        } else {
+            if ($skuId) throw new DomainException('商品规格已失效，请重新选择');
+            $lines[] = array_merge($product, ['quantity' => $qty, 'sku_id' => 0, 'sku_name' => null]);
         }
-        unset($line);
+    } else {
+        $cartRows = rows('SELECT product_id, sku_id, SUM(quantity) AS quantity FROM cart WHERE user_id=? GROUP BY product_id, sku_id ORDER BY product_id, sku_id', [$userId]);
+        if (!$cartRows) throw new DomainException('没有可结算的商品');
+        // Lock each product in stable order; the user row serializes cart changes.
+        $products = [];
+        foreach (array_unique(array_map('intval', array_column($cartRows, 'product_id'))) as $pid) {
+            $product = one('SELECT p.* FROM products p WHERE p.id=?'.$suffix, [$pid]);
+            if (!$product) throw new DomainException('购物车商品已删除，请移除后重新结算');
+            $products[$pid] = $product;
+        }
+        foreach ($cartRows as $row) {
+            $pid = (int)$row['product_id'];
+            $line = array_merge($products[$pid], ['quantity' => $row['quantity'], 'sku_id' => 0, 'sku_name' => null]);
+            $skus = product_active_skus($pid, $lock);
+            if ($skus) {
+                $found = null;
+                foreach ($skus as $sku) if ((int)$sku['id'] === (int)$row['sku_id']) $found = $sku;
+                if (!$found) throw new DomainException($line['title'].' 的规格已失效，请返回购物车处理');
+                $line['price'] = money((int)$found['price_cents']);
+                $line['stock'] = (int)$found['stock'];
+                $line['sku_id'] = (int)$found['id'];
+                $line['sku_name'] = $found['sku_name'];
+            } elseif ((int)$row['sku_id'] !== 0) {
+                throw new DomainException($line['title'].' 的规格已失效，请返回购物车处理');
+            }
+            $lines[] = $line;
+        }
     }
-    if (!$lines) throw new DomainException('没有可结算的商品');
     foreach ($lines as &$line) {
         $line['quantity'] = quantity($line['quantity']);
         if (empty($line['id']) || (int)$line['status'] !== 1 || $line['audit_status'] !== 'approved') throw new DomainException('商品已下架或未通过审核，请返回购物车处理');
@@ -67,9 +103,10 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false) {
         $line['subtotal_cents'] = cents($line['price']) * $line['quantity'];
         if ($line['subtotal_cents'] <= 0 || $line['subtotal_cents'] > 9999999999) throw new DomainException('商品金额超出允许范围');
     }
+    unset($line);
     return $lines;
 }
-function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0) {
+function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0, $skuId = 0) {
     global $conn;
     $conn->begin_transaction();
     try {
@@ -79,7 +116,7 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
         $address = one('SELECT * FROM user_addresses WHERE id=? AND user_id=?', [$addressId, $userId]);
         if (!$address) throw new DomainException('请选择自己的有效收货地址');
         if (!$address['receiver_name'] || !$address['receiver_phone'] || !$address['receiver_address']) throw new DomainException('请先补全收货地址');
-        $lines = checkout_lines($userId, $productId, $qty, true);
+        $lines = checkout_lines($userId, $productId, $qty, true, $skuId);
         $groups = [];
         foreach ($lines as $line) $groups[(int)$line['shop_id']][] = $line;
         $ids = [];
@@ -104,11 +141,16 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
             if (isset($shares[$shopId])) query('UPDATE orders SET discount_amount=?, coupon_user_id=? WHERE id=?', [money($shares[$shopId]), (int)$userCouponId, $orderId]);
             $ids[] = $orderId;
             foreach ($items as $item) {
-                $stockUpdate = query('UPDATE products SET stock=stock-? WHERE id=? AND stock>=?', [$item['quantity'],(int)$item['id'],$item['quantity']]);
+                // SKU 模式扣减 product_skus 行（行锁），默认规格仍扣 products 行
+                if ((int)$item['sku_id'] > 0) {
+                    $stockUpdate = query('UPDATE product_skus SET stock=stock-? WHERE id=? AND stock>=?', [$item['quantity'],(int)$item['sku_id'],$item['quantity']]);
+                } else {
+                    $stockUpdate = query('UPDATE products SET stock=stock-? WHERE id=? AND stock>=?', [$item['quantity'],(int)$item['id'],$item['quantity']]);
+                }
                 if ($stockUpdate->affected_rows !== 1) throw new DomainException('库存发生变化，请重新下单');
-                query('INSERT INTO order_items(order_id,product_id,price,quantity,product_title,product_image) VALUES(?,?,?,?,?,?)',
-                    [$orderId,(int)$item['id'],$item['price'],$item['quantity'],$item['title'],$item['image_url'] ?? '']);
-                if (!$productId) query('DELETE FROM cart WHERE user_id=? AND product_id=?', [$userId,(int)$item['id']]);
+                query('INSERT INTO order_items(order_id,product_id,price,quantity,product_title,product_image,sku_id,sku_name) VALUES(?,?,?,?,?,?,?,?)',
+                    [$orderId,(int)$item['id'],$item['price'],$item['quantity'],$item['title'],$item['image_url'] ?? '',(int)$item['sku_id'] ?: null,$item['sku_name']]);
+                if (!$productId) query('DELETE FROM cart WHERE user_id=? AND product_id=? AND sku_id=?', [$userId,(int)$item['id'],(int)$item['sku_id']]);
             }
         }
         $conn->commit(); return $ids;
@@ -118,8 +160,10 @@ function release_stock($order) {
     require_once __DIR__ . '/coupon.php';
     coupon_restore_for_order((int)$order['id']);
     if (!(int)$order['stock_reserved']) return;
-    foreach (rows('SELECT product_id,quantity FROM order_items WHERE order_id=? ORDER BY product_id', [(int)$order['id']]) as $item) {
-        if ($item['product_id']) query('UPDATE products SET stock=stock+? WHERE id=?', [(int)$item['quantity'],(int)$item['product_id']]);
+    foreach (rows('SELECT product_id,sku_id,quantity FROM order_items WHERE order_id=? ORDER BY product_id', [(int)$order['id']]) as $item) {
+        // 历史订单与默认规格回补 products 行，SKU 订单回补对应 sku 行
+        if (!empty($item['sku_id'])) query('UPDATE product_skus SET stock=stock+? WHERE id=?', [(int)$item['quantity'],(int)$item['sku_id']]);
+        elseif ($item['product_id']) query('UPDATE products SET stock=stock+? WHERE id=?', [(int)$item['quantity'],(int)$item['product_id']]);
     }
     query('UPDATE orders SET stock_reserved=0 WHERE id=?', [(int)$order['id']]);
 }

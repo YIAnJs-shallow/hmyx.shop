@@ -92,6 +92,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // PHP7.3 mysqlnd 下 bind_param 混合 NULL 会破坏 'd' 类型参数，价格改用字符串绑定
     $price_str = number_format($price, 2, '.', '');
 
+    // 解析规格行：整行留空则忽略（沿用默认规格），只要填写就必须完整（名称/价格/库存）
+    $sku_rows = [];
+    $sku_invalid = false;
+    $sku_names = $_POST['sku_name'] ?? [];
+    foreach ($sku_names as $i => $raw_name) {
+        $name = trim((string)$raw_name);
+        $price_raw = (string)($_POST['sku_price'][$i] ?? '');
+        $stock_raw = (string)($_POST['sku_stock'][$i] ?? '');
+        if ($name === '' && $price_raw === '' && $stock_raw === '') continue;
+        if ($name === '' || mb_strlen($name) > 100 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', $price_raw) || (float)$price_raw <= 0 || !preg_match('/^\d+$/D', $stock_raw)) {
+            $sku_invalid = true; break;
+        }
+        $parts = explode('.', $price_raw);
+        $sku_rows[] = ['name' => $name, 'price_cents' => (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0'), 'stock' => (int)$stock_raw];
+    }
+
     // 处理图片上传
     if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
         try { $image_url = save_image_upload($_FILES['image']); }
@@ -99,7 +115,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($msg_type !== 'error') {
-        if ($price <= 0 || $price > 99999999.99 || $stock < 0 || $stock > 100000000 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', (string)($_POST['price'] ?? '')) || !preg_match('/^\d+$/D', (string)($_POST['stock'] ?? ''))) {
+        if ($sku_invalid) {
+            $msg = '每个规格行须完整填写名称、大于零的价格（最多两位小数）与非负整数库存！';
+            $msg_type = 'error';
+        } elseif ($price <= 0 || $price > 99999999.99 || $stock < 0 || $stock > 100000000 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', (string)($_POST['price'] ?? '')) || !preg_match('/^\d+$/D', (string)($_POST['stock'] ?? ''))) {
             $msg = '价格须大于零且最多两位小数，库存须为非负整数！';
             $msg_type = 'error';
         } elseif (empty($title) || mb_strlen($title) > 100) {
@@ -107,6 +126,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg_type = 'error';
         } else {
             try {
+                // 商品与规格同事务写入，避免出现"有商品无规格"的半成品
+                if ($db instanceof PDO) $db->beginTransaction(); else $db->begin_transaction();
                 // 审核策略：管理员发布直接通过；商家发布需管理员审核
                 $audit_status = $is_admin ? 'approved' : 'pending';
                 if ($db instanceof PDO) {
@@ -122,7 +143,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!$exec_ok) $mysqli_err = $stmt->error;
                 }
 
+                if (!empty($ok) && $sku_rows) {
+                    $newProductId = $db instanceof PDO ? (int)$db->lastInsertId() : (int)$db->insert_id;
+                    if ($db instanceof PDO) {
+                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock) VALUES (?, ?, ?, ?)");
+                        foreach ($sku_rows as $row) $stmt->execute([$newProductId, $row['name'], $row['price_cents'], $row['stock']]);
+                    } elseif ($db instanceof mysqli) {
+                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock) VALUES (?, ?, ?, ?)");
+                        if (!$stmt) throw new Exception('SQL 预处理失败');
+                        $pid = $newProductId; $nm = ''; $pc = 0; $st = 0;
+                        $stmt->bind_param("isii", $pid, $nm, $pc, $st);
+                        foreach ($sku_rows as $row) { $nm = $row['name']; $pc = $row['price_cents']; $st = $row['stock']; $stmt->execute(); }
+                        $stmt->close();
+                    }
+                }
+
                 if (!empty($ok)) {
+                    $db->commit();
                     if ($status === 0) {
                         $status_tip = '商品已暂存为草稿！';
                     } elseif ($audit_status === 'pending') {
@@ -133,10 +170,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     echo "<script>alert('{$status_tip}'); location.href='{$back_url}';</script>";
                     exit();
                 } else {
+                    if ($db instanceof PDO) $db->rollBack(); else $db->rollback();
                     $msg = '保存失败，请重试' . (isset($mysqli_err) ? '（' . $mysqli_err . '）' : '');
                     $msg_type = 'error';
                 }
             } catch (Exception $e) {
+                if ($db instanceof PDO) $db->rollBack(); else $db->rollback();
                 $msg = '保存失败：' . $e->getMessage();
                 $msg_type = 'error';
             }
@@ -211,6 +250,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <div class="mb-3">
+                <label class="form-label fw-bold small">商品规格（多规格）</label>
+                <small class="text-muted d-block mb-2">每个规格一行：名称 / 价格（元）/ 库存；全部留空则仅使用上方默认规格，填写任意一格即须整行完整。</small>
+                <div id="sku-rows">
+                    <div class="row g-2 mb-2 sku-row">
+                        <div class="col-4"><input type="text" name="sku_name[]" class="form-control" placeholder="规格名称，如 500ml 装"></div>
+                        <div class="col-3"><input type="number" step="0.01" min="0.01" name="sku_price[]" class="form-control" placeholder="价格（元）"></div>
+                        <div class="col-3"><input type="number" min="0" name="sku_stock[]" class="form-control" placeholder="库存"></div>
+                        <div class="col-2"><button type="button" class="btn btn-outline-danger w-100 sku-remove">删除规格</button></div>
+                    </div>
+                </div>
+                <button type="button" id="sku-add" class="btn btn-outline-secondary btn-sm">+ 添加规格</button>
+            </div>
+
+            <div class="mb-3">
                 <label class="form-label fw-bold small">商品主图</label>
                 <input type="file" name="image" accept="image/*" class="form-control">
                 <small class="text-muted">支持 JPG / PNG / GIF / WEBP，不上传则无主图</small>
@@ -234,5 +287,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function () {
+    var rows = document.getElementById('sku-rows');
+    document.getElementById('sku-add').addEventListener('click', function () {
+        var clone = rows.querySelector('.sku-row').cloneNode(true);
+        clone.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+        rows.appendChild(clone);
+    });
+    rows.addEventListener('click', function (e) {
+        if (e.target.classList.contains('sku-remove')) {
+            if (rows.querySelectorAll('.sku-row').length > 1) e.target.closest('.sku-row').remove();
+        }
+    });
+})();
+</script>
 </body>
 </html>

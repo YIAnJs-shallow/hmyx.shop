@@ -108,6 +108,25 @@ try {
 $msg = '';
 $msg_type = 'success';
 
+// ==================== 读取现有生效规格（多规格编辑区预填） ====================
+$existing_skus = [];
+try {
+    if ($db instanceof PDO) {
+        $stmt = $db->prepare("SELECT id, sku_name, price_cents, stock FROM product_skus WHERE product_id = ? AND status = 1 ORDER BY id");
+        $stmt->execute([$product_id]);
+        $existing_skus = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ($db instanceof mysqli) {
+        $stmt = $db->prepare("SELECT id, sku_name, price_cents, stock FROM product_skus WHERE product_id = ? AND status = 1 ORDER BY id");
+        if ($stmt) {
+            $stmt->bind_param('i', $product_id);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $existing_skus = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
+            $stmt->close();
+        }
+    }
+} catch (Exception $e) {}
+
 // ==================== 4. 处理编辑提交（真正的 UPDATE） ====================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim($_POST['title'] ?? '');
@@ -121,10 +140,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $category_id_val = ($category_id > 0) ? $category_id : null;
 
+    // 解析规格行：整行留空则忽略，只要填写就必须完整（名称/价格/库存）
+    $sku_rows = [];
+    $sku_invalid = false;
+    $sku_names = $_POST['sku_name'] ?? [];
+    foreach ($sku_names as $i => $raw_name) {
+        $name = trim((string)$raw_name);
+        $price_raw = (string)($_POST['sku_price'][$i] ?? '');
+        $stock_raw = (string)($_POST['sku_stock'][$i] ?? '');
+        if ($name === '' && $price_raw === '' && $stock_raw === '') continue;
+        if ($name === '' || mb_strlen($name) > 100 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', $price_raw) || (float)$price_raw <= 0 || !preg_match('/^\d+$/D', $stock_raw)) {
+            $sku_invalid = true; break;
+        }
+        $parts = explode('.', $price_raw);
+        $sku_rows[] = ['name' => $name, 'price_cents' => (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0'), 'stock' => (int)$stock_raw];
+    }
+
     // PHP7.3 mysqlnd 下 bind_param 混合 NULL 会破坏 'd' 类型参数，价格改用字符串绑定
     $price_str = number_format($price, 2, '.', '');
 
-    if ($price <= 0 || $price > 99999999.99 || $stock < 0 || $stock > 100000000 || $expected_stock < 0 || $expected_stock > 100000000 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', (string)($_POST['price'] ?? '')) || !preg_match('/^\d+$/D', (string)($_POST['stock'] ?? '')) || !preg_match('/^\d+$/D', $expected_stock_raw)) {
+    if ($sku_invalid) {
+        $msg = '每个规格行须完整填写名称、大于零的价格（最多两位小数）与非负整数库存！';
+        $msg_type = 'error';
+    } elseif ($price <= 0 || $price > 99999999.99 || $stock < 0 || $stock > 100000000 || $expected_stock < 0 || $expected_stock > 100000000 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', (string)($_POST['price'] ?? '')) || !preg_match('/^\d+$/D', (string)($_POST['stock'] ?? '')) || !preg_match('/^\d+$/D', $expected_stock_raw)) {
         $msg = '价格须大于零且最多两位小数，库存须为非负整数！';
         $msg_type = 'error';
     } elseif (empty($title) || mb_strlen($title) > 100) {
@@ -191,6 +229,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $stmt->execute();
                     $stmt->close();
+                }
+
+                // 规格更新：旧规格整体停用（保留未决订单的回补目标与历史快照），提交的新规格全新写入；全部留空则回到默认规格
+                if ($db instanceof PDO) {
+                    $stmt = $db->prepare("UPDATE product_skus SET status = 0 WHERE product_id = ?");
+                    $stmt->execute([$product_id]);
+                    if ($sku_rows) {
+                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock) VALUES (?, ?, ?, ?)");
+                        foreach ($sku_rows as $row) $stmt->execute([$product_id, $row['name'], $row['price_cents'], $row['stock']]);
+                    }
+                } elseif ($db instanceof mysqli) {
+                    $stmt = $db->prepare("UPDATE product_skus SET status = 0 WHERE product_id = ?");
+                    if (!$stmt) throw new Exception('SQL 预处理失败');
+                    $stmt->bind_param('i', $product_id);
+                    $stmt->execute();
+                    $stmt->close();
+                    if ($sku_rows) {
+                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock) VALUES (?, ?, ?, ?)");
+                        if (!$stmt) throw new Exception('SQL 预处理失败');
+                        $nm = ''; $pc = 0; $st = 0;
+                        $stmt->bind_param("isii", $product_id, $nm, $pc, $st);
+                        foreach ($sku_rows as $row) { $nm = $row['name']; $pc = $row['price_cents']; $st = $row['stock']; $stmt->execute(); }
+                        $stmt->close();
+                    }
                 }
 
                 if ($db instanceof PDO) $db->commit(); else $db->commit();
@@ -283,6 +345,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <div class="mb-3">
+                <label class="form-label fw-bold small">商品规格（多规格）</label>
+                <small class="text-muted d-block mb-2">每个规格一行：名称 / 价格（元）/ 库存；全部留空保存则回到默认规格，填写任意一格即须整行完整。修改后旧规格会停用，历史订单快照不受影响。</small>
+                <div id="sku-rows">
+                    <?php $display_skus = $existing_skus ?: [['sku_name' => '', 'price_cents' => null, 'stock' => '']]; ?>
+                    <?php foreach ($display_skus as $sku): ?>
+                    <div class="row g-2 mb-2 sku-row">
+                        <div class="col-4"><input type="text" name="sku_name[]" class="form-control" placeholder="规格名称，如 500ml 装" value="<?= htmlspecialchars($sku['sku_name'] ?? '') ?>"></div>
+                        <div class="col-3"><input type="number" step="0.01" min="0.01" name="sku_price[]" class="form-control" placeholder="价格（元）" value="<?= $sku['price_cents'] !== null ? sprintf('%d.%02d', intdiv((int)$sku['price_cents'], 100), (int)$sku['price_cents'] % 100) : '' ?>"></div>
+                        <div class="col-3"><input type="number" min="0" name="sku_stock[]" class="form-control" placeholder="库存" value="<?= htmlspecialchars((string)($sku['stock'] ?? '')) ?>"></div>
+                        <div class="col-2"><button type="button" class="btn btn-outline-danger w-100 sku-remove">删除规格</button></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" id="sku-add" class="btn btn-outline-secondary btn-sm">+ 添加规格</button>
+            </div>
+
+            <div class="mb-3">
                 <label class="form-label fw-bold small">商品主图</label>
                 <?php if (!empty($product['image_url']) && file_exists($product['image_url'])): ?>
                     <div class="mb-2">
@@ -311,5 +390,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function () {
+    var rows = document.getElementById('sku-rows');
+    document.getElementById('sku-add').addEventListener('click', function () {
+        var clone = rows.querySelector('.sku-row').cloneNode(true);
+        clone.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+        rows.appendChild(clone);
+    });
+    rows.addEventListener('click', function (e) {
+        if (e.target.classList.contains('sku-remove')) {
+            if (rows.querySelectorAll('.sku-row').length > 1) e.target.closest('.sku-row').remove();
+        }
+    });
+})();
+</script>
 </body>
 </html>

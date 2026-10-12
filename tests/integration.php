@@ -131,6 +131,24 @@ rejects(function()use($buyer,$p1,$address){create_orders($buyer,$p1,1,$address,'
 query("UPDATE products SET audit_status='approved' WHERE id=?",[$p1]);
 query('INSERT INTO favorites(user_id,product_id) VALUES(?,?)',[$buyer,$p1]);
 check((int)one('SELECT COUNT(*) AS n FROM favorites WHERE user_id=?',[$buyer])['n']===1,'favorites persist');
+// ===== SKU 商品规格：默认规格兼容、双规格分扣、抢最后一件、取消回补 =====
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('SKU测试商品','50.00',99,?,1,'approved')",[$category]); $pSku=(int)$conn->insert_id;
+query('INSERT INTO product_skus(product_id,sku_name,price_cents,stock) VALUES(?,?,?,?),(?,?,?,?)',[$pSku,'规格甲',1000,5,$pSku,'规格乙',2000,1]);
+$skuA=(int)one('SELECT id FROM product_skus WHERE product_id=? AND sku_name=?',[$pSku,'规格甲'])['id'];
+$skuB=(int)one('SELECT id FROM product_skus WHERE product_id=? AND sku_name=?',[$pSku,'规格乙'])['id'];
+$legacyOrder=(int)create_orders($buyer,$p1,1,$address,'sku-legacy')[0];
+$legacyItem=one('SELECT * FROM order_items WHERE order_id=?',[$legacyOrder]);
+change_order($legacyOrder,$buyer,'cancel');
+check($legacyItem['sku_id']===null && $legacyItem['sku_name']===null,'single-spec product keeps default behavior');
+$skuOrder=(int)create_orders($buyer,$pSku,2,$address,'sku-order',0,$skuA)[0];
+$skuItem=one('SELECT * FROM order_items WHERE order_id=?',[$skuOrder]);
+check((int)one('SELECT stock FROM product_skus WHERE id=?',[$skuA])['stock']===3 && (int)one('SELECT stock FROM product_skus WHERE id=?',[$skuB])['stock']===1 && (int)$skuItem['sku_id']===$skuA && $skuItem['sku_name']==='规格甲' && $skuItem['price']==='10.00','dual-spec checkout deducts only the selected SKU');
+$raceWinner=(int)create_orders($buyer,$pSku,1,$address,'sku-race-winner',0,$skuB)[0];
+$raceLost=false;
+try { create_orders($buyer,$pSku,1,$address,'sku-race-loser',0,$skuB); } catch (DomainException $e) { $raceLost=true; }
+check($raceLost && (int)one('SELECT stock FROM product_skus WHERE id=?',[$skuB])['stock']===0 && (int)one('SELECT COUNT(*) AS n FROM order_items WHERE sku_id=?',[$skuB])['n']===1,'concurrent buy of last SKU item allows only one order');
+change_order($raceWinner,$buyer,'cancel'); change_order($skuOrder,$buyer,'cancel');
+check((int)one('SELECT stock FROM product_skus WHERE id=?',[$skuA])['stock']===5 && (int)one('SELECT stock FROM product_skus WHERE id=?',[$skuB])['stock']===1 && (int)one('SELECT stock FROM products WHERE id=?',[$pSku])['stock']===99,'cancellation restores stock to the matching SKU');
 // ===== 订单留言：权限、内容校验、未读计数与已读状态 =====
 $_SESSION=['user_id'=>$buyer,'role'=>'user'];
 $msgOrder=(int)create_orders($buyer,$p2,1,$address,'message-order')[0]; change_order($msgOrder,$buyer,'pay');

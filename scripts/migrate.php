@@ -216,4 +216,20 @@ query("CREATE TABLE IF NOT EXISTS order_messages (
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// ===== SKU 商品规格：products.price/stock 保留为默认规格，有 status=1 的 SKU 时走 SKU 逻辑 =====
+query("CREATE TABLE IF NOT EXISTS product_skus (
+    id int AUTO_INCREMENT PRIMARY KEY,
+    product_id int NOT NULL,
+    sku_name varchar(100) NOT NULL,
+    price_cents int NOT NULL,
+    stock int NOT NULL DEFAULT 0,
+    status tinyint NOT NULL DEFAULT 1,
+    KEY idx_sku_product_status (product_id, status),
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// order_items 记录 sku_id/sku_name 快照（无外键，历史订单与规格改动互不影响）；cart 按 (product_id, sku_id) 聚合
+add_column('order_items','sku_id','int NULL');
+add_column('order_items','sku_name','varchar(100) NULL');
+add_column('cart','sku_id','int NOT NULL DEFAULT 0');
+
 echo "Migration complete.\n";
