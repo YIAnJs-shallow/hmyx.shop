@@ -370,9 +370,11 @@ $registerHtml=file_get_contents(__DIR__.'/../register.php');
 check($skyJs && strpos($loginHtml,'js/sky.js')!==false && strpos($registerHtml,'js/sky.js')!==false,'js/sky.js exists and both auth pages include it');
 $authCss=file_get_contents(__DIR__.'/../css/auth.css');
 check(strpos($authCss,'@keyframes meteorFly')===false && strpos($authCss,'@keyframes aurora')===false && strpos($authCss,'@keyframes cometFly')===false && strpos($authCss,'@keyframes cometGlow')===false && strpos($authCss,'@keyframes twinkle')===false,'auth.css has no meteor/aurora/comet/twinkle CSS animation residue');
-// 11) 首页已回退三栏改造：不再引用 sky.js，无 home-grid 三栏容器
+// 11) 首页深空 Hero 恢复：引用 sky.js 且含 Hero 容器，但无三栏布局残留
 $indexHtml=file_get_contents(__DIR__.'/../index.php');
-check(strpos($indexHtml,'js/sky.js')===false && strpos($indexHtml,'home-grid')===false,'homepage no longer references sky.js or the three-column home-grid layout');
+check(strpos($indexHtml,'js/sky.js')!==false && strpos($indexHtml,'home-hero')!==false && strpos($indexHtml,'hero-brand')!==false
+    && strpos($indexHtml,'home-grid')===false && strpos($indexHtml,'cat-panel')===false && strpos($indexHtml,'side-rail')===false,
+    'homepage includes sky.js and hero banner without three-column layout residue');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());

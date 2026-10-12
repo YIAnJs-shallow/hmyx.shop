@@ -186,11 +186,15 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         </nav>
     </header>
 
-    <main class="container" style="max-width: 1200px; margin: 20px auto; padding: 0 15px; width: 100%; box-sizing: border-box;">
-        <div class="search-bar-container" style="position: relative;">
+    <!-- 深空 Hero 横幅：低密度 Canvas 天空（js/sky.js data-density="low"）+ 渐变标语 + 搜索框整组迁入 -->
+    <section class="home-hero">
+        <canvas id="sky-canvas" class="hero-canvas" data-density="low" aria-hidden="true"></canvas>
+        <div class="hero-inner">
+            <h1 class="hero-brand">惠蒙优选 · 好货精选</h1>
+            <div class="search-bar-container" style="position: relative;">
             <form action="index.php" method="GET" class="search-form">
                 <input type="text" name="keyword" id="search-keyword" class="search-input" autocomplete="off" placeholder="🔍 输入商品名称关键词搜索..." value="<?php echo htmlspecialchars($keyword); ?>">
-                
+
                 <select name="category_id" class="search-select">
     <option value="0">全部分类</option>
     <?php foreach ($categories as $main_id => $main_cat): ?>
@@ -198,10 +202,10 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         <option value="<?php echo $main_id; ?>" <?php echo $category_id == $main_id ? 'selected' : ''; ?> style="font-weight: bold;">
             【<?php echo htmlspecialchars($main_cat['name']); ?>】
         </option>
-        
+
         <!-- 二级细分分类 -->
         <?php foreach ($main_cat['subs'] as $sub): ?>
-            <option value="<?php echo $sub['id']; ?>" <?php echo $category_id == $sub['id'] ? 'selected' : ''; ?>>
+            <option value="<?php echo $sub['id']; ?>" <?php echo $category_id == $sub['id'] ? 'selected' : ''; ?> class="opt-sub">
                 &nbsp;&nbsp;&nbsp;&nbsp;├─ <?php echo htmlspecialchars($sub['name']); ?>
             </option>
         <?php endforeach; ?>
@@ -209,15 +213,19 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
 </select>
 
                 <select name="sort" class="search-select" aria-label="排序"><?php foreach(['newest'=>'最新上架','price_asc'=>'价格从低到高','price_desc'=>'价格从高到低'] as $key=>$label): ?><option value="<?php echo $key; ?>" <?php echo $sort===$key?'selected':''; ?>><?php echo $label; ?></option><?php endforeach; ?></select><button type="submit" class="search-btn">搜索</button>
-                
+
                 <?php if (!empty($keyword) || $category_id > 0): ?>
                     <a href="index.php" class="reset-btn">重置条件</a>
                 <?php endif; ?>
             </form>
             <ul id="search-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;list-style:none;margin:0;padding:0;background:#fff;border:1px solid #cbd5e1;border-top:none;border-radius:0 0 8px 8px;box-shadow:0 8px 16px rgba(15,23,42,.12);max-height:320px;overflow-y:auto;"></ul>
         </div>
+        </div>
+    </section>
+
+    <main class="container" style="max-width: 1200px; margin: 20px auto; padding: 0 15px; width: 100%; box-sizing: border-box;">
         <?php if (!empty($hot_searches) || !empty($my_searches)): ?>
-        <div class="search-trends" style="margin:-12px 0 20px;font-size:.85rem;color:#475569;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;">
+        <div class="search-trends" style="margin:0 0 20px;font-size:.85rem;color:#475569;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;">
             <?php if (!empty($hot_searches)): ?>
                 <span style="font-weight:700;color:#1e293b;">🔥 热门搜索：</span>
                 <?php foreach ($hot_searches as $hs): ?>
@@ -393,5 +401,8 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         });
     })();
     </script>
+
+    <!-- Hero 深空天空（低密度：80 星 / 2 光带，无流星无彗星；登录/注册页仍用全屏正常密度） -->
+    <script src="js/sky.js?v=9"></script>
 </body>
 </html>
