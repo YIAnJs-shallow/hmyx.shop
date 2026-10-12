@@ -98,6 +98,27 @@ function httpGetJson($url, $provider) {
     return json_decode($response, true);
 }
 
+// IP 定位兜底：浏览器禁用 geolocation 时使用（城市级精度，无需授权）
+if (isset($_GET['action']) && $_GET['action'] === 'ip_locate') {
+    header('Content-Type: application/json; charset=utf-8');
+    $result = ['status' => 0, 'msg' => '未能通过 IP 定位，请手动填写地址'];
+    if (!empty($AMAP_KEY)) {
+        $res = httpGetJson("https://restapi.amap.com/v3/ip?key=" . urlencode($AMAP_KEY), 'amap_ip');
+        if ($res && isset($res['status']) && $res['status'] === '1' && !empty($res['province'])) {
+            $province = is_string($res['province']) ? $res['province'] : '';
+            $city = is_string($res['city'] ?? '') ? $res['city'] : '';
+            $text = trim($province . $city);
+            if ($text !== '') {
+                $suffix = '（IP定位到城市，请补充详细地址）';
+                if (mb_strlen($text) + mb_strlen($suffix) > 255) $text = mb_substr($text, 0, 255 - mb_strlen($suffix));
+                $result = ['status' => 1, 'precision' => 'city', 'address' => $text . $suffix];
+            }
+        }
+    }
+    echo json_encode($result, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if (isset($_GET['action']) && $_GET['action'] === 'parse_geo') {
     header('Content-Type: application/json; charset=utf-8');
     $lat = floatval($_GET['lat'] ?? 0);
@@ -422,12 +443,25 @@ function getCurrentLocation() {
             parseBackendAddress(lat, lng);
         },
         function (error) {
-            const messages = {
-                1: '未获定位授权，请允许浏览器定位或手动填写地址',
-                2: '暂时无法获取位置，请稍后重试或手动填写地址',
-                3: '定位超时，请重试或手动填写地址'
-            };
-            showLocationHint(messages[error.code] || '无法自动定位，请手动填写地址');
+            // 浏览器在非 https / 非 localhost 页面会直接禁用定位，退化为 IP 定位
+            fetch('addresses.php?action=ip_locate')
+                .then(res => res.ok ? res.json() : Promise.reject())
+                .then(data => {
+                    if (data && data.status === 1 && typeof data.address === 'string') {
+                        input.value = data.address;
+                        showLocationHint('已自动定位到城市（精度有限），请补充详细地址');
+                    } else {
+                        showLocationHint(data && data.msg ? data.msg : '无法自动定位，请手动填写地址');
+                    }
+                })
+                .catch(() => {
+                    const messages = {
+                        1: '未获定位授权，请允许浏览器定位或手动填写地址',
+                        2: '暂时无法获取位置，请稍后重试或手动填写地址',
+                        3: '定位超时，请重试或手动填写地址'
+                    };
+                    showLocationHint(messages[error.code] || '无法自动定位，请手动填写地址');
+                });
         },
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
     );
