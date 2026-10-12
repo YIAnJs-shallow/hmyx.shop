@@ -13,7 +13,8 @@ if (!$db) {
 $message = '';
 $success = false;
 // 记住当前选中的标签页（白名单，默认个人注册）
-$active_tab = in_array($_POST['register_type'] ?? 'personal', ['personal', 'merchant'], true) ? $_POST['register_type'] : 'personal';
+$active_tab = $_POST['register_type'] ?? 'personal';
+if (!in_array($active_tab, ['personal', 'merchant'], true)) { $active_tab = 'personal'; } // 先取值再白名单校验，修复 GET 时三元返回 null
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = trim($_POST['username'] ?? '');
