@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 </head>
 <body class="auth-page">
     <div class="auth-wrap">
-        <!-- Canvas 天空背景：极光帘幕 / 繁星 / 银河 / 彗星 / 雪原（js/sky.js 绘制，纯装饰） -->
+        <!-- Canvas 天空背景：极光 / 繁星 / 雪原（js/sky.js 绘制，纯装饰） -->
         <canvas id="sky-canvas" aria-hidden="true"></canvas>
         <!-- 左区：品牌展示 -->
         <div class="auth-brand">
@@ -215,6 +215,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     </script>
 
-    <script src="js/sky.js?v=7"></script>
+    <script src="js/sky.js?v=8"></script>
 </body>
 </html>

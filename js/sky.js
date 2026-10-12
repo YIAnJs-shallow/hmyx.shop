@@ -1,5 +1,5 @@
 /* ===== 登录/注册页 Canvas 天空背景（南极雪原夜空） =====
- * 四层按帧序绘制：① 漫天繁星 + 银河雾 ② 极光帘幕 ③ 流星/彗星 ④ 雪原反光
+ * 三层按帧序绘制：① 漫天繁星 + 银河雾 ② 极光帘幕 ③ 雪原反光
  * 纯手写 Canvas 2D，无第三方库；requestAnimationFrame 驱动：
  *   - devicePixelRatio 上限 1.5
  *   - visibilitychange 页面隐藏即暂停循环
@@ -24,8 +24,6 @@
     var mwFog = null;                   // 银河雾离屏贴图
     var snowImg = null;                 // 雪原反光离屏贴图
     var simT = 0, lastTs = 0, rafId = 0, lastFrame = 0;
-    var TRAIL_N = 20;                   // 流星拖尾采样点数
-    var COMET_PERIOD = 40, COMET_DELAY = 4, COMET_SWEEP = 1.2;
 
     /* 南极极光四色（沿横向插值）：主绿 / 青 / 深蓝 / 紫 */
     var AURORA_COLORS = [[0, 255, 135], [96, 239, 255], [0, 97, 255], [157, 80, 187]];
@@ -194,93 +192,7 @@
     }
 
 
-    /* ---------- ③ 彗星：40s 一遇、4s 首现，1.2s 划过，长尾 + 3 分叉 + 中段爆闪 + 全屏微光 ---------- */
-    function drawComet(t) {
-        var p = (t - COMET_DELAY) % COMET_PERIOD;
-        if (p < 0 || p > COMET_SWEEP) return;
-        var q = p / COMET_SWEEP;                    // 划过进度 0→1
-        var sx = W * 0.8, sy = H * 0.1;
-        /* 轨迹微弧：x 直线，y 附加正弦弧 */
-        var hx = sx - 520 * q;
-        var hy = sy + 620 * q + 40 * Math.sin(Math.PI * q);
-        var vx = -520, vy = 620 + 40 * Math.PI * Math.cos(Math.PI * q);
-        var vl = Math.hypot(vx, vy), ux = vx / vl, uy = vy / vl;
-
-        ctx.globalCompositeOperation = 'lighter';
-
-        /* 全屏紫色微光脉冲（alpha 0→0.12→0） */
-        var pulse = Math.sin(Math.PI * q) * 0.12;
-        if (pulse > 0.005) {
-            var pr = Math.max(W, H) * 0.7;
-            var pg = ctx.createRadialGradient(hx, hy, 0, hx, hy, pr);
-            pg.addColorStop(0, 'rgba(167,139,250,' + pulse.toFixed(3) + ')');
-            pg.addColorStop(1, 'rgba(167,139,250,0)');
-            ctx.fillStyle = pg;
-            ctx.fillRect(0, 0, W, H);
-        }
-
-        /* 420px 渐变拖尾主线：白 → 淡紫 → 深紫 → 隐没 */
-        var tx = hx - ux * 420, ty = hy - uy * 420;
-        var tg = ctx.createLinearGradient(hx, hy, tx, ty);
-        tg.addColorStop(0, '#fff');
-        tg.addColorStop(0.3, 'rgba(196,181,253,0.8)');
-        tg.addColorStop(0.6, 'rgba(124,58,237,0.55)');
-        tg.addColorStop(1, 'rgba(124,58,237,0)');
-        ctx.strokeStyle = tg;
-        ctx.lineWidth = 3;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(hx, hy);
-        ctx.lineTo(tx, ty);
-        ctx.stroke();
-
-        /* 3 条分叉细尾：偏 -6°/8°/-14°，起点在彗核后方 40/90/60px，长 180/260/220 */
-        var forks = [[40, 180, -6, 0.5], [90, 260, 8, 0.5], [60, 220, -14, 0.4]];
-        var fi, fk, bx, by, rad, rx, ry, fg;
-        for (fi = 0; fi < forks.length; fi++) {
-            fk = forks[fi];
-            bx = hx - ux * fk[0];
-            by = hy - uy * fk[0];
-            rad = fk[2] * Math.PI / 180;
-            rx = ux * Math.cos(rad) - uy * Math.sin(rad);
-            ry = ux * Math.sin(rad) + uy * Math.cos(rad);
-            fg = ctx.createLinearGradient(bx, by, bx - rx * fk[1], by - ry * fk[1]);
-            fg.addColorStop(0, 'rgba(196,181,253,' + fk[3] + ')');
-            fg.addColorStop(1, 'rgba(196,181,253,0)');
-            ctx.strokeStyle = fg;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(bx, by);
-            ctx.lineTo(bx - rx * fk[1], by - ry * fk[1]);
-            ctx.stroke();
-        }
-        ctx.lineCap = 'butt';
-
-        /* 光核：14px 白核 + 三层蓝紫晕；中段（q=0.5）爆闪 scale 1→1.6→1、亮度 1→1.5 */
-        var pulseK = Math.max(0, 1 - Math.abs(q - 0.5) * 4);
-        var coreR = 7 * (1 + 0.6 * pulseK);
-        var bright = 1 + 0.5 * pulseK;
-        var cg = ctx.createRadialGradient(hx, hy, 0, hx, hy, coreR * 4.5);
-        cg.addColorStop(0, 'rgba(255,255,255,' + Math.min(1, 0.95 * bright).toFixed(3) + ')');
-        cg.addColorStop(0.12, 'rgba(167,139,250,' + Math.min(1, 0.8 * bright).toFixed(3) + ')');
-        cg.addColorStop(0.4, 'rgba(124,58,237,' + (0.4 * bright).toFixed(3) + ')');
-        cg.addColorStop(1, 'rgba(124,58,237,0)');
-        ctx.fillStyle = cg;
-        ctx.beginPath();
-        ctx.arc(hx, hy, coreR * 4.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 12;                        // 白色中心核
-        ctx.shadowColor = '#fff';
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(hx, hy, coreR, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        ctx.globalCompositeOperation = 'source-over';
-    }
-
-    /* ---------- ④ 雪原反光：离屏贴图 + 极光主色横向椭圆（宽度呼吸） ---------- */
+    /* ---------- ③ 雪原反光：离屏贴图 + 极光主色横向椭圆（宽度呼吸） ---------- */
     function drawSnow(t) {
         if (!snowImg) return;
         ctx.drawImage(snowImg, 0, H - snowImg.height);
@@ -306,7 +218,6 @@
         ctx.clearRect(0, 0, W, H);
         drawStars(t);
         drawAurora(t);
-        drawComet(t);
         drawSnow(t);
     }
 
