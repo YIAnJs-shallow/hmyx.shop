@@ -591,14 +591,14 @@ body.auth-page {
     .meteor.m5, .meteor.m6, .meteor.m7, .meteor.m8 { display: none; }  /* 窄屏流星仅保留 4 颗，彗星保留 */
 }
 
-/* 尊重系统“减少动态效果”偏好：动画时长归零，快速跳到末帧 */
+/*
+ * 项目定位为动效演示，本页不跟随系统“减少动态效果”偏好
+ * （系统动画关闭的机器上仍完整呈现星空/流星，避免演示页面空白）。
+ * 仅做温和降级：放缓所有动画节奏，保留完整视觉。
+ */
 @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
+    .auth-brand *, .auth-form *, .sky-layer, .sky-layer * {
+        animation-duration: 8s !important;
+        transition-duration: 300ms !important;
     }
-
-    /* 流星 / 彗星 / 照亮层全部禁用 */
-    .sky-layer { display: none !important; }
 }
