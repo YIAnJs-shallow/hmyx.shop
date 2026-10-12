@@ -299,7 +299,7 @@ try {
                 <div class="map-wrapper">
                     <div id="map-container"></div>
                     <button type="button" class="btn btn-locate" onclick="getCurrentLocation()">
-                        <i class="bi bi-geo-alt-fill text-danger"></i> 重新定位到当前位置
+                        <i class="bi bi-geo-alt-fill text-danger"></i> 自动定位（也可直接拖动标记 / 点击地图选点）
                     </button>
                 </div>
                 <small class="text-muted mt-1 d-block"><i class="bi bi-info-circle"></i> 提示：拖动指针到具体楼栋或商铺，输入框将自动更新地址。</small>
@@ -389,7 +389,7 @@ function initMap(lat, lng) {
         parseBackendAddress(e.latlng.lat, e.latlng.lng);
     });
 
-    getCurrentLocation();
+    // 不再自动定位：有线/无GPS环境会得到偏差很大的IP估算位置，由用户点击按钮或拖动地图选点
     setTimeout(() => { if (map) map.invalidateSize(); }, 300);
 }
 
@@ -440,6 +440,10 @@ function getCurrentLocation() {
             const [lat, lng] = wgs84ToGcj02(position.coords.latitude, position.coords.longitude);
             map.setView([lat, lng], 17);
             marker.setLatLng([lat, lng]);
+            const acc = Math.round(position.coords.accuracy || 0);
+            if (acc > 500) {
+                showLocationHint('定位精度约 ' + acc + ' 米（偏差可能较大），请拖动标记到准确位置后自动补全地址');
+            }
             parseBackendAddress(lat, lng);
         },
         function (error) {
