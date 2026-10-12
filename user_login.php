@@ -13,7 +13,8 @@ if (!$db) {
 $message = '';
 $next = safe_next_url($_POST['next'] ?? $_GET['next'] ?? '');
 // 记住当前选中的标签页（白名单，默认验证码登录）
-$active_tab = in_array($_POST['login_type'] ?? 'code', ['code', 'account'], true) ? $_POST['login_type'] : 'code';
+$active_tab = $_POST['login_type'] ?? 'code';
+if (!in_array($active_tab, ['code', 'account'], true)) { $active_tab = 'code'; } // 先取值再白名单校验（原写法条件用兜底值、取值用原始值，GET 时返回 null）
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if ($active_tab === 'code') {
