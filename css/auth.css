@@ -20,6 +20,8 @@ body.auth-page {
 
 /* 左区：品牌展示（深蓝渐变） */
 .auth-brand {
+    position: relative;
+    overflow: hidden;
     width: 45%;
     background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
     color: #fff;
@@ -29,6 +31,54 @@ body.auth-page {
     padding: 60px 56px;
 }
 
+/* 品牌区内容层：保证在气泡/光晕之上可交互 */
+.auth-brand > .brand-name,
+.auth-brand > .brand-slogan,
+.auth-brand > .brand-points { position: relative; z-index: 1; }
+
+/* 缓慢流动的径向渐变覆盖层（18s 匀速旋转，opacity .3） */
+.brand-glow {
+    position: absolute;
+    left: -50%;
+    top: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0) 45%);
+    opacity: 0.3;
+    pointer-events: none;
+    animation: brandGlowRotate 18s linear infinite;
+}
+
+@keyframes brandGlowRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* 漂浮气泡：半透明白色圆，绝对定位，仅 transform 动画 */
+.bubbles { position: absolute; inset: 0; pointer-events: none; }
+
+.bubble {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.10);
+    animation: bubbleFloat ease-in-out infinite alternate;
+}
+
+.bubble.b1 { width: 180px; height: 180px; left: 8%;  top: 12%; animation-duration: 12s; animation-delay: 0s; }
+.bubble.b2 { width: 90px;  height: 90px;  left: 62%; top: 8%;  background: rgba(255, 255, 255, 0.15); animation-duration: 9s;  animation-delay: -3s; }
+.bubble.b3 { width: 220px; height: 220px; left: 55%; top: 62%; background: rgba(255, 255, 255, 0.08); animation-duration: 16s; animation-delay: -6s; }
+.bubble.b4 { width: 60px;  height: 60px;  left: 30%; top: 78%; background: rgba(255, 255, 255, 0.15); animation-duration: 10s; animation-delay: -2s; }
+.bubble.b5 { width: 120px; height: 120px; left: 12%; top: 58%; background: rgba(255, 255, 255, 0.12); animation-duration: 14s; animation-delay: -8s; }
+.bubble.b6 { width: 76px;  height: 76px;  left: 78%; top: 38%; background: rgba(255, 255, 255, 0.12); animation-duration: 11s; animation-delay: -5s; }
+
+@keyframes bubbleFloat {
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(18px, -22px); }
+    50%  { transform: translate(-14px, 12px); }
+    75%  { transform: translate(22px, 16px); }
+    100% { transform: translate(-18px, -30px); }
+}
+
 .brand-name {
     font-size: 2.4rem;
     font-weight: bold;
@@ -36,10 +86,26 @@ body.auth-page {
     letter-spacing: 2px;
 }
 
+/* Slogan 打字机：逐字出现（steps），光标 border-right 闪烁 */
 .brand-slogan {
     font-size: 1.05rem;
     color: rgba(255, 255, 255, 0.85);
     margin: 0 0 48px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    border-right: 2px solid rgba(255, 255, 255, 0.85);
+    animation: typewriter 5s steps(10, end) infinite, cursorBlink 1s step-end infinite;
+}
+
+@keyframes typewriter {
+    0%   { width: 0; }
+    60%  { width: 10em; }  /* 前 3s 逐字打出，后 2s 停留展示 */
+    100% { width: 10em; }
+}
+
+@keyframes cursorBlink {
+    0%, 100% { border-right-color: rgba(255, 255, 255, 0.85); }
+    50%      { border-right-color: transparent; }
 }
 
 .brand-points { list-style: none; margin: 0; padding: 0; }
@@ -49,6 +115,16 @@ body.auth-page {
     align-items: flex-start;
     gap: 14px;
     margin-bottom: 28px;
+    animation: pointIn 500ms ease-out both;
+}
+
+.brand-points li:nth-child(1) { animation-delay: 0.2s; }
+.brand-points li:nth-child(2) { animation-delay: 0.4s; }
+.brand-points li:nth-child(3) { animation-delay: 0.6s; }
+
+@keyframes pointIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .point-icon { font-size: 1.6rem; line-height: 1.4; }
@@ -65,13 +141,19 @@ body.auth-page {
     margin: 0;
 }
 
-/* 右区：表单卡片 */
+/* 右区：表单卡片（入场淡入上移一次） */
 .auth-form {
     flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
     padding: 40px 24px;
+    animation: cardIn 400ms ease-out both;
+}
+
+@keyframes cardIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .auth-card {
@@ -81,6 +163,15 @@ body.auth-page {
     padding: 36px 32px;
     border-radius: 24px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    animation: cardFloat 6s ease-in-out infinite;  /* 极缓慢悬浮呼吸 */
+}
+
+/* 输入聚焦时暂停卡片悬浮，避免与输入体验冲突 */
+.auth-form:focus-within .auth-card { animation-play-state: paused; }
+
+@keyframes cardFloat {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-3px); }
 }
 
 .auth-card h2 {
@@ -115,7 +206,12 @@ body.auth-page {
 .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
 
 .tab-pane { display: none; }
-.tab-pane.active { display: block; }
+.tab-pane.active { display: block; animation: paneIn 150ms ease-out both; }
+
+@keyframes paneIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
 
 /* 输入组 */
 .input-group { margin-bottom: 16px; }
@@ -170,6 +266,8 @@ body.auth-page {
 
 /* 提交按钮 */
 .btn-submit {
+    position: relative;
+    overflow: hidden;
     width: 100%;
     padding: 11px;
     background: #2563eb;
@@ -185,6 +283,26 @@ body.auth-page {
 
 .btn-submit:hover { background: #1d4ed8; transform: translateY(-1px); }
 .btn-submit:active { transform: translateY(0); }
+
+/* hover 时一道 45° 斜向高光扫过（600ms 一次） */
+.btn-submit::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    transform: translateX(-100%);
+    pointer-events: none;
+}
+
+.btn-submit:hover::after { animation: btnShine 600ms ease; }
+
+@keyframes btnShine {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(200%); }
+}
 
 /* 链接区 */
 .links {
@@ -231,10 +349,28 @@ body.auth-page {
     padding: 12px 0;
 }
 
-/* 响应式：≤768px 隐藏左区，表单全宽贴边 */
+/* 响应式：≤768px 隐藏左区，表单全宽贴边（左区动画随之不渲染） */
 @media (max-width: 768px) {
     .auth-brand { display: none; }
     .auth-wrap { min-height: 100vh; }
     .auth-form { padding: 12px; align-items: flex-start; padding-top: 6vh; }
     .auth-card { box-shadow: none; margin: 12px; width: auto; }
+}
+
+/* 尊重系统“减少动态效果”偏好：全部动画/过渡禁用 */
+@media (prefers-reduced-motion: reduce) {
+    .auth-brand,
+    .brand-glow,
+    .bubble,
+    .brand-slogan,
+    .brand-points li,
+    .auth-form,
+    .auth-card,
+    .tab-pane.active,
+    .btn-submit,
+    .btn-submit::after {
+        animation: none !important;
+        transition: none !important;
+    }
+    .brand-slogan { width: auto; }  /* 打字机禁用后完整展示文本 */
 }

@@ -79,8 +79,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <div class="auth-wrap">
         <!-- 左区：品牌展示 -->
         <div class="auth-brand">
+            <div class="brand-glow" aria-hidden="true"></div>
+            <div class="bubbles" aria-hidden="true">
+                <span class="bubble b1"></span>
+                <span class="bubble b2"></span>
+                <span class="bubble b3"></span>
+                <span class="bubble b4"></span>
+                <span class="bubble b5"></span>
+                <span class="bubble b6"></span>
+            </div>
             <h1 class="brand-name">惠蒙优选</h1>
-            <p class="brand-slogan">好货精选，多商户入驻</p>
+            <p class="brand-slogan" aria-label="好货精选，多商户入驻">好货精选，多商户入驻</p>
             <ul class="brand-points">
                 <li>
                     <span class="point-icon">🛍️</span>
