@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/lib/security.php';
 require_once 'config/db.php';
+require_once __DIR__ . '/lib/coupon.php';
 
 $db = isset($conn) ? $conn : (isset($pdo) ? $pdo : null);
 
@@ -84,7 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
             if ($exec_res) {
                 $success = true;
-                $message = '注册成功！请点击下方“前往登录”进行登录。';
+                $newUserId = (int)$db->insert_id;
+                coupon_grant_newuser($newUserId);
+                $message = '注册成功！新人优惠券已发放到您的账户，登录后可在“优惠券”页查看。请点击下方“前往登录”进行登录。';
             } else {
                 $message = '注册失败，请稍后再试！';
             }

@@ -1,0 +1,107 @@
+<?php
+// 优惠券模块：领取、结算校验、跨店拆单分摊、取消回补
+// 金额一律以分为单位（与 lib/shop.php 的 cents()/money() 约定一致）
+require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/../config/db.php';
+if (!function_exists('query')) {
+    function query($sql, $params = []) {
+        global $conn;
+        $stmt = $conn->prepare($sql);
+        if ($params) { $types = ''; foreach ($params as $p) $types .= is_int($p) ? 'i' : 's'; $stmt->bind_param($types, ...$params); }
+        $stmt->execute();
+        return $stmt;
+    }
+    function rows($sql, $params = []) { return query($sql, $params)->get_result()->fetch_all(MYSQLI_ASSOC); }
+    function one($sql, $params = []) { return query($sql, $params)->get_result()->fetch_assoc(); }
+}
+
+/** 用户可用的未使用优惠券（可加最低消费过滤） */
+function coupons_for_user($userId, $grandTotalCents = null) {
+    $sql = 'SELECT uc.id, c.title, c.discount_cents, c.min_spend_cents, c.expire_at
+            FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id
+            WHERE uc.user_id = ? AND uc.status = "unused" AND c.active = 1
+              AND (c.expire_at IS NULL OR c.expire_at > NOW())';
+    $params = [(int)$userId];
+    if ($grandTotalCents !== null) {
+        $sql .= ' AND c.min_spend_cents <= ?';
+        $params[] = (int)$grandTotalCents;
+    }
+    $sql .= ' ORDER BY c.discount_cents DESC, uc.id ASC';
+    return rows($sql, $params);
+}
+
+/** 结算预览：选中券对总金额的优惠（不落库） */
+function coupon_preview($coupon, $grandTotalCents) {
+    $discount = (int)$coupon['discount_cents'];
+    if ($discount > (int)$grandTotalCents) $discount = (int)$grandTotalCents;
+    return max(0, $discount);
+}
+
+/** 领取公开优惠券（幂等：已领则返回提示） */
+function coupon_claim($userId, $couponId) {
+    global $conn;
+    $conn->begin_transaction();
+    try {
+        $coupon = one('SELECT * FROM coupons WHERE id=? AND active=1 FOR UPDATE', [(int)$couponId]);
+        if (!$coupon) throw new DomainException('优惠券不存在或已下架');
+        if ($coupon['expire_at'] && strtotime($coupon['expire_at']) <= time()) throw new DomainException('该优惠券已过期');
+        if (one('SELECT id FROM user_coupons WHERE coupon_id=? AND user_id=?', [(int)$couponId, (int)$userId])) {
+            $conn->commit();
+            return '您已领取过该优惠券';
+        }
+        $upd = query('UPDATE coupons SET claimed_count = claimed_count + 1 WHERE id=? AND claimed_count < total_count', [(int)$couponId]);
+        if ($upd->affected_rows !== 1) throw new DomainException('该优惠券已被领完');
+        query('INSERT INTO user_coupons(coupon_id, user_id) VALUES(?,?)', [(int)$couponId, (int)$userId]);
+        $conn->commit();
+        return '领取成功：' . $coupon['title'];
+    } catch (Throwable $e) { $conn->rollback(); throw $e; }
+}
+
+/** 新用户注册后自动发放新人券（幂等） */
+function coupon_grant_newuser($userId) {
+    foreach (rows('SELECT id FROM coupons WHERE is_newuser=1 AND active=1 AND (expire_at IS NULL OR expire_at > NOW())', []) as $c) {
+        try { coupon_claim($userId, (int)$c['id']); } catch (Throwable $e) { error_log('新人券发放失败: ' . $e->getMessage()); }
+    }
+}
+
+/**
+ * 下单时核销优惠券（在 create_orders 的事务内调用，不自行开关事务）
+ * 返回优惠金额（分）；无效则抛出异常。
+ */
+function coupon_consume_locked($userId, $userCouponId, $grandTotalCents) {
+    $uc = one('SELECT uc.*, c.discount_cents, c.min_spend_cents, c.active, c.expire_at
+               FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id
+               WHERE uc.id=? AND uc.user_id=? FOR UPDATE', [(int)$userCouponId, (int)$userId]);
+    if (!$uc) throw new DomainException('优惠券不存在');
+    if ($uc['status'] !== 'unused') throw new DomainException('优惠券已使用，请重新选择');
+    if (!(int)$uc['active']) throw new DomainException('优惠券已下架');
+    if ($uc['expire_at'] && strtotime($uc['expire_at']) <= time()) throw new DomainException('优惠券已过期');
+    if ((int)$grandTotalCents < (int)$uc['min_spend_cents']) throw new DomainException('未达到该优惠券的最低使用金额');
+    query("UPDATE user_coupons SET status='used', used_at=NOW() WHERE id=? AND status='unused'", [(int)$uc['id']]);
+    return coupon_preview($uc, $grandTotalCents);
+}
+
+/** 订单取消（含超时）后，若该券名下再无有效订单则回补为可使用 */
+function coupon_restore_for_order($orderId) {
+    $ucId = one('SELECT coupon_user_id FROM orders WHERE id=?', [(int)$orderId])['coupon_user_id'] ?? null;
+    if (!$ucId) return;
+    $active = one("SELECT id FROM orders WHERE coupon_user_id=? AND id<>? AND status NOT IN ('cancelled') LIMIT 1", [(int)$ucId, (int)$orderId]);
+    if ($active) return;
+    query("UPDATE user_coupons SET status='unused', used_at=NULL WHERE id=? AND status='used'", [(int)$ucId]);
+}
+
+/** 按各店订单金额比例把整单优惠分摊到各订单（分为单位，余数给第一单） */
+function coupon_split_discount($discountCents, array $orderTotals) {
+    $grand = array_sum($orderTotals);
+    if ($grand <= 0 || $discountCents <= 0) return array_fill_keys(array_keys($orderTotals), 0);
+    $shares = [];
+    $allocated = 0;
+    $last = null;
+    foreach ($orderTotals as $key => $total) {
+        $shares[$key] = (int)floor($discountCents * $total / $grand);
+        $allocated += $shares[$key];
+        $last = $key;
+    }
+    if ($last !== null) $shares[$last] += $discountCents - $allocated;
+    return $shares;
+}

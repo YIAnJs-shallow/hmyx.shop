@@ -162,4 +162,43 @@ query("CREATE TABLE IF NOT EXISTS password_reset_codes (
     KEY idx_email_id (email, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// ===== 优惠券：券模板 + 用户持券 =====
+query("CREATE TABLE IF NOT EXISTS coupons (
+    id int AUTO_INCREMENT PRIMARY KEY,
+    title varchar(100) NOT NULL,
+    discount_cents int NOT NULL,
+    min_spend_cents int NOT NULL DEFAULT 0,
+    total_count int NOT NULL,
+    claimed_count int NOT NULL DEFAULT 0,
+    active tinyint NOT NULL DEFAULT 1,
+    is_newuser tinyint NOT NULL DEFAULT 0,
+    expire_at datetime NULL,
+    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+query("CREATE TABLE IF NOT EXISTS user_coupons (
+    id int AUTO_INCREMENT PRIMARY KEY,
+    coupon_id int NOT NULL,
+    user_id int NOT NULL,
+    status enum('unused','used') NOT NULL DEFAULT 'unused',
+    claimed_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    used_at datetime NULL,
+    UNIQUE KEY uk_coupon_user (coupon_id, user_id),
+    KEY idx_uc_user (user_id, status),
+    FOREIGN KEY (coupon_id) REFERENCES coupons(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+if (!one('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME="orders" AND COLUMN_NAME="discount_amount"')) {
+    query('ALTER TABLE orders ADD COLUMN discount_amount decimal(10,2) NOT NULL DEFAULT 0 AFTER total_amount');
+}
+if (!one('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME="orders" AND COLUMN_NAME="coupon_user_id"')) {
+    query('ALTER TABLE orders ADD COLUMN coupon_user_id int NULL AFTER discount_amount');
+}
+// 内置新人券与公开券（仅首次创建，可重复执行）
+if (!one('SELECT id FROM coupons WHERE title="新人专享：满100减20" LIMIT 1')) {
+    query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count,is_newuser) VALUES('新人专享：满100减20',2000,10000,10000,1)");
+}
+if (!one('SELECT id FROM coupons WHERE title="满50减5" LIMIT 1')) {
+    query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('满50减5',500,5000,1000)");
+}
+
 echo "Migration complete.\n";

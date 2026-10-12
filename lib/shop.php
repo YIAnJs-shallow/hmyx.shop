@@ -69,7 +69,7 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false) {
     }
     return $lines;
 }
-function create_orders($userId, $productId, $qty, $addressId, $token) {
+function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0) {
     global $conn;
     $conn->begin_transaction();
     try {
@@ -83,6 +83,17 @@ function create_orders($userId, $productId, $qty, $addressId, $token) {
         $groups = [];
         foreach ($lines as $line) $groups[(int)$line['shop_id']][] = $line;
         $ids = [];
+        require_once __DIR__ . '/coupon.php';
+        // 优惠券在写入订单前核销：校验最低消费并锁定持券记录
+        $grandTotal = 0;
+        $orderTotals = [];
+        $shares = [];
+        foreach ($groups as $items) $grandTotal += array_sum(array_column($items, 'subtotal_cents'));
+        if ($userCouponId) {
+            $discountTotal = coupon_consume_locked($userId, $userCouponId, $grandTotal);
+            foreach ($groups as $shopId => $items) $orderTotals[$shopId] = array_sum(array_column($items, 'subtotal_cents'));
+            $shares = coupon_split_discount($discountTotal, $orderTotals);
+        }
         foreach ($groups as $shopId => $items) {
             $total = array_sum(array_column($items, 'subtotal_cents'));
             if ($total > 9999999999) throw new DomainException('订单金额超出允许范围');
@@ -90,6 +101,7 @@ function create_orders($userId, $productId, $qty, $addressId, $token) {
             query("INSERT INTO orders(order_no,user_id,total_amount,status,receiver_name,receiver_phone,receiver_address,shop_id,checkout_token,stock_reserved) VALUES(?,?,?,'pending',?,?,?,?,?,1)",
                 [$number,$userId,money($total),$address['receiver_name'],$address['receiver_phone'],$address['receiver_address'],$shopId ?: null,$token]);
             $orderId = (int)$conn->insert_id;
+            if (isset($shares[$shopId])) query('UPDATE orders SET discount_amount=?, coupon_user_id=? WHERE id=?', [money($shares[$shopId]), (int)$userCouponId, $orderId]);
             $ids[] = $orderId;
             foreach ($items as $item) {
                 $stockUpdate = query('UPDATE products SET stock=stock-? WHERE id=? AND stock>=?', [$item['quantity'],(int)$item['id'],$item['quantity']]);
@@ -103,6 +115,8 @@ function create_orders($userId, $productId, $qty, $addressId, $token) {
     } catch (Throwable $e) { $conn->rollback(); throw $e; }
 }
 function release_stock($order) {
+    require_once __DIR__ . '/coupon.php';
+    coupon_restore_for_order((int)$order['id']);
     if (!(int)$order['stock_reserved']) return;
     foreach (rows('SELECT product_id,quantity FROM order_items WHERE order_id=? ORDER BY product_id', [(int)$order['id']]) as $item) {
         if ($item['product_id']) query('UPDATE products SET stock=stock+? WHERE id=?', [(int)$item['quantity'],(int)$item['product_id']]);
@@ -187,7 +201,7 @@ function change_order($id, $actor, $action, $data = []) {
     } catch (Throwable $e) { $conn->rollback(); throw $e; }
 }
 function page_start($title) {
-    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_orders.php">我的订单</a><a href="addresses.php">收货地址</a><a href="user_center.php">个人中心</a>';
+    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="addresses.php">收货地址</a><a href="user_center.php">个人中心</a>';
     if (in_array($_SESSION['role'] ?? '',['admin','merchant'],true)) echo '<a href="admin_orders.php">发货 / 售后</a>';
     echo '</nav></header><main><h1>'.h($title).'</h1>';
     if (isset($_SESSION['notice'])) { echo '<p class="notice" role="status">'.h($_SESSION['notice']).'</p>'; unset($_SESSION['notice']); }

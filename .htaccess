@@ -3,7 +3,7 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 # 根地址直接展示商城首页（welcome.php 新人落地页仍可直接访问）
-DirectoryIndex index.php index.html
+DirectoryIndex welcome.php index.php index.html
 
 RewriteEngine On
 RewriteRule ^(?:backup_[^/]+|config|lib|scripts|tests|\.claude|\.codex|\.agents)(?:/|$) - [F,L]
