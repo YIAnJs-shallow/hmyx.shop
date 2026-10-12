@@ -73,57 +73,42 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>账号登录 - 惠蒙优选</title>
-    <style>
-        body {
-            background-color: #0f172a;
-            display: flex; justify-content: center; align-items: center;
-            min-height: 100vh; margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-        .box {
-            background: #ffffff; padding: 35px 30px; border-radius: 12px;
-            width: 360px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-            box-sizing: border-box;
-        }
-        h2 { text-align: center; margin: 0 0 20px 0; color: #0f172a; font-size: 1.5rem; }
-
-        /* 选项卡切换样式 */
-        .tab-box { display: flex; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
-        .tab-btn {
-            flex: 1; padding: 10px; text-align: center; background: none; border: none;
-            font-size: 0.95rem; font-weight: bold; color: #64748b; cursor: pointer;
-            border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s;
-        }
-        .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
-        .tab-pane { display: none; }
-        .tab-pane.active { display: block; }
-
-        .input-group { margin-bottom: 16px; }
-        .input-group label { display: block; margin-bottom: 6px; font-size: 14px; color: #475569; font-weight: 600; }
-        .input-group input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; outline: none; }
-        .input-group input:focus { border-color: #2563eb; }
-
-        .code-box { display: flex; gap: 10px; }
-        .code-box input { flex: 1; }
-        .btn-code {
-            padding: 10px 12px; white-space: nowrap; background: #fff; color: #2563eb;
-            border: 1px solid #2563eb; border-radius: 6px; font-size: 13px; cursor: pointer;
-        }
-        .btn-code:disabled { color: #94a3b8; border-color: #cbd5e1; cursor: not-allowed; }
-
-        .btn-submit { width: 100%; padding: 11px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; cursor: pointer; margin-top: 10px; }
-        .btn-submit:hover { opacity: 0.9; }
-
-        .links { margin-top: 20px; text-align: center; font-size: 14px; display: flex; justify-content: space-between; }
-        .links a { color: #2563eb; text-decoration: none; }
-        .links a:hover { text-decoration: underline; }
-
-        .msg { background: #fef2f2; color: #dc2626; padding: 10px; border-radius: 6px; margin-bottom: 15px; text-align: center; font-size: 13px; border: 1px solid #fecaca; }
-        .tip { font-size: 12px; color: #64748b; margin-top: 4px; }
-    </style>
+    <link rel="stylesheet" href="css/auth.css">
 </head>
-<body>
-    <div class="box">
+<body class="auth-page">
+    <div class="auth-wrap">
+        <!-- 左区：品牌展示 -->
+        <div class="auth-brand">
+            <h1 class="brand-name">惠蒙优选</h1>
+            <p class="brand-slogan">好货精选，多商户入驻</p>
+            <ul class="brand-points">
+                <li>
+                    <span class="point-icon">🛍️</span>
+                    <div>
+                        <p class="point-title">精选好物</p>
+                        <p class="point-desc">热销榜单每日更新</p>
+                    </div>
+                </li>
+                <li>
+                    <span class="point-icon">🏪</span>
+                    <div>
+                        <p class="point-title">多商户入驻</p>
+                        <p class="point-desc">店铺商品一键直达</p>
+                    </div>
+                </li>
+                <li>
+                    <span class="point-icon">🎁</span>
+                    <div>
+                        <p class="point-title">新人礼包</p>
+                        <p class="point-desc">注册即领满 100 减 20</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- 右区：表单卡片 -->
+        <div class="auth-form">
+            <div class="auth-card">
         <h2>惠蒙优选</h2>
 
         <!-- 双登录平级标签：验证码登录 / 账号登录 -->
@@ -178,7 +163,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <a href="register.php">没有账号？去注册</a >
             <a href="index.php">← 返回首页</a >
         </div>
+            </div>
+        </div>
     </div>
+
+    <div class="auth-footer">© 2026 惠蒙优选 · 本站为课程演示项目</div>
 
     <script>
         function setLoginType(type) {

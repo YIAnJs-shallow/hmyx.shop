@@ -121,34 +121,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <head>
     <meta charset="UTF-8">
     <title>注册账号 - 惠蒙优选</title>
-    <style>
-        body { background-color: #f1f5f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; font-family: sans-serif; }
-        .box { background: #fff; padding: 30px; border-radius: 8px; width: 360px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #cbd5e1; }
-        h2 { text-align: center; margin-bottom: 20px; color: #0f172a; }
-        .tab-box { display: flex; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
-        .tab-btn { flex: 1; padding: 10px; text-align: center; background: none; border: none; font-size: 0.95rem; font-weight: bold; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
-        .tab-btn.active { color: #16a34a; border-bottom-color: #16a34a; }
-        .tab-pane { display: none; }
-        .tab-pane.active { display: block; }
-        .input-group { margin-bottom: 15px; }
-        .input-group label { display: block; margin-bottom: 5px; font-size: 14px; color: #475569; }
-        .input-group input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
-        .captcha-box { display: flex; gap: 10px; align-items: center; }
-        .captcha-box input { flex: 1; }
-        .captcha-img { cursor: pointer; border: 1px solid #cbd5e1; border-radius: 4px; height: 38px; }
-        .pwd-tip { font-size: 12px; color: #64748b; margin-top: 4px; }
-        .btn-submit { width: 100%; padding: 10px; background: #16a34a; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        .btn-submit:hover { background: #15803d; }
-        .links { margin-top: 18px; text-align: center; font-size: 14px; }
-        .links button { background: none; border: none; color: #2563eb; cursor: pointer; font-size: 14px; padding: 0; }
-        .links button:hover { text-decoration: underline; }
-        .msg { padding: 8px; border-radius: 4px; margin-bottom: 15px; text-align: center; font-size: 13px; }
-        .msg-err { background: #fef2f2; color: #dc2626; }
-        .msg-succ { background: #f0fdf4; color: #166534; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css/auth.css">
 </head>
-<body>
-    <div class="box">
+<body class="auth-page">
+    <div class="auth-wrap">
+        <!-- 左区：品牌展示 -->
+        <div class="auth-brand">
+            <h1 class="brand-name">惠蒙优选</h1>
+            <p class="brand-slogan">好货精选，多商户入驻</p>
+            <ul class="brand-points">
+                <li>
+                    <span class="point-icon">🛍️</span>
+                    <div>
+                        <p class="point-title">精选好物</p>
+                        <p class="point-desc">热销榜单每日更新</p>
+                    </div>
+                </li>
+                <li>
+                    <span class="point-icon">🏪</span>
+                    <div>
+                        <p class="point-title">多商户入驻</p>
+                        <p class="point-desc">店铺商品一键直达</p>
+                    </div>
+                </li>
+                <li>
+                    <span class="point-icon">🎁</span>
+                    <div>
+                        <p class="point-title">新人礼包</p>
+                        <p class="point-desc">注册即领满 100 减 20</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- 右区：表单卡片 -->
+        <div class="auth-form">
+            <div class="auth-card">
         <h2>创建新账号</h2>
 
         <?php if (!empty($message)): ?>
@@ -256,7 +265,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <button type="button" onclick="window.location.href='user_login.php';">已有账号？前往登录</button> |
             <button type="button" onclick="window.location.href='index.php';">返回商城首页</button>
         </div>
+            </div>
+        </div>
     </div>
+
+    <div class="auth-footer">© 2026 惠蒙优选 · 本站为课程演示项目</div>
 
     <script>
         function setRegisterType(type) {
