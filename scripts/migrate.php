@@ -235,4 +235,8 @@ add_column('cart','sku_id','int NOT NULL DEFAULT 0');
 add_column('product_skus','image_url','varchar(255) NULL DEFAULT NULL AFTER stock');
 add_column('order_items','sku_image','varchar(255) NULL');
 
+// ===== 售后退货物流：买家在商家同意退货后填写退货快递（商户确认收货前展示） =====
+add_column('after_sale_requests','return_express_company','varchar(50) NULL');
+add_column('after_sale_requests','return_express_no','varchar(100) NULL');
+
 echo "Migration complete.\n";

@@ -164,6 +164,34 @@ $clearedOrder=(int)create_orders($buyer,$pSku,1,$address,'sku-cleared-order',0,$
 $clearedItem=one('SELECT i.*,COALESCE(i.sku_image,i.product_image,p.image_url) AS display_image FROM order_items i LEFT JOIN products p ON p.id=i.product_id WHERE i.order_id=?',[$clearedOrder]);
 check($clearedItem['sku_image']===null && $clearedItem['display_image']==='uploads/main.jpg','cleared sku image falls back to product main image');
 change_order($clearedOrder,$buyer,'cancel');
+// ===== 售后退货物流：已发货申请售后→批准→买家填退货单→商户确认收货（SKU 只回补一次、订单联动置已完成） =====
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('售后SKU商品','20.00',9,?,?,1,'approved')",[$category,$shop]); $pAfterSale=(int)$conn->insert_id;
+query('INSERT INTO product_skus(product_id,sku_name,price_cents,stock) VALUES(?,?,?,?)',[$pAfterSale,'售后规格',2000,3]);
+$skuAfterSale=(int)$conn->insert_id;
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+$afterSaleShipOrder=(int)create_orders($buyer,$pAfterSale,1,$address,'after-sale-ship',0,$skuAfterSale)[0]; change_order($afterSaleShipOrder,$buyer,'pay');
+$_SESSION['role']='merchant'; change_order($afterSaleShipOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'SHIP111222']);
+$_SESSION['role']='user'; change_order($afterSaleShipOrder,$buyer,'after_sale',['reason'=>'七天内申请退货退款']);
+$_SESSION['role']='merchant'; change_order($afterSaleShipOrder,$merchant,'after_sale_approve');
+$_SESSION['role']='user';
+rejects(function()use($afterSaleShipOrder,$other){change_order($afterSaleShipOrder,$other,'after_sale_ship',['return_express_company'=>'测试快递','return_express_no'=>'RET123456']);},'foreign buyer cannot submit return logistics');
+change_order($afterSaleShipOrder,$buyer,'after_sale_ship',['return_express_company'=>'测试快递','return_express_no'=>'RET123456']);
+$shipRequest=one('SELECT * FROM after_sale_requests WHERE order_id=?',[$afterSaleShipOrder]);
+check($shipRequest['return_express_company']==='测试快递' && $shipRequest['return_express_no']==='RET123456','buyer can submit return express after approval');
+$_SESSION['role']='merchant'; change_order($afterSaleShipOrder,$merchant,'after_sale_receive');
+check((int)one('SELECT stock FROM product_skus WHERE id=?',[$skuAfterSale])['stock']===3 && (int)one('SELECT stock FROM products WHERE id=?',[$pAfterSale])['stock']===9 && one('SELECT status FROM orders WHERE id=?',[$afterSaleShipOrder])['status']==='completed','return receipt restores SKU stock exactly once and completes order');
+rejects(function()use($afterSaleShipOrder,$merchant){change_order($afterSaleShipOrder,$merchant,'after_sale_receive');},'repeat return receipt rejected after status change');
+rejects(function()use($afterSaleRejected,$buyer){change_order($afterSaleRejected,$buyer,'after_sale_ship',['return_express_company'=>'测试快递','return_express_no'=>'RET000001']);},'return logistics rejected after after-sale refusal');
+// 已完成订单同样可走售后全流程（申请→批准→填退货单→确认收货）
+$_SESSION['role']='user';
+$afterSaleDone=(int)create_orders($buyer,$pAfterSale,1,$address,'after-sale-done',0,$skuAfterSale)[0]; change_order($afterSaleDone,$buyer,'pay');
+$_SESSION['role']='merchant'; change_order($afterSaleDone,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'SHIP333444']);
+$_SESSION['role']='user'; change_order($afterSaleDone,$buyer,'receive'); change_order($afterSaleDone,$buyer,'after_sale',['reason'=>'完成后申请退货']);
+$_SESSION['role']='merchant'; change_order($afterSaleDone,$merchant,'after_sale_approve');
+$_SESSION['role']='user'; change_order($afterSaleDone,$buyer,'after_sale_ship',['return_express_company'=>'测试快递','return_express_no'=>'RET555666']);
+$_SESSION['role']='merchant'; change_order($afterSaleDone,$merchant,'after_sale_receive');
+check(one('SELECT status FROM after_sale_requests WHERE order_id=?',[$afterSaleDone])['status']==='refunded' && (int)one('SELECT stock FROM product_skus WHERE id=?',[$skuAfterSale])['stock']===3,'completed order can go through after-sale');
+check((int)one('SELECT COUNT(*) AS n FROM refund_requests')['n']===1,'after-sale flows do not affect refund-rate statistics');
 // ===== 订单留言：权限、内容校验、未读计数与已读状态 =====
 $_SESSION=['user_id'=>$buyer,'role'=>'user'];
 $msgOrder=(int)create_orders($buyer,$p2,1,$address,'message-order')[0]; change_order($msgOrder,$buyer,'pay');

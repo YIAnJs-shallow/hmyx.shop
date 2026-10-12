@@ -227,18 +227,29 @@ function change_order($id, $actor, $action, $data = []) {
             $reason = trim($data['reason'] ?? '');
             if (mb_strlen($reason) < 2 || mb_strlen($reason) > 500) throw new DomainException('退货原因需为 2 至 500 个字符');
             query("INSERT INTO after_sale_requests(order_id,user_id,reason,status) VALUES(?,?,?,'pending')", [$id,$actor,$reason]);
+        } elseif ($action === 'after_sale_ship' && $owner && in_array($order['status'], ['shipped','completed'], true)) {
+            // 买家在商家同意退货后填写退货物流（校验规则与发货分支一致）
+            $request = one("SELECT * FROM after_sale_requests WHERE order_id=? AND status='approved' FOR UPDATE", [$id]);
+            if (!$request) throw new DomainException('该售后单状态已变化');
+            $company = trim($data['return_express_company'] ?? ''); $number = trim($data['return_express_no'] ?? '');
+            if (!$company || mb_strlen($company) > 50 || !preg_match('/^[A-Za-z0-9-]{5,100}$/D', $number)) throw new DomainException('请填写快递公司及有效运单号');
+            query('UPDATE after_sale_requests SET return_express_company=?, return_express_no=? WHERE id=?', [$company, $number, (int)$request['id']]);
         } elseif (in_array($action, ['after_sale_approve','after_sale_reject'], true) && $manager && in_array($order['status'], ['shipped','completed'], true)) {
             $request = one("SELECT * FROM after_sale_requests WHERE order_id=? AND status='pending' FOR UPDATE", [$id]);
             if (!$request) throw new DomainException('没有待处理的退货退款申请');
             query('UPDATE after_sale_requests SET status=?,processed_at=NOW() WHERE id=?', [$action === 'after_sale_approve' ? 'approved' : 'rejected', (int)$request['id']]);
         } elseif ($action === 'after_sale_receive' && $manager && in_array($order['status'], ['shipped','completed'], true)) {
+            // 事务内 FOR UPDATE 锁定 approved 状态的售后单：状态一旦流转（received/refunded）即拒绝重复回补
             $request = one("SELECT * FROM after_sale_requests WHERE order_id=? AND status='approved' FOR UPDATE", [$id]);
-            if (!$request) throw new DomainException('没有待确认收货的退货申请');
+            if (!$request) throw new DomainException('该售后单状态已变化');
             if ($order['payment_method'] === 'demo') {
+                // release_stock 依 stock_reserved 标志位整单只回补一次：sku_id>0 回补 product_skus，默认规格回补 products
                 release_stock($order);
-                query("UPDATE after_sale_requests SET status='refunded',received_at=NOW() WHERE id=?", [(int)$request['id']]);
+                // 已发货订单售后完成后联动订单状态：置已完成（已是 completed 则保持完成时间不变）
+                query("UPDATE orders SET status='completed', completed_at=COALESCE(completed_at, NOW()) WHERE id=?", [$id]);
+                query("UPDATE after_sale_requests SET status='refunded', received_at=NOW() WHERE id=?", [(int)$request['id']]);
             } else {
-                query("UPDATE after_sale_requests SET status='received',received_at=NOW() WHERE id=?", [(int)$request['id']]);
+                query("UPDATE after_sale_requests SET status='received', received_at=NOW() WHERE id=?", [(int)$request['id']]);
             }
         } else { throw new DomainException('无权操作或订单状态已改变，请刷新查看'); }
         if ($backend) audit_log('order.' . $action, 'order', $id, ['previous_status'=>$order['status']], 'success', true);

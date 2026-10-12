@@ -11,7 +11,7 @@ $where='EXISTS(SELECT 1 FROM shops s WHERE s.id=o.shop_id AND s.user_id=? AND s.
 if($status!=='all') {$where.=' AND o.status=?'; $params[]=$status;}
 $page=max(1,(int)($_GET['page'] ?? 1)); $offset=($page-1)*15;
 $count=one('SELECT COUNT(*) AS n FROM orders o WHERE '.$where,$params)['n'];
-$orders=rows('SELECT o.*,r.status AS refund_status,r.reason,a.status AS after_sale_status,a.reason AS after_sale_reason FROM orders o LEFT JOIN refund_requests r ON r.order_id=o.id LEFT JOIN after_sale_requests a ON a.order_id=o.id WHERE '.$where.' ORDER BY o.id DESC LIMIT 15 OFFSET '.$offset,$params);
+$orders=rows('SELECT o.*,r.status AS refund_status,r.reason,a.status AS after_sale_status,a.reason AS after_sale_reason,a.return_express_company,a.return_express_no FROM orders o LEFT JOIN refund_requests r ON r.order_id=o.id LEFT JOIN after_sale_requests a ON a.order_id=o.id WHERE '.$where.' ORDER BY o.id DESC LIMIT 15 OFFSET '.$offset,$params);
 $unreadMessages=order_message_unread_counts(array_column($orders,'id'),'merchant');
 page_start('订单发货与售后');
 echo '<p><a href="product_list.php">返回店铺管理</a></p><nav class="tabs">'; foreach($states as $key=>$label) echo '<a class="'.($status===$key?'active':'').'" href="?status='.$key.'">'.$label.'</a>'; echo '</nav>';
@@ -21,7 +21,8 @@ foreach($orders as $order): $id=(int)$order['id']; ?>
 <?php foreach(rows('SELECT i.*,COALESCE(i.product_title,p.title,\'历史商品\') AS title FROM order_items i LEFT JOIN products p ON p.id=i.product_id WHERE i.order_id=?',[$id]) as $item): ?><p><?=h($item['title'])?> × <?=(int)$item['quantity']?></p><?php endforeach; ?>
 <p>收货人：<?=h($order['receiver_name'])?> · <?=h($order['receiver_phone'])?><br><?=h($order['receiver_address'])?></p>
 <?php if($order['after_sale_status']==='pending'): ?><p class="notice">退货退款申请：<?=h($order['after_sale_reason'])?></p><?=action_button($id,'after_sale_approve','同意退货')?><?=action_button($id,'after_sale_reject','拒绝申请')?>
-<?php elseif($order['after_sale_status']==='approved'): ?><p class="notice">退货退款：<?=h(after_sale_status_name($order['after_sale_status']))?> · <?=h($order['after_sale_reason'])?></p><?=action_button($id,'after_sale_receive','确认收货并处理退款')?>
+<?php elseif($order['after_sale_status']==='approved'): ?><p class="notice">退货退款：<?=h(after_sale_status_name($order['after_sale_status']))?> · <?=h($order['after_sale_reason'])?></p>
+<?php if($order['return_express_no']): ?><p>退货物流：<?=h($order['return_express_company'])?> · <?=h($order['return_express_no'])?></p><?=action_button($id,'after_sale_receive','确认收货并处理退款')?><?php else: ?><p class="muted">等待买家寄回商品并填写退货物流</p><?php endif; ?>
 <?php elseif($order['after_sale_status']): ?><p class="notice">退货退款：<?=h(after_sale_status_name($order['after_sale_status']))?> · <?=h($order['after_sale_reason'])?></p>
 <?php endif; ?>
 <?php if($order['refund_status']==='pending'): ?><p class="notice">退款原因：<?=h($order['reason'])?></p><?=action_button($id,'refund_approve','批准演示退款')?><?=action_button($id,'refund_reject','拒绝退款')?>
