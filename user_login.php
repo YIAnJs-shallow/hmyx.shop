@@ -77,6 +77,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 </head>
 <body class="auth-page">
     <div class="auth-wrap">
+        <!-- 流星雨 + 彗星天空层（纯装饰） -->
+        <div class="sky-layer" aria-hidden="true">
+            <span class="meteor m1"></span>
+            <span class="meteor m2"></span>
+            <span class="meteor m3"></span>
+            <span class="meteor m4"></span>
+            <span class="meteor m5"></span>
+            <span class="meteor m6"></span>
+            <span class="meteor m7"></span>
+            <span class="meteor m8"></span>
+            <div class="comet"><i class="comet-t2"></i></div>
+        </div>
         <!-- 左区：品牌展示 -->
         <div class="auth-brand">
             <div class="aurora" aria-hidden="true">

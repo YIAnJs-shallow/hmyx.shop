@@ -119,6 +119,144 @@ body.auth-page {
     to   { background-position: 0 40px; }
 }
 
+/* --- 第四层：流星雨 + 彗星天空层（fixed 全页，纯装饰，禁止交互） --- */
+.sky-layer {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* 常驻流星：8 颗共铺一条 36s 序列（4s/颗、负延迟错开 4.5s），
+   平均每 3~4 秒画面出现一颗；单颗仅在关键帧 70%~85% 区间划过 */
+.meteor {
+    position: absolute;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(to left, transparent, rgba(255, 255, 255, 0.55) 45%, #fff 90%);
+    opacity: 0;
+    animation: meteorFly 4s linear infinite;
+}
+
+/* 头部 8px 亮白光核 */
+.meteor::after {
+    content: '';
+    position: absolute;
+    left: -3px;
+    top: 50%;
+    margin-top: -4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.9);
+}
+
+/* 8 颗各自起点 / 长度 / 角度（-45deg 附近 ±5deg 抖动）与序列延迟 */
+.meteor.m1 { top: -4%; left: 5%;  width: 180px; --r: -44deg; animation-delay: 0s;     }
+.meteor.m2 { top:  8%; left: 20%; width: 160px; --r: -46deg; animation-delay: -4.5s;  }
+.meteor.m3 { top: -2%; left: 38%; width: 200px; --r: -42deg; animation-delay: -9s;    }
+.meteor.m4 { top: 12%; left: 55%; width: 150px; --r: -48deg; animation-delay: -13.5s; }
+.meteor.m5 { top:  2%; left: 65%; width: 170px; --r: -45deg; animation-delay: -18s;  }
+.meteor.m6 { top: -6%; left: 14%; width: 190px; --r: -41deg; animation-delay: -22.5s; }
+.meteor.m7 { top: 10%; left: 45%; width: 140px; --r: -47deg; animation-delay: -27s;  }
+.meteor.m8 { top:  0%; left: 75%; width: 160px; --r: -43deg; animation-delay: -31.5s; }
+
+@keyframes meteorFly {
+    0%, 70%   { transform: translate(0, 0) rotate(var(--r, -45deg)); opacity: 0; }
+    72%       { transform: translate(-68px, 68px) rotate(var(--r, -45deg)); opacity: 1; }
+    84%       { transform: translate(-300px, 300px) rotate(var(--r, -45deg)); opacity: 0.9; }
+    85%, 100% { transform: translate(-340px, 340px) rotate(var(--r, -45deg)); opacity: 0; }
+}
+
+/* --- 主角：《你的名字》风格紫色彗星，40s 一遇，加载 4s 后首次划过 ---
+   划过动作压缩在关键帧前 5.5%（≈2.2s），其余时间静伏屏外 */
+.comet {
+    position: absolute;
+    top: 10%;
+    left: 80%;
+    width: 420px;
+    height: 3px;
+    border-radius: 3px;
+    /* 拖尾主线：头白 → 淡紫 → 深紫 → 隐没 */
+    background: linear-gradient(to left, transparent, rgba(124, 58, 237, 0.55) 30%, #c4b5fd 65%, #fff);
+    transform-origin: 0 50%;
+    opacity: 0;
+    animation: cometFly 40s linear 4s infinite;
+}
+
+/* 分叉尾之一：180px 细支流，偏主线 -6deg，起点在彗核后方 40px */
+.comet::before {
+    content: '';
+    position: absolute;
+    left: 40px;
+    top: 1px;
+    width: 180px;
+    height: 1px;
+    transform-origin: 0 50%;
+    transform: rotate(-6deg);
+    opacity: 0.5;
+    background: linear-gradient(to left, transparent, rgba(196, 181, 253, 0.7));
+}
+
+/* 分叉尾之二：260px 细支流，偏主线 8deg，起点在彗核后方 90px */
+.comet .comet-t2 {
+    position: absolute;
+    left: 90px;
+    top: 1px;
+    width: 260px;
+    height: 1px;
+    transform-origin: 0 50%;
+    transform: rotate(8deg);
+    opacity: 0.5;
+    background: linear-gradient(to left, transparent, rgba(196, 181, 253, 0.7));
+}
+
+/* 光核：14px 白圆 + 三层蓝紫光晕 */
+.comet::after {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 50%;
+    margin-top: -7px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow:
+        0 0 12px 4px #fff,
+        0 0 30px 10px rgba(167, 139, 250, 0.8),
+        0 0 60px 24px rgba(124, 58, 237, 0.4);
+}
+
+/* 轨迹微弧：中点 Y 略高于两端连线（translateY 分段），位移约 800px、向左下 -50deg */
+@keyframes cometFly {
+    0%        { transform: translate(0, 0) rotate(-50deg); opacity: 0; }
+    0.5%      { opacity: 1; }
+    2.75%     { transform: translate(-260px, 335px) rotate(-50deg); opacity: 1; }
+    5.5%      { transform: translate(-520px, 620px) rotate(-50deg); opacity: 0; }
+    5.6%, 100% { transform: translate(0, 0) rotate(-50deg); opacity: 0; }
+}
+
+/* 彗星照亮夜空：全页紫色微光层，与彗星同步 2.2s，峰值 opacity 0.12 */
+.sky-layer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 72% 18%, rgba(167, 139, 250, 0.5), transparent 65%);
+    opacity: 0;
+    animation: cometGlow 40s linear 4s infinite;
+}
+
+@keyframes cometGlow {
+    0%         { opacity: 0; }
+    0.5%       { opacity: 0.12; }
+    2.75%      { opacity: 0.12; }
+    5.5%       { opacity: 0; }
+    5.6%, 100% { opacity: 0; }
+}
+
 /* --- 品牌文案排版 --- */
 .brand-name {
     font-size: 42px;
@@ -449,6 +587,7 @@ body.auth-page {
     .auth-wrap { min-height: 100vh; }
     .auth-form { padding: 12px; align-items: flex-start; padding-top: 6vh; }
     .auth-card { margin: 12px; width: auto; }
+    .meteor.m5, .meteor.m6, .meteor.m7, .meteor.m8 { display: none; }  /* 窄屏流星仅保留 4 颗，彗星保留 */
 }
 
 /* 尊重系统“减少动态效果”偏好：动画时长归零，快速跳到末帧 */
@@ -458,4 +597,7 @@ body.auth-page {
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
     }
+
+    /* 流星 / 彗星 / 照亮层全部禁用 */
+    .sky-layer { display: none !important; }
 }
