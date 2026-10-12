@@ -231,5 +231,8 @@ query("CREATE TABLE IF NOT EXISTS product_skus (
 add_column('order_items','sku_id','int NULL');
 add_column('order_items','sku_name','varchar(100) NULL');
 add_column('cart','sku_id','int NOT NULL DEFAULT 0');
+// ===== SKU 规格图片：product_skus.image_url 为当前图，order_items.sku_image 为下单快照（无图 NULL，展示回退商品主图） =====
+add_column('product_skus','image_url','varchar(255) NULL DEFAULT NULL AFTER stock');
+add_column('order_items','sku_image','varchar(255) NULL');
 
 echo "Migration complete.\n";

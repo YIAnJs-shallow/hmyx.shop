@@ -104,8 +104,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($name === '' || mb_strlen($name) > 100 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', $price_raw) || (float)$price_raw <= 0 || !preg_match('/^\d+$/D', $stock_raw)) {
             $sku_invalid = true; break;
         }
+        // 规格图（可选）：未上传或上传失败均存 NULL，展示时回退商品主图
+        $sku_image = null;
+        if (isset($_FILES['sku_image']) && ($_FILES['sku_image']['error'][$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $sku_image = save_image_upload([
+                    'error' => $_FILES['sku_image']['error'][$i],
+                    'size' => $_FILES['sku_image']['size'][$i],
+                    'tmp_name' => $_FILES['sku_image']['tmp_name'][$i],
+                ]);
+            } catch (DomainException $e) { $sku_image = null; }
+        }
         $parts = explode('.', $price_raw);
-        $sku_rows[] = ['name' => $name, 'price_cents' => (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0'), 'stock' => (int)$stock_raw];
+        $sku_rows[] = ['name' => $name, 'price_cents' => (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0'), 'stock' => (int)$stock_raw, 'image_url' => $sku_image];
     }
 
     // 处理图片上传
@@ -146,14 +157,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!empty($ok) && $sku_rows) {
                     $newProductId = $db instanceof PDO ? (int)$db->lastInsertId() : (int)$db->insert_id;
                     if ($db instanceof PDO) {
-                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock) VALUES (?, ?, ?, ?)");
-                        foreach ($sku_rows as $row) $stmt->execute([$newProductId, $row['name'], $row['price_cents'], $row['stock']]);
+                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock, image_url) VALUES (?, ?, ?, ?, ?)");
+                        foreach ($sku_rows as $row) $stmt->execute([$newProductId, $row['name'], $row['price_cents'], $row['stock'], $row['image_url']]);
                     } elseif ($db instanceof mysqli) {
-                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock) VALUES (?, ?, ?, ?)");
+                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock, image_url) VALUES (?, ?, ?, ?, ?)");
                         if (!$stmt) throw new Exception('SQL 预处理失败');
-                        $pid = $newProductId; $nm = ''; $pc = 0; $st = 0;
-                        $stmt->bind_param("isii", $pid, $nm, $pc, $st);
-                        foreach ($sku_rows as $row) { $nm = $row['name']; $pc = $row['price_cents']; $st = $row['stock']; $stmt->execute(); }
+                        $pid = $newProductId; $nm = ''; $pc = 0; $st = 0; $im = null;
+                        $stmt->bind_param("isiis", $pid, $nm, $pc, $st, $im);
+                        foreach ($sku_rows as $row) { $nm = $row['name']; $pc = $row['price_cents']; $st = $row['stock']; $im = $row['image_url']; $stmt->execute(); }
                         $stmt->close();
                     }
                 }
@@ -251,12 +262,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <div class="mb-3">
                 <label class="form-label fw-bold small">商品规格（多规格）</label>
-                <small class="text-muted d-block mb-2">每个规格一行：名称 / 价格（元）/ 库存；全部留空则仅使用上方默认规格，填写任意一格即须整行完整。</small>
+                <small class="text-muted d-block mb-2">每个规格一行：名称 / 价格（元）/ 库存 / 规格图（可选）；全部留空则仅使用上方默认规格，填写任意一格即须整行完整。</small>
                 <div id="sku-rows">
                     <div class="row g-2 mb-2 sku-row">
-                        <div class="col-4"><input type="text" name="sku_name[]" class="form-control" placeholder="规格名称，如 500ml 装"></div>
-                        <div class="col-3"><input type="number" step="0.01" min="0.01" name="sku_price[]" class="form-control" placeholder="价格（元）"></div>
-                        <div class="col-3"><input type="number" min="0" name="sku_stock[]" class="form-control" placeholder="库存"></div>
+                        <div class="col-3"><input type="text" name="sku_name[]" class="form-control" placeholder="规格名称，如 500ml 装"></div>
+                        <div class="col-2"><input type="number" step="0.01" min="0.01" name="sku_price[]" class="form-control" placeholder="价格（元）"></div>
+                        <div class="col-2"><input type="number" min="0" name="sku_stock[]" class="form-control" placeholder="库存"></div>
+                        <div class="col-3"><input type="file" name="sku_image[]" accept="image/*" class="form-control" title="规格图（可选）"></div>
                         <div class="col-2"><button type="button" class="btn btn-outline-danger w-100 sku-remove">删除规格</button></div>
                     </div>
                 </div>

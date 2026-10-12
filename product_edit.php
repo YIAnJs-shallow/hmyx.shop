@@ -112,11 +112,11 @@ $msg_type = 'success';
 $existing_skus = [];
 try {
     if ($db instanceof PDO) {
-        $stmt = $db->prepare("SELECT id, sku_name, price_cents, stock FROM product_skus WHERE product_id = ? AND status = 1 ORDER BY id");
+        $stmt = $db->prepare("SELECT id, sku_name, price_cents, stock, image_url FROM product_skus WHERE product_id = ? AND status = 1 ORDER BY id");
         $stmt->execute([$product_id]);
         $existing_skus = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } elseif ($db instanceof mysqli) {
-        $stmt = $db->prepare("SELECT id, sku_name, price_cents, stock FROM product_skus WHERE product_id = ? AND status = 1 ORDER BY id");
+        $stmt = $db->prepare("SELECT id, sku_name, price_cents, stock, image_url FROM product_skus WHERE product_id = ? AND status = 1 ORDER BY id");
         if ($stmt) {
             $stmt->bind_param('i', $product_id);
             $stmt->execute();
@@ -152,8 +152,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($name === '' || mb_strlen($name) > 100 || !preg_match('/^\d+(?:\.\d{1,2})?$/D', $price_raw) || (float)$price_raw <= 0 || !preg_match('/^\d+$/D', $stock_raw)) {
             $sku_invalid = true; break;
         }
+        // 规格图：新上传优先；未上传且未勾选清除则沿用该行原有图片；勾选清除或上传失败存 NULL
+        $sku_image = null;
+        if (isset($_FILES['sku_image']) && ($_FILES['sku_image']['error'][$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $sku_image = save_image_upload([
+                    'error' => $_FILES['sku_image']['error'][$i],
+                    'size' => $_FILES['sku_image']['size'][$i],
+                    'tmp_name' => $_FILES['sku_image']['tmp_name'][$i],
+                ]);
+            } catch (DomainException $e) { $sku_image = null; }
+        }
+        if ($sku_image === null && empty($_POST['sku_clear_image'][$i])) {
+            $sku_image = $existing_skus[$i]['image_url'] ?? null;
+        }
         $parts = explode('.', $price_raw);
-        $sku_rows[] = ['name' => $name, 'price_cents' => (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0'), 'stock' => (int)$stock_raw];
+        $sku_rows[] = ['name' => $name, 'price_cents' => (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0'), 'stock' => (int)$stock_raw, 'image_url' => $sku_image];
     }
 
     // PHP7.3 mysqlnd 下 bind_param 混合 NULL 会破坏 'd' 类型参数，价格改用字符串绑定
@@ -236,8 +250,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("UPDATE product_skus SET status = 0 WHERE product_id = ?");
                     $stmt->execute([$product_id]);
                     if ($sku_rows) {
-                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock) VALUES (?, ?, ?, ?)");
-                        foreach ($sku_rows as $row) $stmt->execute([$product_id, $row['name'], $row['price_cents'], $row['stock']]);
+                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock, image_url) VALUES (?, ?, ?, ?, ?)");
+                        foreach ($sku_rows as $row) $stmt->execute([$product_id, $row['name'], $row['price_cents'], $row['stock'], $row['image_url']]);
                     }
                 } elseif ($db instanceof mysqli) {
                     $stmt = $db->prepare("UPDATE product_skus SET status = 0 WHERE product_id = ?");
@@ -246,11 +260,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute();
                     $stmt->close();
                     if ($sku_rows) {
-                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock) VALUES (?, ?, ?, ?)");
+                        $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock, image_url) VALUES (?, ?, ?, ?, ?)");
                         if (!$stmt) throw new Exception('SQL 预处理失败');
-                        $nm = ''; $pc = 0; $st = 0;
-                        $stmt->bind_param("isii", $product_id, $nm, $pc, $st);
-                        foreach ($sku_rows as $row) { $nm = $row['name']; $pc = $row['price_cents']; $st = $row['stock']; $stmt->execute(); }
+                        $nm = ''; $pc = 0; $st = 0; $im = null;
+                        $stmt->bind_param("isiis", $product_id, $nm, $pc, $st, $im);
+                        foreach ($sku_rows as $row) { $nm = $row['name']; $pc = $row['price_cents']; $st = $row['stock']; $im = $row['image_url']; $stmt->execute(); }
                         $stmt->close();
                     }
                 }
@@ -346,14 +360,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <div class="mb-3">
                 <label class="form-label fw-bold small">商品规格（多规格）</label>
-                <small class="text-muted d-block mb-2">每个规格一行：名称 / 价格（元）/ 库存；全部留空保存则回到默认规格，填写任意一格即须整行完整。修改后旧规格会停用，历史订单快照不受影响。</small>
+                <small class="text-muted d-block mb-2">每个规格一行：名称 / 价格（元）/ 库存 / 规格图（可选）；全部留空保存则回到默认规格，填写任意一格即须整行完整。修改后旧规格会停用，历史订单快照不受影响。</small>
                 <div id="sku-rows">
-                    <?php $display_skus = $existing_skus ?: [['sku_name' => '', 'price_cents' => null, 'stock' => '']]; ?>
-                    <?php foreach ($display_skus as $sku): ?>
+                    <?php $display_skus = $existing_skus ?: [['sku_name' => '', 'price_cents' => null, 'stock' => '', 'image_url' => null]]; ?>
+                    <?php foreach ($display_skus as $i => $sku): ?>
                     <div class="row g-2 mb-2 sku-row">
-                        <div class="col-4"><input type="text" name="sku_name[]" class="form-control" placeholder="规格名称，如 500ml 装" value="<?= htmlspecialchars($sku['sku_name'] ?? '') ?>"></div>
-                        <div class="col-3"><input type="number" step="0.01" min="0.01" name="sku_price[]" class="form-control" placeholder="价格（元）" value="<?= $sku['price_cents'] !== null ? sprintf('%d.%02d', intdiv((int)$sku['price_cents'], 100), (int)$sku['price_cents'] % 100) : '' ?>"></div>
-                        <div class="col-3"><input type="number" min="0" name="sku_stock[]" class="form-control" placeholder="库存" value="<?= htmlspecialchars((string)($sku['stock'] ?? '')) ?>"></div>
+                        <div class="col-3"><input type="text" name="sku_name[]" class="form-control" placeholder="规格名称，如 500ml 装" value="<?= htmlspecialchars($sku['sku_name'] ?? '') ?>"></div>
+                        <div class="col-2"><input type="number" step="0.01" min="0.01" name="sku_price[]" class="form-control" placeholder="价格（元）" value="<?= $sku['price_cents'] !== null ? sprintf('%d.%02d', intdiv((int)$sku['price_cents'], 100), (int)$sku['price_cents'] % 100) : '' ?>"></div>
+                        <div class="col-2"><input type="number" min="0" name="sku_stock[]" class="form-control" placeholder="库存" value="<?= htmlspecialchars((string)($sku['stock'] ?? '')) ?>"></div>
+                        <div class="col-3">
+                            <div class="sku-current mb-1"><?php if (!empty($sku['image_url'])): ?><img src="<?= htmlspecialchars($sku['image_url']) ?>" class="current-img" style="width:60px;height:60px;" alt="规格图"><?php else: ?><span class="text-muted small">未设置</span><?php endif; ?></div>
+                            <input type="file" name="sku_image[]" accept="image/*" class="form-control form-control-sm" title="规格图（可选）">
+                            <div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="sku_clear_image[<?= (int)$i ?>]" value="1" id="sku-clear-<?= (int)$i ?>"><label class="form-check-label small" for="sku-clear-<?= (int)$i ?>">清除图片</label></div>
+                        </div>
                         <div class="col-2"><button type="button" class="btn btn-outline-danger w-100 sku-remove">删除规格</button></div>
                     </div>
                     <?php endforeach; ?>
@@ -393,9 +412,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <script>
 (function () {
     var rows = document.getElementById('sku-rows');
+    var nextIndex = <?= count($display_skus) ?>;
     document.getElementById('sku-add').addEventListener('click', function () {
         var clone = rows.querySelector('.sku-row').cloneNode(true);
-        clone.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+        clone.querySelectorAll('input').forEach(function (input) {
+            input.value = '';
+            input.checked = false;
+        });
+        var checkbox = clone.querySelector('input[type=checkbox]');
+        if (checkbox) {
+            checkbox.name = 'sku_clear_image[' + nextIndex + ']';
+            checkbox.id = 'sku-clear-' + nextIndex;
+            var label = clone.querySelector('label[for]');
+            if (label) label.setAttribute('for', 'sku-clear-' + nextIndex);
+            nextIndex++;
+        }
+        var current = clone.querySelector('.sku-current');
+        if (current) current.innerHTML = '<span class="text-muted small">未设置</span>';
         rows.appendChild(clone);
     });
     rows.addEventListener('click', function (e) {

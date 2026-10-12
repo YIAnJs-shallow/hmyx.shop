@@ -149,6 +149,21 @@ try { create_orders($buyer,$pSku,1,$address,'sku-race-loser',0,$skuB); } catch (
 check($raceLost && (int)one('SELECT stock FROM product_skus WHERE id=?',[$skuB])['stock']===0 && (int)one('SELECT COUNT(*) AS n FROM order_items WHERE sku_id=?',[$skuB])['n']===1,'concurrent buy of last SKU item allows only one order');
 change_order($raceWinner,$buyer,'cancel'); change_order($skuOrder,$buyer,'cancel');
 check((int)one('SELECT stock FROM product_skus WHERE id=?',[$skuA])['stock']===5 && (int)one('SELECT stock FROM product_skus WHERE id=?',[$skuB])['stock']===1 && (int)one('SELECT stock FROM products WHERE id=?',[$pSku])['stock']===99,'cancellation restores stock to the matching SKU');
+// ===== SKU 规格图片：下单快照、无图 NULL、清除后回退商品主图 =====
+query("UPDATE product_skus SET image_url='uploads/sku-a.jpg' WHERE id=?",[$skuA]);
+$imgOrder=(int)create_orders($buyer,$pSku,1,$address,'sku-image-order',0,$skuA)[0];
+$imgItem=one('SELECT * FROM order_items WHERE order_id=?',[$imgOrder]);
+check($imgItem['sku_image']==='uploads/sku-a.jpg','sku image url snapshotted into order_items');
+$noImgOrder=(int)create_orders($buyer,$pSku,1,$address,'sku-noimage-order',0,$skuB)[0];
+$noImgItem=one('SELECT * FROM order_items WHERE order_id=?',[$noImgOrder]);
+check($noImgItem['sku_image']===null,'sku without image snapshots NULL');
+change_order($imgOrder,$buyer,'cancel'); change_order($noImgOrder,$buyer,'cancel');
+query("UPDATE products SET image_url='uploads/main.jpg' WHERE id=?",[$pSku]);
+query("UPDATE product_skus SET image_url=NULL WHERE id=?",[$skuA]);
+$clearedOrder=(int)create_orders($buyer,$pSku,1,$address,'sku-cleared-order',0,$skuA)[0];
+$clearedItem=one('SELECT i.*,COALESCE(i.sku_image,i.product_image,p.image_url) AS display_image FROM order_items i LEFT JOIN products p ON p.id=i.product_id WHERE i.order_id=?',[$clearedOrder]);
+check($clearedItem['sku_image']===null && $clearedItem['display_image']==='uploads/main.jpg','cleared sku image falls back to product main image');
+change_order($clearedOrder,$buyer,'cancel');
 // ===== 订单留言：权限、内容校验、未读计数与已读状态 =====
 $_SESSION=['user_id'=>$buyer,'role'=>'user'];
 $msgOrder=(int)create_orders($buyer,$p2,1,$address,'message-order')[0]; change_order($msgOrder,$buyer,'pay');

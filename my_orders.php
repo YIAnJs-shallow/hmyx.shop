@@ -13,10 +13,10 @@ page_start('我的订单');
 echo '<nav class="tabs">'; foreach($states as $key=>$label) echo '<a class="'.($status===$key?'active':'').'" href="?status='.$key.'">'.$label.'</a>'; echo '</nav>';
 if(!$orders) echo '<div class="card empty">暂无订单，<a href="index.php">去逛逛</a></div>';
 foreach($orders as $order): $id=(int)$order['id'];
-$items=rows('SELECT i.*,COALESCE(i.product_title,p.title,\'历史商品\') AS title,COALESCE(i.product_image,p.image_url) AS image_url,r.id AS review_id FROM order_items i LEFT JOIN products p ON p.id=i.product_id LEFT JOIN reviews r ON r.order_item_id=i.id WHERE i.order_id=?',[$id]);
+$items=rows('SELECT i.*,COALESCE(i.product_title,p.title,\'历史商品\') AS title,COALESCE(i.sku_image,i.product_image,p.image_url) AS image_url,r.id AS review_id FROM order_items i LEFT JOIN products p ON p.id=i.product_id LEFT JOIN reviews r ON r.order_item_id=i.id WHERE i.order_id=?',[$id]);
 ?>
 <section class="card"><div class="row"><div class="grow"><strong><?=h($order['shop_name'] ?? '平台 / 历史订单')?></strong><p class="muted"><?=h($order['order_no'])?> · <?=h($order['created_at'])?></p></div><span class="badge"><?=h(status_name($order['status']))?></span></div>
-<?php foreach($items as $item): ?><div class="row"><div class="grow"><a href="detail.php?id=<?=(int)$item['product_id']?>"><?=h($item['title'])?></a><p>¥ <?=h($item['price'])?> × <?=(int)$item['quantity']?></p></div>
+<?php foreach($items as $item): ?><div class="row"><?php if($item['image_url']): ?><img class="thumb" src="<?=h($item['image_url'])?>" alt="<?=h($item['title'])?>"><?php endif; ?><div class="grow"><a href="detail.php?id=<?=(int)$item['product_id']?>"><?=h($item['title'])?></a><?= $item['sku_name'] ? '<p>规格：'.h($item['sku_name']).'</p>' : '' ?><p>¥ <?=h($item['price'])?> × <?=(int)$item['quantity']?></p></div>
 <?php if($order['status']==='completed' && $item['product_id'] && !$item['review_id']): ?><a class="button" href="review.php?item_id=<?=(int)$item['id']?>">评价商品</a><?php elseif($item['review_id']): ?><span>已评价</span><?php endif; ?></div><?php endforeach; ?>
 <?php if(!$items): ?><p class="muted">历史订单未保存商品明细。</p><?php endif; ?>
 <p><?=h($order['receiver_name'])?> · <?=h($order['receiver_phone'])?> · <?=h($order['receiver_address'])?></p><hr class="divider"><div class="row"><strong class="price grow">¥ <?=h($order['total_amount'])?></strong><div class="actions">

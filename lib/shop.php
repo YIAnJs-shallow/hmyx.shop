@@ -62,10 +62,10 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId
             // SKU 行的价格与库存以 product_skus 为准（锁粒度为该 sku 行）
             $product['price'] = money((int)$found['price_cents']);
             $product['stock'] = (int)$found['stock'];
-            $lines[] = array_merge($product, ['quantity' => $qty, 'sku_id' => (int)$found['id'], 'sku_name' => $found['sku_name']]);
+            $lines[] = array_merge($product, ['quantity' => $qty, 'sku_id' => (int)$found['id'], 'sku_name' => $found['sku_name'], 'sku_image' => $found['image_url'] ?? null]);
         } else {
             if ($skuId) throw new DomainException('商品规格已失效，请重新选择');
-            $lines[] = array_merge($product, ['quantity' => $qty, 'sku_id' => 0, 'sku_name' => null]);
+            $lines[] = array_merge($product, ['quantity' => $qty, 'sku_id' => 0, 'sku_name' => null, 'sku_image' => null]);
         }
     } else {
         $cartRows = rows('SELECT product_id, sku_id, SUM(quantity) AS quantity FROM cart WHERE user_id=? GROUP BY product_id, sku_id ORDER BY product_id, sku_id', [$userId]);
@@ -79,7 +79,7 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId
         }
         foreach ($cartRows as $row) {
             $pid = (int)$row['product_id'];
-            $line = array_merge($products[$pid], ['quantity' => $row['quantity'], 'sku_id' => 0, 'sku_name' => null]);
+            $line = array_merge($products[$pid], ['quantity' => $row['quantity'], 'sku_id' => 0, 'sku_name' => null, 'sku_image' => null]);
             $skus = product_active_skus($pid, $lock);
             if ($skus) {
                 $found = null;
@@ -89,6 +89,7 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId
                 $line['stock'] = (int)$found['stock'];
                 $line['sku_id'] = (int)$found['id'];
                 $line['sku_name'] = $found['sku_name'];
+                $line['sku_image'] = $found['image_url'] ?? null;
             } elseif ((int)$row['sku_id'] !== 0) {
                 throw new DomainException($line['title'].' 的规格已失效，请返回购物车处理');
             }
@@ -148,8 +149,8 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
                     $stockUpdate = query('UPDATE products SET stock=stock-? WHERE id=? AND stock>=?', [$item['quantity'],(int)$item['id'],$item['quantity']]);
                 }
                 if ($stockUpdate->affected_rows !== 1) throw new DomainException('库存发生变化，请重新下单');
-                query('INSERT INTO order_items(order_id,product_id,price,quantity,product_title,product_image,sku_id,sku_name) VALUES(?,?,?,?,?,?,?,?)',
-                    [$orderId,(int)$item['id'],$item['price'],$item['quantity'],$item['title'],$item['image_url'] ?? '',(int)$item['sku_id'] ?: null,$item['sku_name']]);
+                query('INSERT INTO order_items(order_id,product_id,price,quantity,product_title,product_image,sku_id,sku_name,sku_image) VALUES(?,?,?,?,?,?,?,?,?)',
+                    [$orderId,(int)$item['id'],$item['price'],$item['quantity'],$item['title'],$item['image_url'] ?? '',(int)$item['sku_id'] ?: null,$item['sku_name'],$item['sku_image'] ?: null]);
                 if (!$productId) query('DELETE FROM cart WHERE user_id=? AND product_id=? AND sku_id=?', [$userId,(int)$item['id'],(int)$item['sku_id']]);
             }
         }
