@@ -201,4 +201,19 @@ if (!one('SELECT id FROM coupons WHERE title="满50减5" LIMIT 1')) {
     query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('满50减5',500,5000,1000)");
 }
 
+// ===== 买卖家订单留言：按身份分别记录已读（买家/商户/管理员三方独立） =====
+query("CREATE TABLE IF NOT EXISTS order_messages (
+    id int AUTO_INCREMENT PRIMARY KEY,
+    order_id int NOT NULL,
+    sender_role enum('buyer','merchant','admin') NOT NULL COMMENT '发送方身份',
+    sender_id int NOT NULL COMMENT '买家/商户为 users.id，管理员为 admin_users.id',
+    content varchar(500) NOT NULL,
+    read_by_buyer tinyint NOT NULL DEFAULT 0,
+    read_by_merchant tinyint NOT NULL DEFAULT 0,
+    read_by_admin tinyint NOT NULL DEFAULT 0,
+    created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_order_messages (order_id, id),
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 echo "Migration complete.\n";

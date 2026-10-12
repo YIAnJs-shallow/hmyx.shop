@@ -200,6 +200,49 @@ function change_order($id, $actor, $action, $data = []) {
         $conn->commit();
     } catch (Throwable $e) { $conn->rollback(); throw $e; }
 }
+// ===== 订单留言：复用 change_order 的 $owner / $manager 判定思路 =====
+function order_message_role($order, $actor) {
+    if ($actor > 0) {
+        if ((int)$order['user_id'] === $actor) return 'buyer';
+        if (can_manage_order($order, $actor)) return 'merchant';
+        return null;
+    }
+    // 管理员仅限后台上下文且具备订单查看权限
+    if (defined('ADMIN_ORDER_CONTEXT') && ADMIN_ORDER_CONTEXT && function_exists('is_admin_logged_in') && is_admin_logged_in() && empty($_SESSION['admin']['must_change_password']) && admin_has_permission('order.view')) return 'admin';
+    return null;
+}
+function order_message_read_column($role) {
+    $columns = ['buyer'=>'read_by_buyer','merchant'=>'read_by_merchant','admin'=>'read_by_admin'];
+    return $columns[$role] ?? null;
+}
+function send_order_message($id, $actor, $content) {
+    $order = one('SELECT * FROM orders WHERE id=?', [$id]);
+    if (!$order) throw new DomainException('订单不存在');
+    $role = order_message_role($order, $actor);
+    if ($role === null) throw new DomainException('无权在该订单留言');
+    $content = trim((string)$content);
+    $length = mb_strlen($content);
+    if ($length < 2 || $length > 500) throw new DomainException('留言内容需为 2 至 500 个字符');
+    $senderId = $actor > 0 ? $actor : (int)($_SESSION['admin']['id'] ?? 0);
+    query('INSERT INTO order_messages(order_id,sender_role,sender_id,content) VALUES(?,?,?,?)', [$id, $role, $senderId, $content]);
+    return (int)$GLOBALS['conn']->insert_id;
+}
+function order_message_unread_counts(array $orderIds, $role) {
+    if (!$orderIds) return [];
+    $column = order_message_read_column($role);
+    if ($column === null) return [];
+    $ids = implode(',', array_map('intval', $orderIds));
+    $counts = [];
+    foreach (rows("SELECT order_id, COUNT(*) AS n FROM order_messages WHERE order_id IN ($ids) AND sender_role<>? AND $column=0 GROUP BY order_id", [$role]) as $row) {
+        $counts[(int)$row['order_id']] = (int)$row['n'];
+    }
+    return $counts;
+}
+function order_message_mark_read($id, $role) {
+    $column = order_message_read_column($role);
+    if ($column === null) return;
+    query("UPDATE order_messages SET $column=1 WHERE order_id=? AND sender_role<>? AND $column=0", [$id, $role]);
+}
 function page_start($title) {
     echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="addresses.php">收货地址</a><a href="user_center.php">个人中心</a>';
     if (in_array($_SESSION['role'] ?? '',['admin','merchant'],true)) echo '<a href="admin_orders.php">发货 / 售后</a>';
