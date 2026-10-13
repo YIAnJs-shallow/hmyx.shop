@@ -187,7 +187,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
     <title>惠蒙优选 - 精选优质商城</title>
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
     <link rel="stylesheet" href="css/shop.css?v=3">
-    <link rel="stylesheet" href="css/style.css?v=6">
+    <link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body class="page-home">
         <header>
@@ -318,6 +318,45 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         </div>
         <?php endif; ?>
 
+        <?php if ($keyword !== '' || $brand !== '' || $material !== '' || $price_min !== null || $price_max !== null): ?>
+        <!-- 京东式横向筛选 chips：仅搜索/筛选激活时渲染（分类继续用搜索框旁下拉） -->
+        <div class="filter-row">
+            <?php if ($brand_facets): ?>
+            <span class="fr-label">品牌：</span>
+            <?php foreach (array_slice($brand_facets, 0, 8) as $b): ?>
+                <?php if ($brand === $b): ?>
+                    <a href="<?= h($filter_query(['brand'=>'','page'=>null])) ?>" class="chip chip-on" title="点击清除">× <?= h($b) ?></a>
+                <?php else: ?>
+                    <a href="<?= h($filter_query(['brand'=>$b,'page'=>null])) ?>" class="chip"><?= h($b) ?></a>
+                <?php endif; ?>
+            <?php endforeach; ?>
+            <?php endif; ?>
+
+            <?php if ($material_facets): ?>
+            <span class="fr-label">材质：</span>
+            <?php foreach (array_slice($material_facets, 0, 8) as $m): ?>
+                <?php if ($material === $m): ?>
+                    <a href="<?= h($filter_query(['material'=>'','page'=>null])) ?>" class="chip chip-on" title="点击清除">× <?= h($m) ?></a>
+                <?php else: ?>
+                    <a href="<?= h($filter_query(['material'=>$m,'page'=>null])) ?>" class="chip"><?= h($m) ?></a>
+                <?php endif; ?>
+            <?php endforeach; ?>
+            <?php endif; ?>
+
+            <span class="fr-label">价格：</span>
+            <form action="index.php" method="GET" class="fr-price" style="display:inline-flex;align-items:center;gap:6px;">
+                <input type="hidden" name="keyword" value="<?= h($keyword) ?>">
+                <input type="hidden" name="category_id" value="<?= (int)$category_id ?>">
+                <input type="hidden" name="brand" value="<?= h($brand) ?>">
+                <input type="hidden" name="material" value="<?= h($material) ?>">
+                <input type="number" name="price_min" min="0" max="999999" step="0.01" placeholder="￥最低" value="<?= $price_min === null ? '' : $price_min ?>">
+                <span style="color:#94a3b8;">—</span>
+                <input type="number" name="price_max" min="0" max="999999" step="0.01" placeholder="￥最高" value="<?= $price_max === null ? '' : $price_max ?>">
+                <button type="submit">确定</button>
+            </form>
+        </div>
+        <?php endif; ?>
+
         <?php if (empty($keyword) && $category_id <= 0 && !$is_logged_in): ?>
         <!-- 新人专享横幅：通往落地页 -->
         <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;background:linear-gradient(120deg,#4f46e5,#2563eb 55%,#7c3aed);color:#fff;border-radius:16px;padding:22px 28px;margin-bottom:28px;box-shadow:0 10px 28px -10px rgba(37,99,235,0.55);">
@@ -375,49 +414,6 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         </section>
         <?php endif; ?>
 
-        <div class="shop-layout">
-        <!-- 筛选侧栏：分类 / 品牌 facet / 材质 facet / 价格区间 -->
-        <aside class="filter-side">
-            <h4>分类</h4>
-            <a href="<?= h($filter_query(['category_id'=>0,'page'=>null])) ?>" class="<?= $category_id <= 0 ? 'f-on' : '' ?>">全部分类</a>
-            <?php foreach ($categories as $main_id => $main_cat): ?>
-                <a href="<?= h($filter_query(['category_id'=>$main_id,'page'=>null])) ?>" class="<?= $category_id == $main_id ? 'f-on' : '' ?>"><?= h($main_cat['name']) ?></a>
-                <?php foreach ($main_cat['subs'] as $sub): ?>
-                    <a href="<?= h($filter_query(['category_id'=>$sub['id'],'page'=>null])) ?>" class="<?= $category_id == $sub['id'] ? 'f-on' : '' ?>" style="padding-left:10px;">└ <?= h($sub['name']) ?></a>
-                <?php endforeach; ?>
-            <?php endforeach; ?>
-
-            <?php if ($brand_facets): ?>
-            <h4>品牌</h4>
-            <?php foreach ($brand_facets as $b): ?>
-                <a href="<?= h($filter_query(['brand'=>$b,'page'=>null])) ?>" class="<?= $brand === $b ? 'f-on' : '' ?>"><?= h($b) ?></a>
-                <?php if ($brand === $b): ?><a href="<?= h($filter_query(['brand'=>'','page'=>null])) ?>" class="f-clear" style="color:#dc2626;">× 清除</a><?php endif; ?>
-            <?php endforeach; ?>
-            <?php endif; ?>
-
-            <?php if ($material_facets): ?>
-            <h4>材质</h4>
-            <?php foreach ($material_facets as $m): ?>
-                <a href="<?= h($filter_query(['material'=>$m,'page'=>null])) ?>" class="<?= $material === $m ? 'f-on' : '' ?>"><?= h($m) ?></a>
-                <?php if ($material === $m): ?><a href="<?= h($filter_query(['material'=>'','page'=>null])) ?>" class="f-clear" style="color:#dc2626;">× 清除</a><?php endif; ?>
-            <?php endforeach; ?>
-            <?php endif; ?>
-
-            <h4>价格区间</h4>
-            <form action="index.php" method="GET" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                <input type="hidden" name="keyword" value="<?= h($keyword) ?>">
-                <input type="hidden" name="category_id" value="<?= (int)$category_id ?>">
-                <input type="hidden" name="brand" value="<?= h($brand) ?>">
-                <input type="hidden" name="material" value="<?= h($material) ?>">
-                <input type="hidden" name="sort" value="<?= h($sort) ?>">
-                <input type="number" name="price_min" min="0" max="999999" step="0.01" placeholder="最低" value="<?= $price_min === null ? '' : $price_min ?>">
-                <span style="color:#94a3b8;font-size:12px;">—</span>
-                <input type="number" name="price_max" min="0" max="999999" step="0.01" placeholder="最高" value="<?= $price_max === null ? '' : $price_max ?>">
-                <button type="submit" class="f-price-btn">确定</button>
-            </form>
-        </aside>
-
-        <div>
         <div class="page-header">
             <h2 class="section-title">
                 <?php
@@ -478,8 +474,6 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         <span>第 <?php echo $page; ?> 页 · 共 <?php echo $total_products; ?> 件商品</span>
         <?php if($page*12<$total_products): ?><a href="<?= h($filter_query(['page'=>$page+1])) ?>">下一页</a><?php endif; ?>
         </nav>
-        </div>
-        </div>
     </main>
 
     <!-- 公共页脚 -->
@@ -553,8 +547,8 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
     (function () {
         var bar = document.getElementById('search-fixed-bar');
         var hero = document.querySelector('.home-hero');
+        if (!bar) return;
         var mainForm = document.querySelector('.home-hero form.search-form');
-        if (!bar || !hero) return;
         var barForm = bar.querySelector('form');
         function sync() {
             if (!mainForm || !barForm) return;
@@ -564,7 +558,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
             });
         }
         function onScroll() {
-            var threshold = hero.offsetTop + hero.offsetHeight;
+            var threshold = hero ? (hero.offsetTop + hero.offsetHeight) : 280;
             if (window.scrollY > threshold) {
                 if (!bar.classList.contains('visible')) { sync(); bar.classList.add('visible'); }
             } else {
