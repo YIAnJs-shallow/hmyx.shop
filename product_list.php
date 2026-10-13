@@ -160,19 +160,31 @@ foreach ($products as $p) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>商品列表管理</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link href="assets/vendor/bootstrap5/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/vendor/bootstrap-icons/bootstrap-icons.css">
     <style>
-        body { background-color: #f8f9fa; }
-        .main-container { max-width: 900px; margin: 20px auto 40px; }
-        .card { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        body { background: #f1f5f9; }
+        .main-container { max-width: 960px; margin: 24px auto 48px; }
+        .card { border: none; border-radius: 16px; box-shadow: 0 6px 24px rgba(15,23,42,.08); }
         .product-thumb {
-            width: 64px; height: 64px; object-fit: cover;
-            border-radius: 8px; background: #f1f3f5;
+            width: 72px; height: 72px; object-fit: cover;
+            border-radius: 12px; background: #f1f5f9; border: 1px solid #e2e8f0;
             display: flex; align-items: center; justify-content: center;
             color: #adb5bd; font-size: 1.4rem; flex-shrink: 0;
         }
-        .stat-pill { background: #f8f9fa; border-radius: 10px; padding: 12px; text-align: center; }
+        .stat-pill {
+            background: #fff; border-radius: 14px; padding: 18px 12px; text-align: center;
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .stat-pill:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(15,23,42,.12); }
+        #product-list .list-group-item { border-radius: 12px; transition: background .2s ease; }
+        #product-list .list-group-item:hover { background: #f8fafc; }
+        .badge { border-radius: 999px; padding: .4em .8em; font-weight: 600; }
+        .text-muted.small { color: #64748b; }
+        .btn-success { background: #2563eb; border-color: #2563eb; }
+        .btn-success:hover { background: #1d4ed8; border-color: #1d4ed8; }
+        .btn-outline-success { color: #2563eb; border-color: #2563eb; }
+        .btn-outline-success:hover { background: #2563eb; border-color: #2563eb; }
     </style>
 </head>
 <body>
@@ -414,6 +426,6 @@ document.addEventListener('click', function (e) {
 });
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="assets/vendor/bootstrap5/bootstrap.bundle.min.js"></script>
 </body>
 </html>
