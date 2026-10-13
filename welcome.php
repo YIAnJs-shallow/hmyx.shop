@@ -11,7 +11,7 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>惠蒙优选 - 新人专享 · 开启品质购物之旅</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=4">
     <link rel="stylesheet" href="css/auth.css?v=8">
 </head>
 <body class="auth-page welcome-page">
@@ -144,9 +144,7 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
         <?php endif; ?>
     </section>
 
-    <footer class="site-footer">
-        <p>&copy; <?php echo date('Y'); ?> 惠蒙优选 All Rights Reserved. · 新人活动最终解释权归平台所有</p>
-    </footer>
+    <?php require_once __DIR__.'/lib/site_footer.php'; render_site_footer(); ?>
     </div>
     <script src="js/sky.js?v=9"></script>
 </body>

@@ -652,3 +652,23 @@ h1, h2 { font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
     margin: 0 4px;
 }
 .side-float a:hover { color: #2563eb; background: #eff6ff; }
+
+/* ============ 公共页脚（site_footer.php 四层结构） ============ */
+.site-footer{background:#ffffff;border-top:1px solid #e2e8f0;margin-top:48px;padding:0}
+.footer-service{display:flex;justify-content:center;gap:64px;padding:28px 16px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap}
+.footer-service .fs-item{display:flex;align-items:center;gap:10px}
+.footer-service .fs-badge{width:40px;height:40px;border-radius:50%;background:#2563eb;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:16px}
+.footer-service .fs-title{font-weight:700;color:#0f172a;font-size:14px}
+.footer-service .fs-sub{color:#94a3b8;font-size:12px}
+.footer-nav{display:flex;justify-content:center;gap:72px;padding:28px 16px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap}
+.footer-nav h4{color:#0f172a;font-size:14px;margin:0 0 10px}
+.footer-nav a{display:block;color:#64748b;font-size:13px;text-decoration:none;line-height:2}
+.footer-nav a:hover{color:#2563eb}
+.footer-links{text-align:center;padding:16px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9}
+.footer-links a{color:#64748b;text-decoration:none;margin:0 10px}
+.footer-links a:hover{color:#2563eb}
+.footer-legal{text-align:center;padding:14px 16px 24px;color:#94a3b8;font-size:12px;line-height:1.9}
+@media (max-width:768px){
+    .footer-service{gap:24px}
+    .footer-nav{flex-direction:column;gap:24px;align-items:center}
+}

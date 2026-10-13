@@ -138,7 +138,7 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
     <title>惠蒙优选 - 精选优质商城</title>
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
     <link rel="stylesheet" href="css/shop.css?v=3">
-    <link rel="stylesheet" href="css/style.css?v=3">
+    <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body class="page-home">
         <header>
@@ -355,10 +355,8 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         </nav>
     </main>
 
-    <!-- 底部版权信息 -->
-    <footer class="site-footer">
-        <p>&copy; <?php echo date('Y'); ?> 惠蒙优选 All Rights Reserved.</p >
-    </footer>
+    <!-- 公共页脚 -->
+    <?php require_once __DIR__.'/lib/site_footer.php'; render_site_footer(); ?>
 
     <!-- 右侧浮动挂件：优惠券（仅登录）+ 回到顶部，滚动 400px 后淡入 -->
     <div class="side-float" id="side-float">
