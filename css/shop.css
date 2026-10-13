@@ -15,9 +15,9 @@
 .hero-inner .search-input,.hero-inner .search-select{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#f1f5f9;backdrop-filter:blur(6px)}
 .hero-inner .search-input::placeholder{color:rgba(241,245,249,.5)}
 /* select 双保险：本体 color-scheme:dark 让原生下拉变深色，option 再显式指定深底浅字 */
-.hero-inner .search-select{color-scheme:dark}
-.hero-inner .search-select option{background:#1e293b;color:#f1f5f9}
-.hero-inner .search-select option.opt-sub{color:#cbd5e1}
+.hero-inner .search-select{background:#1e293b;color:#ffffff;font-weight:600}
+.hero-inner .search-select option{background:#1e293b;color:#ffffff}
+.hero-inner .search-select option.opt-sub{color:#e2e8f0}
 .hero-inner .search-btn{background:linear-gradient(135deg,#3b82f6,#7c3aed);border:0;color:#fff;padding:10px 26px;border-radius:10px;cursor:pointer;font:inherit;font-weight:700}
 .hero-inner .search-btn:hover{filter:brightness(1.1)}
 .hero-inner .reset-btn{background:rgba(255,255,255,.12);color:#f1f5f9;border:1px solid rgba(255,255,255,.25)}
