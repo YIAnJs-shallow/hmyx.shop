@@ -523,3 +523,15 @@ function search_suggest_words($keyword) {
     }
     return array_slice($words, 0, 8);
 }
+
+// 品牌规范化：去重归并到库内已有规范写法（大小写不敏感），无匹配则返回清理后的新值
+if (!function_exists('canonical_brand')) {
+function canonical_brand($raw) {
+    $raw = str_replace('　', ' ', trim((string)$raw)); // 全角空格先行转半角
+    if ($raw === '') return '';
+    $raw = preg_replace('/\s+/u', ' ', $raw); // 压缩连续空白
+    if (function_exists('mb_strtolower')) { $lower = mb_strtolower($raw, 'UTF-8'); }
+    else { $lower = strtolower($raw); }
+    $row = one("SELECT brand FROM products WHERE brand <> '' AND LOWER(brand) = ? ORDER BY id ASC LIMIT 1", [$lower]);
+    return $row ? $row['brand'] : $raw;
+}}

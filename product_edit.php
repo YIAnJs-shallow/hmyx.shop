@@ -132,7 +132,7 @@ try {
 // ==================== 4. 处理编辑提交（真正的 UPDATE） ====================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim($_POST['title'] ?? '');
-    $brand = mb_substr(trim($_POST['brand'] ?? ''), 0, 50);
+    $brand = mb_substr(canonical_brand($_POST['brand'] ?? ''), 0, 50);
     $material = mb_substr(trim($_POST['material'] ?? ''), 0, 50);
     $category_id = intval($_POST['category_id'] ?? 0);
     $price = floatval($_POST['price'] ?? 0);
@@ -347,7 +347,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
                     <label class="form-label fw-bold small">品牌</label>
-                    <input type="text" name="brand" maxlength="50" class="form-control" placeholder="选填，如 云感" value="<?= htmlspecialchars($product['brand'] ?? '') ?>">
+                    <input type="text" name="brand" maxlength="50" class="form-control" placeholder="选填，如 云感" value="<?= htmlspecialchars($product['brand'] ?? '') ?>" list="brand-options">
+                    <datalist id="brand-options">
+                    <?php foreach (rows("SELECT DISTINCT brand FROM products WHERE brand <> '' ORDER BY brand") as $b): ?>
+                        <option value="<?php echo h($b['brand']); ?>">
+                    <?php endforeach; ?>
+                    </datalist>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-bold small">材质</label>
