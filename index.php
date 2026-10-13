@@ -53,11 +53,12 @@ $where = " WHERE p.status = 1 AND p.audit_status = 'approved' AND (p.shop_id IS 
 $params = [];
 $types = "";
 
-// 关键词搜索（修正：仅查询存在的 p.title 字段）
+// 关键词搜索：匹配标题或详情（修复：原仅匹配 title，导致详情含关键词的商品搜不到）
 if (!empty($keyword)) {
-    $where .= " AND p.title LIKE ?";
+    $where .= " AND (p.title LIKE ? OR p.detail LIKE ?)";
     $params[] = "%" . $keyword . "%";
-    $types .= "s";
+    $params[] = "%" . $keyword . "%";
+    $types .= "ss";
 }
 
 // 分类筛选处理（支持大类连带子类查询）
@@ -88,14 +89,15 @@ if ($category_id > 0) {
     }
 }
 
-// facet 聚合：品牌/材质（复用关键词与分类条件，但各自不带自身维度条件），取前 12 个
-$facet_where = $where; $facet_params = $params; $facet_types = $types;
+// facet 聚合：品牌/材质改为全量在售聚合（不随关键词/分类收窄，京东式常显全量维度），取前 12 个
+$facet_where = " WHERE p.status = 1 AND p.audit_status = 'approved' AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops active_shop WHERE active_shop.id=p.shop_id AND active_shop.status=1))";
+$facet_params = []; $facet_types = '';
 $brand_facets = []; $material_facets = [];
-$fstmt = $conn->prepare("SELECT DISTINCT p.brand FROM products p {$facet_where} AND p.brand<>'' ORDER BY p.brand LIMIT 12");
+$fstmt = $conn->prepare("SELECT DISTINCT p.brand FROM products p {$facet_where} AND p.brand<>'' ORDER BY p.brand LIMIT 20");
 if ($facet_params) $fstmt->bind_param($facet_types, ...$facet_params);
 $fstmt->execute(); $fres = $fstmt->get_result();
 while ($frow = $fres->fetch_assoc()) $brand_facets[] = $frow['brand'];
-$fstmt = $conn->prepare("SELECT DISTINCT p.material FROM products p {$facet_where} AND p.material<>'' ORDER BY p.material LIMIT 12");
+$fstmt = $conn->prepare("SELECT DISTINCT p.material FROM products p {$facet_where} AND p.material<>'' ORDER BY p.material LIMIT 20");
 if ($facet_params) $fstmt->bind_param($facet_types, ...$facet_params);
 $fstmt->execute(); $fres = $fstmt->get_result();
 while ($frow = $fres->fetch_assoc()) $material_facets[] = $frow['material'];
@@ -318,12 +320,12 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         </div>
         <?php endif; ?>
 
-        <?php if ($keyword !== '' || $brand !== '' || $material !== '' || $price_min !== null || $price_max !== null): ?>
-        <!-- 京东式横向筛选 chips：仅搜索/筛选激活时渲染（分类继续用搜索框旁下拉） -->
+        <?php if ($brand_facets || $material_facets): ?>
+        <!-- 京东式横向筛选 chips：全量在售聚合后常显（有 facet 值即渲染，分类继续用搜索框旁下拉） -->
         <div class="filter-row">
             <?php if ($brand_facets): ?>
             <span class="fr-label">品牌：</span>
-            <?php foreach (array_slice($brand_facets, 0, 8) as $b): ?>
+            <?php foreach (array_slice($brand_facets, 0, 20) as $b): ?>
                 <?php if ($brand === $b): ?>
                     <a href="<?= h($filter_query(['brand'=>'','page'=>null])) ?>" class="chip chip-on" title="点击清除">× <?= h($b) ?></a>
                 <?php else: ?>
@@ -334,7 +336,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
 
             <?php if ($material_facets): ?>
             <span class="fr-label">材质：</span>
-            <?php foreach (array_slice($material_facets, 0, 8) as $m): ?>
+            <?php foreach (array_slice($material_facets, 0, 20) as $m): ?>
                 <?php if ($material === $m): ?>
                     <a href="<?= h($filter_query(['material'=>'','page'=>null])) ?>" class="chip chip-on" title="点击清除">× <?= h($m) ?></a>
                 <?php else: ?>
