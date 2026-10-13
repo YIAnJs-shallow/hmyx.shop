@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <title>注册账号 - 惠蒙优选</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="css/auth.css?v=7">
+    <link rel="stylesheet" href="css/auth.css?v=8">
 </head>
 <body class="auth-page">
     <div class="auth-wrap">

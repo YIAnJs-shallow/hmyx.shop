@@ -431,3 +431,14 @@ body.auth-page {
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     color: #94a3b8;
 }
+
+/* 顶部 Hero：去掉蓝紫渐变与白色圆斑装饰，让天空画布透出 */
+.welcome-page .hero { background: transparent; }
+.welcome-page .hero::before, .welcome-page .hero::after { display: none; }
+/* 结尾 CTA：同上去渐变与圆斑 */
+.welcome-page .landing-cta { background: transparent; }
+.welcome-page .landing-cta::before { display: none; }
+/* 新人礼包分段：浅色卡底改透明，仅留细分割线（覆盖前次同选择器规则） */
+.welcome-page .landing-section-alt { background: transparent; border-block: 1px solid rgba(255, 255, 255, 0.08); }
+/* perk 条款小字在深底提亮 */
+.welcome-page .perk-terms, .welcome-page .perk-terms p { color: #94a3b8; }
