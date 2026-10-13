@@ -138,7 +138,7 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
     <title>惠蒙优选 - 精选优质商城</title>
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
     <link rel="stylesheet" href="css/shop.css?v=3">
-    <link rel="stylesheet" href="css/style.css?v=4">
+    <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body class="page-home">
         <header>

@@ -672,3 +672,14 @@ h1, h2 { font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
     .footer-service{gap:24px}
     .footer-nav{flex-direction:column;gap:24px;align-items:center}
 }
+
+/* ===== help.php 帮助中心页 ===== */
+.help-wrap{max-width:860px;margin:32px auto 56px;padding:0 16px}
+.help-wrap h1{color:#0f172a;font-size:26px;margin:8px 0 4px}
+.help-topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid #e2e8f0;margin-bottom:20px}
+.help-wrap section{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:22px 26px;margin-bottom:18px;scroll-margin-top:20px}
+.help-wrap h2{color:#2563eb;font-size:18px;margin:0 0 12px}
+.help-wrap li,.help-wrap p{color:#475569;font-size:14px;line-height:1.9}
+.help-logo{color:#2563eb;font-size:20px;font-weight:700;text-decoration:none}
+.help-back-home{color:#475569;font-size:14px;text-decoration:none}
+.help-back-home:hover{color:#2563eb}
