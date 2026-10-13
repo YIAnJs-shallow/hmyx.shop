@@ -683,3 +683,21 @@ h1, h2 { font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
 .help-logo{color:#2563eb;font-size:20px;font-weight:700;text-decoration:none}
 .help-back-home{color:#475569;font-size:14px;text-decoration:none}
 .help-back-home:hover{color:#2563eb}
+
+/* ===== 搜索筛选与固定搜索条 ===== */
+.shop-layout{display:grid;grid-template-columns:190px 1fr;gap:20px;align-items:start}
+.filter-side{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;position:sticky;top:12px}
+.filter-side h4{color:#0f172a;font-size:14px;margin:12px 0 8px}
+.filter-side h4:first-child{margin-top:0}
+.filter-side a{display:block;color:#475569;font-size:13px;line-height:2;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filter-side a:hover{color:#2563eb}
+.filter-side a.f-on{color:#2563eb;font-weight:600}
+.filter-side .f-clear{color:#94a3b8;font-size:12px;margin-left:6px}
+.filter-side input[type=number]{width:70px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px}
+.filter-side .f-price-btn{border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-size:12px;padding:4px 10px;cursor:pointer}
+.filter-side .f-price-btn:hover{color:#2563eb;border-color:#2563eb}
+.search-fixed-bar{position:fixed;top:0;left:0;right:0;z-index:60;background:rgba(255,255,255,.96);box-shadow:0 2px 12px rgba(15,23,42,.12);padding:10px 0;transform:translateY(-100%);opacity:0;transition:.25s;pointer-events:none}
+.search-fixed-bar.visible{transform:translateY(0);opacity:1;pointer-events:auto}
+.search-fixed-bar .sf-inner{max-width:1360px;margin:0 auto;display:flex;gap:10px;align-items:center;padding:0 16px}
+.search-fixed-bar .search-input{flex:1}
+@media(max-width:768px){.shop-layout{grid-template-columns:1fr}.search-fixed-bar{display:none}}

@@ -11,7 +11,7 @@ require_once __DIR__ . '/lib/site_footer.php';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>帮助中心 - 惠蒙优选</title>
-    <link rel="stylesheet" href="css/style.css?v=5">
+    <link rel="stylesheet" href="css/style.css?v=6">
 </head>
 <body>
 <div class="help-wrap">

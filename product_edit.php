@@ -132,6 +132,8 @@ try {
 // ==================== 4. 处理编辑提交（真正的 UPDATE） ====================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim($_POST['title'] ?? '');
+    $brand = mb_substr(trim($_POST['brand'] ?? ''), 0, 50);
+    $material = mb_substr(trim($_POST['material'] ?? ''), 0, 50);
     $category_id = intval($_POST['category_id'] ?? 0);
     $price = floatval($_POST['price'] ?? 0);
     $stock = intval($_POST['stock'] ?? 0);
@@ -238,10 +240,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // 审核策略：管理员编辑无需重审；商家编辑后回到待审核状态
                 $audit_status = $is_admin ? 'approved' : 'pending';
                 $sql = $is_admin
-                    ? "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ? WHERE id = ?"
-                    : "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ? WHERE id = ? AND shop_id = ?";
+                    ? "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ?, brand = ?, material = ? WHERE id = ?"
+                    : "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ?, brand = ?, material = ? WHERE id = ? AND shop_id = ?";
                 if ($db instanceof PDO) {
-                    $params = [$title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $product_id];
+                    $params = [$title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material, $product_id];
                     if (!$is_admin) $params[] = $shop_id;
                     $stmt = $db->prepare($sql);
                     $stmt->execute($params);
@@ -249,9 +251,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare($sql);
                     if (!$stmt) throw new Exception('SQL 预处理失败');
                     if ($is_admin) {
-                        $stmt->bind_param("sisissisisissi", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $product_id);
+                        $stmt->bind_param("sisissisisissisi", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material, $product_id);
                     } else {
-                        $stmt->bind_param("sisissisisissii", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $product_id, $shop_id);
+                        $stmt->bind_param("sisissisisissisii", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material, $product_id, $shop_id);
                     }
                     $stmt->execute();
                     $stmt->close();
@@ -340,6 +342,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="mb-3">
                 <label class="form-label fw-bold small">商品名称 <span class="text-danger">*</span></label>
                 <input type="text" name="title" class="form-control" required value="<?= htmlspecialchars($product['title']) ?>">
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">品牌</label>
+                    <input type="text" name="brand" maxlength="50" class="form-control" placeholder="选填，如 云感" value="<?= htmlspecialchars($product['brand'] ?? '') ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">材质</label>
+                    <input type="text" name="material" maxlength="50" class="form-control" placeholder="选填，如 纯棉" value="<?= htmlspecialchars($product['material'] ?? '') ?>">
+                </div>
             </div>
 
             <div class="mb-3">

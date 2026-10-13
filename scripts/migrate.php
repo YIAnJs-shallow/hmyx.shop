@@ -302,4 +302,25 @@ query("CREATE TABLE IF NOT EXISTS email_login_codes (
 // ===== 企业/商户注册：店铺经营范围（注册页新增三项之一，与 shop_manage.php 申请入驻共用 shops 表） =====
 add_column('shops','business_scope','varchar(100) NOT NULL DEFAULT \'\'');
 
+// ===== 搜索筛选增强：品牌/材质维度 =====
+add_column('products','brand',"varchar(50) NOT NULL DEFAULT '' COMMENT '品牌'");
+add_column('products','material',"varchar(50) NOT NULL DEFAULT '' COMMENT '材质'");
+// 幂等回填：仅当当前值为空时按 id 精确更新，可重复执行
+$brand_backfill = [
+    15=>'外星仔',17=>'外星仔',18=>'幻影',19=>'星轨',20=>'闪极',21=>'回音',22=>'云感',23=>'云感',
+    24=>'惠蒙女装',25=>'惠蒙运动',26=>'惠蒙箱包',27=>'惠蒙运动',28=>'云感',29=>'云感',30=>'惠蒙女装',
+    31=>'惠蒙配件',32=>'惠蒙厨具',33=>'惠蒙家纺',34=>'惠蒙厨具',35=>'惠美研',
+];
+$material_backfill = [
+    18=>'ABS',19=>'PBT键帽',20=>'铝合金',21=>'织物',22=>'纯棉',23=>'毛圈棉',24=>'雪纺',25=>'网面',
+    26=>'尼龙',27=>'NBR',28=>'精梳棉',29=>'纯棉',30=>'丹宁',31=>'棉斜纹',32=>'麦饭石涂层',
+    33=>'全棉磨毛',34=>'316不锈钢',
+];
+foreach ($brand_backfill as $pid=>$bval) {
+    query('UPDATE products SET brand=? WHERE id=? AND brand=\'\'', [$bval, $pid]);
+}
+foreach ($material_backfill as $pid=>$mval) {
+    query('UPDATE products SET material=? WHERE id=? AND material=\'\'', [$mval, $pid]);
+}
+
 echo "Migration complete.\n";

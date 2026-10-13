@@ -88,6 +88,37 @@ if ($category_id > 0) {
     }
 }
 
+// facet 聚合：品牌/材质（复用关键词与分类条件，但各自不带自身维度条件），取前 12 个
+$facet_where = $where; $facet_params = $params; $facet_types = $types;
+$brand_facets = []; $material_facets = [];
+$fstmt = $conn->prepare("SELECT DISTINCT p.brand FROM products p {$facet_where} AND p.brand<>'' ORDER BY p.brand LIMIT 12");
+if ($facet_params) $fstmt->bind_param($facet_types, ...$facet_params);
+$fstmt->execute(); $fres = $fstmt->get_result();
+while ($frow = $fres->fetch_assoc()) $brand_facets[] = $frow['brand'];
+$fstmt = $conn->prepare("SELECT DISTINCT p.material FROM products p {$facet_where} AND p.material<>'' ORDER BY p.material LIMIT 12");
+if ($facet_params) $fstmt->bind_param($facet_types, ...$facet_params);
+$fstmt->execute(); $fres = $fstmt->get_result();
+while ($frow = $fres->fetch_assoc()) $material_facets[] = $frow['material'];
+
+// 品牌/材质筛选：trim 后最长 50，值必须出现在 facet 白名单中否则忽略
+$brand = trim((string)($_GET['brand'] ?? ''));
+if ($brand === '' || mb_strlen($brand) > 50 || !in_array($brand, $brand_facets, true)) $brand = '';
+$material = trim((string)($_GET['material'] ?? ''));
+if ($material === '' || mb_strlen($material) > 50 || !in_array($material, $material_facets, true)) $material = '';
+
+// 价格区间：强制 (float) 后 0~999999，min>max 时忽略
+$price_min = isset($_GET['price_min']) && $_GET['price_min'] !== '' ? (float)$_GET['price_min'] : null;
+$price_max = isset($_GET['price_max']) && $_GET['price_max'] !== '' ? (float)$_GET['price_max'] : null;
+if ($price_min !== null && ($price_min < 0 || $price_min > 999999)) $price_min = null;
+if ($price_max !== null && ($price_max < 0 || $price_max > 999999)) $price_max = null;
+if ($price_min !== null && $price_max !== null && $price_min > $price_max) { $price_min = null; $price_max = null; }
+
+// 追加筛选条件到主查询（空值条件不拼接，全部参数化绑定）
+if ($brand !== '') { $where .= " AND p.brand = ?"; $params[] = $brand; $types .= "s"; }
+if ($material !== '') { $where .= " AND p.material = ?"; $params[] = $material; $types .= "s"; }
+if ($price_min !== null) { $where .= " AND p.price >= ?"; $params[] = (float)$price_min; $types .= "d"; }
+if ($price_max !== null) { $where .= " AND p.price <= ?"; $params[] = (float)$price_max; $types .= "d"; }
+
 $sort = $_GET['sort'] ?? 'newest';
 $sort_options = ['newest'=>'p.id DESC','price_asc'=>'p.price ASC,p.id DESC','price_desc'=>'p.price DESC,p.id DESC'];
 if (!isset($sort_options[$sort])) $sort='newest';
@@ -129,6 +160,24 @@ $my_searches = $is_logged_in && !empty($_SESSION['user_id'])
 // 5. 首页推荐板块数据：热销榜 + 猜你喜欢
 $best_sellers = best_sellers(10);
 $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
+
+// 筛选链接生成：每个链接只切换自身维度，其余维度原样携带（空值/默认值剔除）
+$filter_query = function (array $override = []) use ($keyword, $category_id, $brand, $material, $price_min, $price_max, $sort) {
+    $q = array_merge([
+        'keyword' => $keyword,
+        'category_id' => $category_id,
+        'brand' => $brand,
+        'material' => $material,
+        'price_min' => $price_min === null ? '' : $price_min,
+        'price_max' => $price_max === null ? '' : $price_max,
+        'sort' => $sort,
+    ], $override);
+    foreach ($q as $k => $v) {
+        if ($v === '' || $v === null || $v === 0) unset($q[$k]);
+        if ($k === 'sort' && $v === 'newest') unset($q[$k]);
+    }
+    return 'index.php?' . http_build_query($q);
+};
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -138,7 +187,7 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
     <title>惠蒙优选 - 精选优质商城</title>
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
     <link rel="stylesheet" href="css/shop.css?v=3">
-    <link rel="stylesheet" href="css/style.css?v=5">
+    <link rel="stylesheet" href="css/style.css?v=6">
 </head>
 <body class="page-home">
         <header>
@@ -223,6 +272,33 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         </div>
     </section>
 
+    <!-- 滚动跟随固定搜索条：下滚超过 hero 底边后淡入（JS 同步主表单当前值） -->
+    <div class="search-fixed-bar" id="search-fixed-bar">
+        <div class="sf-inner">
+            <form action="index.php" method="GET" class="search-form" style="flex:1;display:flex;gap:10px;">
+                <input type="text" name="keyword" class="search-input" autocomplete="off" placeholder="🔍 搜索商品..." value="<?= h($keyword) ?>">
+                <select name="category_id" class="search-select">
+                    <option value="0">全部分类</option>
+                    <?php foreach ($categories as $main_id => $main_cat): ?>
+                        <option value="<?php echo $main_id; ?>" <?php echo $category_id == $main_id ? 'selected' : ''; ?>>【<?= h($main_cat['name']) ?>】</option>
+                        <?php foreach ($main_cat['subs'] as $sub): ?>
+                            <option value="<?php echo $sub['id']; ?>" <?php echo $category_id == $sub['id'] ? 'selected' : ''; ?>>├─ <?= h($sub['name']) ?></option>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </select>
+                <select name="sort" class="search-select" aria-label="排序"><?php foreach(['newest'=>'最新上架','price_asc'=>'价格从低到高','price_desc'=>'价格从高到低'] as $key=>$label): ?><option value="<?php echo $key; ?>" <?php echo $sort===$key?'selected':''; ?>><?php echo $label; ?></option><?php endforeach; ?></select>
+                <input type="hidden" name="brand" value="<?= h($brand) ?>">
+                <input type="hidden" name="material" value="<?= h($material) ?>">
+                <input type="hidden" name="price_min" value="<?= $price_min === null ? '' : $price_min ?>">
+                <input type="hidden" name="price_max" value="<?= $price_max === null ? '' : $price_max ?>">
+                <button type="submit" class="search-btn">搜索</button>
+                <?php if ($brand !== '' || $material !== '' || $price_min !== null || $price_max !== null): ?>
+                    <a href="<?= h($filter_query(['brand'=>'','material'=>'','price_min'=>'','price_max'=>'','keyword'=>$keyword,'category_id'=>$category_id])) ?>" class="reset-btn">清除筛选</a>
+                <?php endif; ?>
+            </form>
+        </div>
+    </div>
+
     <main class="container" style="margin: 20px auto; padding: 0 15px; width: 100%; box-sizing: border-box;">
         <?php if (!empty($hot_searches) || !empty($my_searches)): ?>
         <div class="search-trends" style="margin:0 0 20px;font-size:.85rem;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;">
@@ -299,6 +375,49 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         </section>
         <?php endif; ?>
 
+        <div class="shop-layout">
+        <!-- 筛选侧栏：分类 / 品牌 facet / 材质 facet / 价格区间 -->
+        <aside class="filter-side">
+            <h4>分类</h4>
+            <a href="<?= h($filter_query(['category_id'=>0,'page'=>null])) ?>" class="<?= $category_id <= 0 ? 'f-on' : '' ?>">全部分类</a>
+            <?php foreach ($categories as $main_id => $main_cat): ?>
+                <a href="<?= h($filter_query(['category_id'=>$main_id,'page'=>null])) ?>" class="<?= $category_id == $main_id ? 'f-on' : '' ?>"><?= h($main_cat['name']) ?></a>
+                <?php foreach ($main_cat['subs'] as $sub): ?>
+                    <a href="<?= h($filter_query(['category_id'=>$sub['id'],'page'=>null])) ?>" class="<?= $category_id == $sub['id'] ? 'f-on' : '' ?>" style="padding-left:10px;">└ <?= h($sub['name']) ?></a>
+                <?php endforeach; ?>
+            <?php endforeach; ?>
+
+            <?php if ($brand_facets): ?>
+            <h4>品牌</h4>
+            <?php foreach ($brand_facets as $b): ?>
+                <a href="<?= h($filter_query(['brand'=>$b,'page'=>null])) ?>" class="<?= $brand === $b ? 'f-on' : '' ?>"><?= h($b) ?></a>
+                <?php if ($brand === $b): ?><a href="<?= h($filter_query(['brand'=>'','page'=>null])) ?>" class="f-clear" style="color:#dc2626;">× 清除</a><?php endif; ?>
+            <?php endforeach; ?>
+            <?php endif; ?>
+
+            <?php if ($material_facets): ?>
+            <h4>材质</h4>
+            <?php foreach ($material_facets as $m): ?>
+                <a href="<?= h($filter_query(['material'=>$m,'page'=>null])) ?>" class="<?= $material === $m ? 'f-on' : '' ?>"><?= h($m) ?></a>
+                <?php if ($material === $m): ?><a href="<?= h($filter_query(['material'=>'','page'=>null])) ?>" class="f-clear" style="color:#dc2626;">× 清除</a><?php endif; ?>
+            <?php endforeach; ?>
+            <?php endif; ?>
+
+            <h4>价格区间</h4>
+            <form action="index.php" method="GET" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <input type="hidden" name="keyword" value="<?= h($keyword) ?>">
+                <input type="hidden" name="category_id" value="<?= (int)$category_id ?>">
+                <input type="hidden" name="brand" value="<?= h($brand) ?>">
+                <input type="hidden" name="material" value="<?= h($material) ?>">
+                <input type="hidden" name="sort" value="<?= h($sort) ?>">
+                <input type="number" name="price_min" min="0" max="999999" step="0.01" placeholder="最低" value="<?= $price_min === null ? '' : $price_min ?>">
+                <span style="color:#94a3b8;font-size:12px;">—</span>
+                <input type="number" name="price_max" min="0" max="999999" step="0.01" placeholder="最高" value="<?= $price_max === null ? '' : $price_max ?>">
+                <button type="submit" class="f-price-btn">确定</button>
+            </form>
+        </aside>
+
+        <div>
         <div class="page-header">
             <h2 class="section-title">
                 <?php
@@ -309,8 +428,14 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
                     }
                 ?>
             </h2>
+            <div style="font-size:.85rem;color:#64748b;margin-top:4px;">
+                共 <?php echo $total_products; ?> 件商品
+                <?php if ($brand !== ''): ?>　<span style="background:#eff6ff;color:#2563eb;border-radius:999px;padding:2px 10px;">品牌：<?= h($brand) ?> <a href="<?= h($filter_query(['brand'=>'','page'=>null])) ?>" style="color:#dc2626;text-decoration:none;">×</a></span><?php endif; ?>
+                <?php if ($material !== ''): ?>　<span style="background:#eff6ff;color:#2563eb;border-radius:999px;padding:2px 10px;">材质：<?= h($material) ?> <a href="<?= h($filter_query(['material'=>'','page'=>null])) ?>" style="color:#dc2626;text-decoration:none;">×</a></span><?php endif; ?>
+                <?php if ($price_min !== null || $price_max !== null): ?>　<span style="background:#eff6ff;color:#2563eb;border-radius:999px;padding:2px 10px;">价格：<?= $price_min !== null ? h((string)$price_min) : '0' ?> - <?= $price_max !== null ? h((string)$price_max) : '不限' ?> <a href="<?= h($filter_query(['price_min'=>'','price_max'=>'','page'=>null])) ?>" style="color:#dc2626;text-decoration:none;">×</a></span><?php endif; ?>
+            </div>
         </div>
-        
+
         <div class="product-grid">
             <?php if ($result && $result->num_rows > 0): ?>
                 <?php while($row = $result->fetch_assoc()): ?>
@@ -349,10 +474,12 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
             <?php endif; ?>
         </div>
         <nav class="pagination" aria-label="分页">
-        <?php if($page>1): ?><a href="?<?php echo htmlspecialchars(http_build_query(['keyword'=>$keyword,'category_id'=>$category_id,'sort'=>$sort,'page'=>$page-1])); ?>">上一页</a><?php endif; ?>
+        <?php if($page>1): ?><a href="<?= h($filter_query(['page'=>$page-1])) ?>">上一页</a><?php endif; ?>
         <span>第 <?php echo $page; ?> 页 · 共 <?php echo $total_products; ?> 件商品</span>
-        <?php if($page*12<$total_products): ?><a href="?<?php echo htmlspecialchars(http_build_query(['keyword'=>$keyword,'category_id'=>$category_id,'sort'=>$sort,'page'=>$page+1])); ?>">下一页</a><?php endif; ?>
+        <?php if($page*12<$total_products): ?><a href="<?= h($filter_query(['page'=>$page+1])) ?>">下一页</a><?php endif; ?>
         </nav>
+        </div>
+        </div>
     </main>
 
     <!-- 公共页脚 -->
@@ -422,6 +549,30 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             });
         }
+    })();
+    (function () {
+        var bar = document.getElementById('search-fixed-bar');
+        var hero = document.querySelector('.home-hero');
+        var mainForm = document.querySelector('.home-hero form.search-form');
+        if (!bar || !hero) return;
+        var barForm = bar.querySelector('form');
+        function sync() {
+            if (!mainForm || !barForm) return;
+            ['keyword', 'category_id', 'sort'].forEach(function (name) {
+                var src = mainForm.elements[name], dst = barForm.elements[name];
+                if (src && dst) dst.value = src.value;
+            });
+        }
+        function onScroll() {
+            var threshold = hero.offsetTop + hero.offsetHeight;
+            if (window.scrollY > threshold) {
+                if (!bar.classList.contains('visible')) { sync(); bar.classList.add('visible'); }
+            } else {
+                bar.classList.remove('visible');
+            }
+        }
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
     })();
     </script>
 

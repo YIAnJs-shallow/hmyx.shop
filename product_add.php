@@ -81,6 +81,8 @@ $back_url = $is_admin ? 'admin.php' : 'product_list.php';
 // ==================== 3. 处理表单提交 ====================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim($_POST['title'] ?? '');
+    $brand = mb_substr(trim($_POST['brand'] ?? ''), 0, 50);
+    $material = mb_substr(trim($_POST['material'] ?? ''), 0, 50);
     $category_id = intval($_POST['category_id'] ?? 0);
     $price = floatval($_POST['price'] ?? 0);
     $stock = intval($_POST['stock'] ?? 0);
@@ -152,13 +154,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // 审核策略：管理员发布直接通过；商家发布需管理员审核
                 $audit_status = $is_admin ? 'approved' : 'pending';
                 if ($db instanceof PDO) {
-                    $stmt = $db->prepare("INSERT INTO products (shop_id, title, category_id, price, stock, detail, image_url, status, audit_status, flash_price_cents, flash_start, flash_end, limit_per_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                    $stmt->execute([$shop_id, $title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user]);
+                    $stmt = $db->prepare("INSERT INTO products (shop_id, title, category_id, price, stock, detail, image_url, status, audit_status, flash_price_cents, flash_start, flash_end, limit_per_user, brand, material) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $stmt->execute([$shop_id, $title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material]);
                     $ok = $stmt->rowCount() > 0;
                 } elseif ($db instanceof mysqli) {
-                    $stmt = $db->prepare("INSERT INTO products (shop_id, title, category_id, price, stock, detail, image_url, status, audit_status, flash_price_cents, flash_start, flash_end, limit_per_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $stmt = $db->prepare("INSERT INTO products (shop_id, title, category_id, price, stock, detail, image_url, status, audit_status, flash_price_cents, flash_start, flash_end, limit_per_user, brand, material) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     if (!$stmt) throw new Exception('SQL 预处理失败');
-                    $stmt->bind_param("isissisisissi", $shop_id, $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user);
+                    $stmt->bind_param("isissisisississ", $shop_id, $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material);
                     $exec_ok = $stmt->execute();
                     $ok = $exec_ok && $stmt->affected_rows > 0;
                     if (!$exec_ok) $mysqli_err = $stmt->error;
@@ -242,6 +244,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="mb-3">
                 <label class="form-label fw-bold small">商品名称 <span class="text-danger">*</span></label>
                 <input type="text" name="title" class="form-control" placeholder="请输入商品名称" required>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">品牌</label>
+                    <input type="text" name="brand" maxlength="50" class="form-control" placeholder="选填，如 云感">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">材质</label>
+                    <input type="text" name="material" maxlength="50" class="form-control" placeholder="选填，如 纯棉">
+                </div>
             </div>
 
             <div class="mb-3">
