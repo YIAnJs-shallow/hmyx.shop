@@ -385,3 +385,49 @@ body.auth-page {
         transition-duration: 300ms !important;
     }
 }
+
+/* ===== 新人页 welcome.php（套用深空模板，作用域 .welcome-page，不改上方任何旧规则） ===== */
+/* 画布定位：与登录页一致，fixed 铺满视口置于内容之下 */
+.welcome-page #sky-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; }
+/* 内容整体抬升到天空层之上 */
+.welcome-content { position: relative; z-index: 1; }
+
+/* 顶栏透明化 */
+.welcome-page .landing-nav { background: transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.welcome-page .landing-nav-actions a { color: #e2e8f0; }
+.welcome-page .btn-ghost-light { border: 1.5px solid rgba(255, 255, 255, 0.25); background: transparent; }
+.welcome-page .btn-ghost-light:hover { background: rgba(255, 255, 255, 0.1); border-color: #fff; }
+
+/* 文字提亮（h4/列表/small 一并补齐，避免深底深字） */
+.welcome-page h1, .welcome-page h2, .welcome-page h3 { color: #f1f5f9; }
+.welcome-page h4 { color: #f1f5f9; }
+.welcome-page p, .welcome-page .section-eyebrow, .welcome-page .muted { color: #cbd5e1; }
+.welcome-page .section-eyebrow { color: #93c5fd; }
+.welcome-page .feature-card p, .welcome-page .perk-card p { color: #cbd5e1; }
+.welcome-page .perk-card .perk-fine { color: #94a3b8; }
+.welcome-page .perk-terms { background: rgba(255, 255, 255, 0.04); border: 1px dashed rgba(255, 255, 255, 0.2); }
+.welcome-page .perk-terms h4 { color: #f1f5f9; }
+.welcome-page .perk-terms ol { color: #cbd5e1; }
+
+/* 卡片玻璃化（hover 变换沿用 style.css 原规则） */
+.welcome-page .feature-card, .welcome-page .perk-card {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.5);
+}
+.welcome-page .perk-tag { color: #93c5fd; background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); }
+.welcome-page .perk-card.cool .perk-tag { color: #93c5fd; background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); }
+
+/* 深色分段交替底取消，由天空画布统一承载 */
+.welcome-page .landing-section-alt { background: transparent; border-block: 1px solid rgba(255, 255, 255, 0.08); }
+
+/* 按钮：主按钮深底白字可读保留；幽灵按钮改深底可读配色 */
+.welcome-page .btn-hero-ghost { color: #e2e8f0; border: 1.5px solid rgba(255, 255, 255, 0.3); background: transparent; }
+.welcome-page .btn-hero-ghost:hover { background: rgba(255, 255, 255, 0.1); border-color: #fff; }
+
+/* 页脚玻璃化，避免浅色横条打断深空观感 */
+.welcome-page .site-footer, .welcome-page footer {
+    background: transparent;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+}

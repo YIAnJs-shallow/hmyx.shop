@@ -12,8 +12,14 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>惠蒙优选 - 新人专享 · 开启品质购物之旅</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/auth.css?v=7">
 </head>
-<body>
+<body class="auth-page welcome-page">
+
+    <!-- 深空天空画布：登录页同款，sky.js 靠 id 挂载（低密度 80 星/2 光带） -->
+    <canvas id="sky-canvas" data-density="low" aria-hidden="true"></canvas>
+
+    <div class="welcome-content">
 
     <!-- 顶部通栏导航：右上角为登录入口 -->
     <div class="landing-nav">
@@ -141,5 +147,7 @@ $is_logged_in = isset($_SESSION['user_id']) || isset($_SESSION['username']);
     <footer class="site-footer">
         <p>&copy; <?php echo date('Y'); ?> 惠蒙优选 All Rights Reserved. · 新人活动最终解释权归平台所有</p>
     </footer>
+    </div>
+    <script src="js/sky.js?v=9"></script>
 </body>
 </html>
