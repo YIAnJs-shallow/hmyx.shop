@@ -140,7 +140,7 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
     <link rel="stylesheet" href="css/shop.css">
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="page-home">
         <header>
         <div class="logo">
             <!-- 修复：补全 index.php 跳转链接 -->
@@ -223,7 +223,7 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         </div>
     </section>
 
-    <main class="container" style="max-width: 1200px; margin: 20px auto; padding: 0 15px; width: 100%; box-sizing: border-box;">
+    <main class="container" style="margin: 20px auto; padding: 0 15px; width: 100%; box-sizing: border-box;">
         <?php if (!empty($hot_searches) || !empty($my_searches)): ?>
         <div class="search-trends" style="margin:0 0 20px;font-size:.85rem;color:#475569;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;">
             <?php if (!empty($hot_searches)): ?>
@@ -360,6 +360,14 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         <p>&copy; <?php echo date('Y'); ?> 惠蒙优选 All Rights Reserved.</p >
     </footer>
 
+    <!-- 右侧浮动挂件：优惠券（仅登录）+ 回到顶部，滚动 400px 后淡入 -->
+    <div class="side-float" id="side-float">
+        <?php if ($is_logged_in): ?>
+        <a href="my_coupons.php" title="我的优惠券">🎟</a>
+        <?php endif; ?>
+        <a href="javascript:void(0);" id="back-top" title="回到顶部">⬆</a>
+    </div>
+
     <script>
     (function () {
         var input = document.getElementById('search-keyword');
@@ -399,6 +407,23 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
         document.addEventListener('click', function (e) {
             if (e.target !== input && !box.contains(e.target)) hide();
         });
+    })();
+    (function () {
+        var sideFloat = document.getElementById('side-float');
+        var backTop = document.getElementById('back-top');
+        if (sideFloat) {
+            var onScroll = function () {
+                if (window.scrollY > 400) sideFloat.classList.add('visible');
+                else sideFloat.classList.remove('visible');
+            };
+            window.addEventListener('scroll', onScroll, { passive: true });
+            onScroll();
+        }
+        if (backTop) {
+            backTop.addEventListener('click', function () {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        }
     })();
     </script>
 

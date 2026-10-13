@@ -598,3 +598,55 @@ h1, h2 { font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
     .hero { padding: 120px 6% 80px; }
     .landing-nav-actions .btn-ghost-light { display: none; }
 }
+
+/* ============ 首页宽屏优化（.page-home 作用域，不影响其他页面） ============ */
+/* Hero 深空色向下渐隐融入页面底色 */
+.page-home {
+    background: linear-gradient(180deg, #0a0f1e 0px, #0a0f1e 180px, #f1f5f9 420px, #f8fafc 100%);
+    background-attachment: scroll;
+}
+/* 首页主容器加宽（原内联 max-width:1200px 移至此处统一管理） */
+.page-home main.container { max-width: 1360px; }
+/* 商品网格自适应列数加宽 */
+.page-home .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+}
+/* 猜你喜欢网格（类名来自 css/shop.css）同样自适应 */
+.page-home .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+/* 右侧浮动挂件：优惠券 / 回到顶部，滚动 400px 后淡入 */
+.side-float {
+    position: fixed;
+    right: 18px;
+    bottom: 120px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 48px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+    padding: 6px 0;
+    z-index: 90;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.side-float.visible { opacity: 1; pointer-events: auto; }
+.side-float a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 42px;
+    font-size: 1.3rem;
+    text-decoration: none;
+    color: #334155;
+    transition: color 0.2s ease, background 0.2s ease;
+    border-radius: 10px;
+    margin: 0 4px;
+}
+.side-float a:hover { color: #2563eb; background: #eff6ff; }
