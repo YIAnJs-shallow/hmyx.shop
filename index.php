@@ -137,8 +137,8 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>惠蒙优选 - 精选优质商城</title>
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
-    <link rel="stylesheet" href="css/shop.css?v=2">
-    <link rel="stylesheet" href="css/style.css?v=2">
+    <link rel="stylesheet" href="css/shop.css?v=3">
+    <link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body class="page-home">
         <header>
@@ -225,17 +225,17 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
 
     <main class="container" style="margin: 20px auto; padding: 0 15px; width: 100%; box-sizing: border-box;">
         <?php if (!empty($hot_searches) || !empty($my_searches)): ?>
-        <div class="search-trends" style="margin:0 0 20px;font-size:.85rem;color:#475569;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;">
+        <div class="search-trends" style="margin:0 0 20px;font-size:.85rem;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;">
             <?php if (!empty($hot_searches)): ?>
-                <span style="font-weight:700;color:#1e293b;">🔥 热门搜索：</span>
+                <span style="font-weight:700;color:#94a3b8;">🔥 热门搜索：</span>
                 <?php foreach ($hot_searches as $hs): ?>
                     <a href="index.php?keyword=<?= urlencode($hs['keyword']); ?>" style="color:#2563eb;text-decoration:none;background:#eff6ff;border-radius:999px;padding:2px 12px;"><?= h($hs['keyword']); ?></a>
                 <?php endforeach; ?>
             <?php endif; ?>
             <?php if (!empty($my_searches)): ?>
-                <span style="font-weight:700;color:#1e293b;">🕘 我的搜索：</span>
+                <span style="font-weight:700;color:#94a3b8;">🕘 我的搜索：</span>
                 <?php foreach ($my_searches as $ms): ?>
-                    <a href="index.php?keyword=<?= urlencode($ms['keyword']); ?>" style="color:#334155;text-decoration:none;background:#f1f5f9;border-radius:999px;padding:2px 12px;"><?= h($ms['keyword']); ?></a>
+                    <a href="index.php?keyword=<?= urlencode($ms['keyword']); ?>" style="color:#94a3b8;text-decoration:none;background:#f1f5f9;border-radius:999px;padding:2px 12px;"><?= h($ms['keyword']); ?></a>
                 <?php endforeach; ?>
                 <form method="post" action="index.php" style="display:inline;margin-left:4px;"><?= csrf_field(); ?><input type="hidden" name="action" value="clear_search_history"><button type="submit" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:.85rem;text-decoration:underline;padding:0;">清空我的搜索记录</button></form>
             <?php endif; ?>

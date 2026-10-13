@@ -602,9 +602,11 @@ h1, h2 { font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
 /* ============ 首页宽屏优化（.page-home 作用域，不影响其他页面） ============ */
 /* Hero 深空色向下渐隐融入页面底色 */
 .page-home {
-    background: linear-gradient(180deg, #0a0f1e 0px, #0a0f1e 180px, #f1f5f9 420px, #f8fafc 100%);
-    background-attachment: scroll;
+    background: #f8fafc;
 }
+/* 首页热搜词文字颜色（接管原内联色） */
+.page-home .search-trends, .page-home .search-trends a { color: #94a3b8; }
+.page-home .search-trends a:hover { color: #e2e8f0; }
 /* 首页主容器加宽（原内联 max-width:1200px 移至此处统一管理） */
 .page-home main.container { max-width: 1360px; }
 /* 商品网格自适应列数加宽 */
