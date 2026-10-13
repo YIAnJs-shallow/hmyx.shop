@@ -89,9 +89,35 @@ if ($category_id > 0) {
     }
 }
 
-// facet 聚合：品牌/材质改为全量在售聚合（不随关键词/分类收窄，京东式常显全量维度），取前 12 个
-$facet_where = " WHERE p.status = 1 AND p.audit_status = 'approved' AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops active_shop WHERE active_shop.id=p.shop_id AND active_shop.status=1))";
-$facet_params = []; $facet_types = '';
+// 品类→facet 维度配置：材质(面料/涂层)仅服饰/家居作为搜索细分，数码/美妆只做品牌+价格
+$FACET_DIMS = [
+    1 => ['brand','price'],            // 数码电子：品牌+价格，材质不作为搜索细分
+    2 => ['brand','material','price'], // 服装服饰
+    3 => ['brand','material','price'], // 家居生活
+    4 => ['brand','price'],            // 美妆个护
+];
+// 二级分类 id => 顶级分类 id 映射（category_id 向上找 root 用）
+$cat_root = [];
+foreach ($categories as $main_id => $mc) foreach ($mc['subs'] as $sub) $cat_root[$sub['id']] = $main_id;
+
+// 命中范围涉及的顶级分类集合：当前搜索/筛选结果集的 DISTINCT category_id 向上映射
+$involved_roots = [];
+$rstmt = $conn->prepare("SELECT DISTINCT p.category_id FROM products p {$where}");
+if ($params) $rstmt->bind_param($types, ...$params);
+$rstmt->execute(); $rres = $rstmt->get_result();
+while ($rrow = $rres->fetch_assoc()) {
+    $cid = (int)$rrow['category_id'];
+    if (isset($categories[$cid])) $involved_roots[$cid] = true;
+    elseif (isset($cat_root[$cid])) $involved_roots[$cat_root[$cid]] = true;
+}
+// 材质行仅当涉及的所有顶级分类都含 material 维度时显示（品牌/价格恒显示）
+$show_material = !empty($involved_roots);
+foreach (array_keys($involved_roots) as $rid) {
+    if (!in_array('material', $FACET_DIMS[$rid] ?? [], true)) { $show_material = false; break; }
+}
+
+// facet 聚合：范围回归当前搜索/筛选结果集（复用主查询条件），取前 20 个
+$facet_where = $where; $facet_params = $params; $facet_types = $types;
 $brand_facets = []; $material_facets = [];
 $fstmt = $conn->prepare("SELECT DISTINCT p.brand FROM products p {$facet_where} AND p.brand<>'' ORDER BY p.brand LIMIT 20");
 if ($facet_params) $fstmt->bind_param($facet_types, ...$facet_params);
@@ -334,7 +360,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
             <?php endforeach; ?>
             <?php endif; ?>
 
-            <?php if ($material_facets): ?>
+            <?php if ($show_material && $material_facets): ?>
             <span class="fr-label">材质：</span>
             <?php foreach (array_slice($material_facets, 0, 20) as $m): ?>
                 <?php if ($material === $m): ?>
