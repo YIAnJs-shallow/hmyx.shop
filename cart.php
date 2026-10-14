@@ -60,7 +60,7 @@ if ($hint): ?>
     <p class="muted">满额进度：¥ <?=money($cartTotal)?> / ¥ <?=money($hint['threshold_cents'])?></p>
 </section>
 <?php endif; ?>
-foreach ($items as $item):
+<?php foreach ($items as $item):
 $stock=$item['sku_id']!==null && (int)$item['sku_id']>0 ? (int)($item['sku_stock'] ?? -1) : (int)$item['stock'];
 $valid=$item['id'] && $item['status']==1 && $item['audit_status']==='approved' && $stock>=0 && $item['quantity']<=$stock;
 $unit=$item['sku_id']!==null && (int)$item['sku_id']>0 ? (int)($item['sku_price_cents'] ?? 0) : ($item['price']!==null ? cents($item['price']) : 0);
