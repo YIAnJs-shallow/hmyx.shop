@@ -328,6 +328,9 @@ foreach ($material_backfill as $pid=>$mval) {
     query('UPDATE products SET material=? WHERE id=? AND material=\'\'', [$mval, $pid]);
 }
 
+// ===== 评价印象标签：首评可勾选固定候选标签，逗号分隔存储，旧评价空串兼容 =====
+add_column('reviews','tags',"varchar(255) NOT NULL DEFAULT ''");
+
 // ===== 商品浏览足迹：登录用户浏览详情页记录（插入不去重，展示端按商品最新一条去重） =====
 query("CREATE TABLE IF NOT EXISTS user_browsing (
     id bigint AUTO_INCREMENT PRIMARY KEY,

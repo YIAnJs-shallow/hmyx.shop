@@ -38,3 +38,6 @@
 .coupon-hint{border-color:#16856c;background:#e5f4ef}
 .coupon-progress{background:#fff;border:1px solid #bbccd1;border-radius:25px;height:10px;overflow:hidden;margin:10px 0}
 .coupon-progress-bar{background:#08776b;height:100%;border-radius:25px;transition:width .3s}
+/* ===== 评价印象标签：详情页评价区顶部的聚合计数胶囊 ===== */
+.tag-pills{margin:0 0 10px}
+.tag-pill{display:inline-block;background:#e5f4ef;color:#08776b;border-radius:25px;padding:4px 12px;font-size:13px;font-weight:600;margin:2px 6px 2px 0}

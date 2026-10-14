@@ -478,7 +478,38 @@ function action_button($orderId, $action, $label) {
     return '<form class="inline" method="post" action="order_action.php">'.csrf_field().'<input type="hidden" name="order_id" value="'.(int)$orderId.'"><button name="action" value="'.h($action).'">'.h($label).'</button></form>';
 }
 // ===== 评价体系升级：首评唯一性由查询保证（唯一索引已降级为普通索引，以支持追评多行） =====
-function create_review($userId, $orderItemId, $rating, $content) {
+// ===== 评价印象标签：固定 8 个候选，白名单严格校验（in_array 第三参 true），逗号分隔存储 =====
+function review_tag_whitelist() {
+    return ['质量好', '物流快', '描述相符', '包装仔细', '性价比高', '服务态度好', '有瑕疵', '与图片不符'];
+}
+// 清洗用户勾选：非白名单值丢弃、去重、保序，返回逗号分隔串（未勾选返回空串）
+function sanitize_review_tags($raw) {
+    $out = [];
+    foreach ((array)$raw as $tag) {
+        $tag = trim((string)$tag);
+        if ($tag !== '' && in_array($tag, review_tag_whitelist(), true) && !in_array($tag, $out, true)) $out[] = $tag;
+    }
+    return implode(',', $out);
+}
+// 商品评价印象标签聚合计数：拆分 tags 计数，取次数前 5（同次数按先出现顺序），无标签返回空数组
+function review_tag_counts($productId) {
+    $counts = [];
+    foreach (rows("SELECT tags FROM reviews WHERE product_id=? AND tags<>''", [(int)$productId]) as $r) {
+        foreach (explode(',', $r['tags']) as $tag) {
+            $tag = trim($tag);
+            if ($tag !== '') $counts[$tag] = ($counts[$tag] ?? 0) + 1;
+        }
+    }
+    arsort($counts);
+    $out = [];
+    $i = 0;
+    foreach ($counts as $tag => $n) {
+        if (++$i > 5) break;
+        $out[] = ['tag' => $tag, 'count' => $n];
+    }
+    return $out;
+}
+function create_review($userId, $orderItemId, $rating, $content, $tags = '') {
     $item = one("SELECT i.* FROM order_items i JOIN orders o ON o.id=i.order_id WHERE i.id=? AND o.user_id=? AND o.status='completed'", [(int)$orderItemId, $userId]);
     if (!$item || !$item['product_id']) throw new DomainException('仅可评价本人已完成订单中的商品');
     if (one('SELECT id FROM reviews WHERE order_item_id=? AND parent_id IS NULL', [(int)$orderItemId])) throw new DomainException('该商品订单已经评价过了');
@@ -486,7 +517,8 @@ function create_review($userId, $orderItemId, $rating, $content) {
     if ($rating < 1 || $rating > 5) throw new DomainException('请选择 1 至 5 星');
     $content = trim((string)$content);
     if (mb_strlen($content) < 2 || mb_strlen($content) > 1000) throw new DomainException('评价内容为 2 至 1000 字');
-    query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content) VALUES(?,?,?,?,?)', [$userId, (int)$orderItemId, (int)$item['product_id'], $rating, $content]);
+    $tags = sanitize_review_tags($tags);
+    query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content,tags) VALUES(?,?,?,?,?,?)', [$userId, (int)$orderItemId, (int)$item['product_id'], $rating, $content, $tags]);
     return (int)$GLOBALS['conn']->insert_id;
 }
 // 追评：parent_id 指向首评，rating 固定 0；每个首评仅允许一条（查询保证，不加唯一索引）

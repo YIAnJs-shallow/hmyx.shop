@@ -14,7 +14,7 @@ if($_SERVER['REQUEST_METHOD']==='POST') {
         $images=[];
         try { foreach(validate_review_images($_FILES['review_images'] ?? []) as $file) $images[]=save_image_upload($file,'reviews'); }
         catch(DomainException $e) { foreach($images as $path) @unlink(__DIR__.'/../'.$path); throw $e; }
-        try { $reviewId=create_review($userId,$id,$rating,$content); }
+        try { $reviewId=create_review($userId,$id,$rating,$content,$_POST['tags'] ?? []); }
         catch(DomainException $e) { foreach($images as $path) @unlink(__DIR__.'/../'.$path); throw $e; }
         foreach($images as $path) query('INSERT INTO review_images(review_id,image_url) VALUES(?,?)',[$reviewId,$path]);
         redirect_to('detail.php?id='.(int)$item['product_id'],'评价已发布');
@@ -22,4 +22,4 @@ if($_SERVER['REQUEST_METHOD']==='POST') {
 }
 page_start($append ? '追加评价' : '评价商品'); ?><section class="card"><h2><?=h($item['product_title'])?></h2><?php if($error): ?><p class="notice error"><?=h($error)?></p><?php endif; ?>
 <?php if($append): ?><p class="muted">确认收货 30 天内可对已评价商品追加一条评价。</p><?php endif; ?>
-<form method="post"<?=$append ? '' : ' enctype="multipart/form-data"'?>><?=csrf_field()?><input type="hidden" name="item_id" value="<?=$id?>"><?php if($append): ?><input type="hidden" name="append" value="1"><?php else: ?><label>评分 <select name="rating"><?php for($i=5;$i>=1;$i--): ?><option value="<?=$i?>"><?=$i?> 星</option><?php endfor; ?></select></label><?php endif; ?><label><?= $append ? '追评内容' : '评价内容' ?><textarea name="content" minlength="2" maxlength="1000" required><?=h($_POST['content'] ?? '')?></textarea></label><?php if(!$append): ?><label>晒图（最多 3 张，可选）<input type="file" name="review_images[]" accept="image/jpeg,image/png,image/gif,image/webp" multiple></label><?php endif; ?><button><?= $append ? '提交追评' : '提交评价' ?></button></form></section><?php page_end(); ?>
+<form method="post"<?=$append ? '' : ' enctype="multipart/form-data"'?>><?=csrf_field()?><input type="hidden" name="item_id" value="<?=$id?>"><?php if($append): ?><input type="hidden" name="append" value="1"><?php else: ?><label>评分 <select name="rating"><?php for($i=5;$i>=1;$i--): ?><option value="<?=$i?>"><?=$i?> 星</option><?php endfor; ?></select></label><?php endif; ?><label><?= $append ? '追评内容' : '评价内容' ?><textarea name="content" minlength="2" maxlength="1000" required><?=h($_POST['content'] ?? '')?></textarea></label><?php if(!$append): ?><fieldset><legend>印象标签（可选）</legend><?php foreach(review_tag_whitelist() as $tag): ?><label class="inline"><input type="checkbox" name="tags[]" value="<?=h($tag)?>"> <?=h($tag)?></label><?php endforeach; ?></fieldset><label>晒图（最多 3 张，可选）<input type="file" name="review_images[]" accept="image/jpeg,image/png,image/gif,image/webp" multiple></label><?php endif; ?><button><?= $append ? '提交追评' : '提交评价' ?></button></form></section><?php page_end(); ?>
