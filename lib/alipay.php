@@ -1,6 +1,11 @@
 <?php
 // 支付宝沙箱支付：自实现 RSA2(SHA256WithRSA) 签名/验签与交易查询，不依赖 composer SDK。
 // 密钥常量来自 Web 根目录外 private/my_project/secrets.php，禁止硬编码入库。
+// 本文件是密钥常量的首个加载点：主动引入 secrets.php（幂等），保证 pay.php 直连链路可用。
+if (!defined('ALIPAY_SANDBOX_APP_ID')) {
+    $alipaySecretsPath = project_private_config_dir() . '/secrets.php';
+    if (is_file($alipaySecretsPath)) require_once $alipaySecretsPath;
+}
 // 站点对外地址（含中文域名的 punycode 形式），用于 return_url / notify_url
 define('ALIPAY_SITE_BASE', 'https://xn--4oq564b47zxtj');
 
