@@ -452,6 +452,58 @@ $cronStockAfter=(int)one('SELECT stock FROM products WHERE id=?',[$p1])['stock']
 $cronClosed2=cron_close_timeout_orders(); $cronReceived2=cron_auto_receive_orders();
 check($cronClosed2===0 && $cronReceived2===0,'cron rerun finds nothing to do');
 check((int)one('SELECT stock FROM products WHERE id=?',[$p1])['stock']===$cronStockAfter && one('SELECT completed_at FROM orders WHERE id=?',[$cronShip])['completed_at']===$cronCompletedAt,'cron rerun causes no duplicate side effects');
+// ===== 商品列表排序与筛选（index.php：排序白名单 / 价格区间 / 有货筛选 / 分页透传） =====
+// 进程内渲染首页：$_GET 注入后 include，捕获 HTML 再还原（include 包在函数内隔离变量作用域）
+function render_home(array $get) {
+    global $conn;
+    $backup = $_GET; $_GET = $get;
+    ob_start();
+    include __DIR__.'/../index.php';
+    $html = ob_get_clean();
+    $_GET = $backup;
+    return $html;
+}
+function home_titles($html) {
+    preg_match_all('#<div class="product-title">([^<]*)</div>#', $html, $m);
+    return $m[1];
+}
+// 可见商品口径与 index.php 主查询一致：上架+审核通过+店铺在售（或平台自营）
+$visWhere = "p.status=1 AND p.audit_status='approved' AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops s WHERE s.id=p.shop_id AND s.status=1))";
+$visSales = "(SELECT COALESCE(SUM(oi.quantity),0) FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=p.id AND o.status IN ('paid','shipped','completed'))";
+$visRating = "(SELECT COALESCE(AVG(r.rating),0) FROM reviews r WHERE r.product_id=p.id AND r.parent_id IS NULL)";
+function expect_titles($extraWhere, $orderSql) {
+    return array_map('htmlspecialchars', array_column(rows("SELECT p.title FROM products p WHERE ".$GLOBALS['visWhere'].$extraWhere." ORDER BY ".$orderSql." LIMIT 12"), 'title'));
+}
+// 造 15 件在售商品保证超过一页（12 件/页），价格递增便于区间断言，其中 1 件零库存
+for ($i = 1; $i <= 15; $i++) {
+    query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES(?,?,?,?,1,'approved')",
+        ['分页测试商品'.$i, sprintf('%.2f', 3 + $i * 3), $i === 15 ? 0 : 5, $category]);
+}
+// 排序白名单逐项生效：渲染顺序与按口径复算的期望顺序一致
+foreach ([
+    'default' => ['', 'p.id DESC'],
+    'sales' => ['', $visSales.' DESC, p.id DESC'],
+    'price_asc' => ['', 'p.price ASC, p.id DESC'],
+    'price_desc' => ['', 'p.price DESC, p.id DESC'],
+    'rating' => ['', $visRating.' DESC, p.id DESC'],
+] as $sortKey => [$sortWhere, $sortOrder]) {
+    check(home_titles(render_home(['sort' => $sortKey])) === expect_titles($sortWhere, $sortOrder), 'sort='.$sortKey.' orders products as whitelisted');
+}
+// 价格区间：仅 ¥15-¥20 商品出现，且平台测试商品（¥19.90）在列
+$rangeHtml = render_home(['sort' => 'price_asc', 'price_min' => '15', 'price_max' => '20']);
+check(home_titles($rangeHtml) === expect_titles(' AND p.price >= 15 AND p.price <= 20', 'p.price ASC, p.id DESC'), 'price range filters products between min and max');
+check(in_array(htmlspecialchars('平台测试商品'), home_titles($rangeHtml), true), 'price range keeps the 19.90 product');
+// 非法参数被忽略：负数价格、非法排序值、in_stock=0 均回退默认结果
+check(home_titles(render_home(['sort' => 'p.id;DROP', 'price_min' => '-5', 'price_max' => '-3', 'in_stock' => '0'])) === expect_titles('', 'p.id DESC'), 'invalid sort and negative price fall back to default listing');
+// 仅显示有货：零库存的分页测试商品15 被过滤
+$stockHtml = render_home(['in_stock' => '1', 'sort' => 'price_desc']);
+check(home_titles($stockHtml) === expect_titles(' AND p.stock > 0', 'p.price DESC, p.id DESC'), 'in_stock=1 hides zero-stock products');
+check(!in_array(htmlspecialchars('分页测试商品15'), home_titles($stockHtml), true), 'zero-stock product excluded when in_stock filter on');
+// 分页链接透传：下一页链接携带 sort/price_min/price_max/in_stock 全部筛选参数
+$pageHtml = render_home(['sort' => 'price_desc', 'price_min' => '1', 'price_max' => '999', 'in_stock' => '1']);
+check(preg_match('#<a href="([^"]*)">下一页</a>#', $pageHtml, $pageMatch) === 1, 'pagination next link rendered when results exceed one page');
+$nextHref = html_entity_decode($pageMatch[1]);
+check(strpos($nextHref, 'sort=price_desc') !== false && strpos($nextHref, 'price_min=1') !== false && strpos($nextHref, 'price_max=999') !== false && strpos($nextHref, 'in_stock=1') !== false && strpos($nextHref, 'page=2') !== false, 'pagination link carries all filter params');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());

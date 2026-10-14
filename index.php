@@ -147,9 +147,25 @@ if ($material !== '') { $where .= " AND p.material = ?"; $params[] = $material; 
 if ($price_min !== null) { $where .= " AND p.price >= ?"; $params[] = (float)$price_min; $types .= "d"; }
 if ($price_max !== null) { $where .= " AND p.price <= ?"; $params[] = (float)$price_max; $types .= "d"; }
 
-$sort = $_GET['sort'] ?? 'newest';
-$sort_options = ['newest'=>'p.id DESC','price_asc'=>'p.price ASC,p.id DESC','price_desc'=>'p.price DESC,p.id DESC'];
-if (!isset($sort_options[$sort])) $sort='newest';
+// 仅显示有货：in_stock=1 时按现有列表库存口径（products.stock）过滤
+$in_stock = (string)($_GET['in_stock'] ?? '') === '1';
+if ($in_stock) { $where .= " AND p.stock > 0"; }
+
+$sort = $_GET['sort'] ?? 'default';
+// 排序白名单：固定映射 ORDER BY 子句，禁止拼接用户输入；newest 为旧链接兼容别名（与 default 同为综合排序）
+// 销量口径沿用热销榜 best_sellers（有效订单 order_items 按 product_id 汇总），评分口径沿用详情页首评均值（追评 rating=0 不计入）
+$sales_order = "(SELECT COALESCE(SUM(oi.quantity),0) FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=p.id AND o.status IN ('paid','shipped','completed'))";
+$rating_order = "(SELECT COALESCE(AVG(r.rating),0) FROM reviews r WHERE r.product_id=p.id AND r.parent_id IS NULL)";
+$sort_options = [
+    'default' => 'p.id DESC',
+    'sales' => $sales_order.' DESC, p.id DESC',
+    'price_asc' => 'p.price ASC, p.id DESC',
+    'price_desc' => 'p.price DESC, p.id DESC',
+    'rating' => $rating_order.' DESC, p.id DESC',
+];
+if ($sort === 'newest') $sort = 'default';
+if (!isset($sort_options[$sort])) $sort = 'default';
+$sort_labels = ['default'=>'综合','sales'=>'销量','price_asc'=>'价格从低到高','price_desc'=>'价格从高到低','rating'=>'评分'];
 $page = max(1, (int)($_GET['page'] ?? 1));
 $offset = ($page-1)*12;
 $count_stmt = $conn->prepare("SELECT COUNT(*) AS total FROM products p {$where}");
@@ -190,7 +206,7 @@ $best_sellers = best_sellers(10);
 $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
 
 // 筛选链接生成：每个链接只切换自身维度，其余维度原样携带（空值/默认值剔除）
-$filter_query = function (array $override = []) use ($keyword, $category_id, $brand, $material, $price_min, $price_max, $sort) {
+$filter_query = function (array $override = []) use ($keyword, $category_id, $brand, $material, $price_min, $price_max, $sort, $in_stock) {
     $q = array_merge([
         'keyword' => $keyword,
         'category_id' => $category_id,
@@ -199,10 +215,11 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         'price_min' => $price_min === null ? '' : $price_min,
         'price_max' => $price_max === null ? '' : $price_max,
         'sort' => $sort,
+        'in_stock' => $in_stock ? 1 : '',
     ], $override);
     foreach ($q as $k => $v) {
         if ($v === '' || $v === null || $v === 0) unset($q[$k]);
-        if ($k === 'sort' && $v === 'newest') unset($q[$k]);
+        if ($k === 'sort' && ($v === 'newest' || $v === 'default')) unset($q[$k]);
     }
     return 'index.php?' . http_build_query($q);
 };
@@ -289,7 +306,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
     <?php endforeach; ?>
 </select>
 
-                <select name="sort" class="search-select" aria-label="排序"><?php foreach(['newest'=>'最新上架','price_asc'=>'价格从低到高','price_desc'=>'价格从高到低'] as $key=>$label): ?><option value="<?php echo $key; ?>" <?php echo $sort===$key?'selected':''; ?>><?php echo $label; ?></option><?php endforeach; ?></select><button type="submit" class="search-btn">搜索</button>
+                <select name="sort" class="search-select" aria-label="排序"><?php foreach($sort_labels as $key=>$label): ?><option value="<?php echo $key; ?>" <?php echo $sort===$key?'selected':''; ?>><?php echo $label; ?></option><?php endforeach; ?></select><button type="submit" class="search-btn">搜索</button>
 
                 <?php if (!empty($keyword) || $category_id > 0): ?>
                     <a href="index.php" class="reset-btn">重置条件</a>
@@ -314,11 +331,12 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
                         <?php endforeach; ?>
                     <?php endforeach; ?>
                 </select>
-                <select name="sort" class="search-select" aria-label="排序"><?php foreach(['newest'=>'最新上架','price_asc'=>'价格从低到高','price_desc'=>'价格从高到低'] as $key=>$label): ?><option value="<?php echo $key; ?>" <?php echo $sort===$key?'selected':''; ?>><?php echo $label; ?></option><?php endforeach; ?></select>
+                <select name="sort" class="search-select" aria-label="排序"><?php foreach($sort_labels as $key=>$label): ?><option value="<?php echo $key; ?>" <?php echo $sort===$key?'selected':''; ?>><?php echo $label; ?></option><?php endforeach; ?></select>
                 <input type="hidden" name="brand" value="<?= h($brand) ?>">
                 <input type="hidden" name="material" value="<?= h($material) ?>">
                 <input type="hidden" name="price_min" value="<?= $price_min === null ? '' : $price_min ?>">
                 <input type="hidden" name="price_max" value="<?= $price_max === null ? '' : $price_max ?>">
+                <input type="hidden" name="in_stock" value="<?= $in_stock ? '1' : '' ?>">
                 <button type="submit" class="search-btn">搜索</button>
                 <?php if ($brand !== '' || $material !== '' || $price_min !== null || $price_max !== null): ?>
                     <a href="<?= h($filter_query(['brand'=>'','material'=>'','price_min'=>'','price_max'=>'','keyword'=>$keyword,'category_id'=>$category_id])) ?>" class="reset-btn">清除筛选</a>
@@ -377,6 +395,8 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
                 <input type="hidden" name="category_id" value="<?= (int)$category_id ?>">
                 <input type="hidden" name="brand" value="<?= h($brand) ?>">
                 <input type="hidden" name="material" value="<?= h($material) ?>">
+                <input type="hidden" name="sort" value="<?= h($sort) ?>">
+                <input type="hidden" name="in_stock" value="<?= $in_stock ? '1' : '' ?>">
                 <input type="number" name="price_min" min="0" max="999999" step="0.01" placeholder="￥最低" value="<?= $price_min === null ? '' : $price_min ?>">
                 <span style="color:#94a3b8;">—</span>
                 <input type="number" name="price_max" min="0" max="999999" step="0.01" placeholder="￥最高" value="<?= $price_max === null ? '' : $price_max ?>">
@@ -441,6 +461,20 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
             </div>
         </section>
         <?php endif; ?>
+
+        <!-- 排序条：白名单链接切换排序与有货筛选，chip-on 标记当前项 -->
+        <div class="filter-row">
+            <span class="fr-label">排序：</span>
+            <?php foreach ($sort_labels as $key => $label): ?>
+                <a href="<?= h($filter_query(['sort' => $key, 'page' => null])) ?>" class="chip<?= $sort === $key ? ' chip-on' : '' ?>"><?= h($label) ?></a>
+            <?php endforeach; ?>
+            <span class="fr-label">有货：</span>
+            <?php if ($in_stock): ?>
+                <a href="<?= h($filter_query(['in_stock' => '', 'page' => null])) ?>" class="chip chip-on" title="点击清除">× 仅显示有货</a>
+            <?php else: ?>
+                <a href="<?= h($filter_query(['in_stock' => '1', 'page' => null])) ?>" class="chip">仅显示有货</a>
+            <?php endif; ?>
+        </div>
 
         <div class="page-header">
             <h2 class="section-title">
