@@ -60,6 +60,56 @@ function alipay_verify(array $params, $publicKey = null) {
     return $ok === 1;
 }
 
+// 网关地址：环境变量 ALIPAY_GATEWAY_OVERRIDE 仅用于集成测试注入不可达地址，正常运行取 secrets.php 的 ALIPAY_GATEWAY
+function alipay_gateway() {
+    $override = getenv('ALIPAY_GATEWAY_OVERRIDE');
+    return (is_string($override) && $override !== '') ? $override : ALIPAY_GATEWAY;
+}
+
+// 向网关发送同一签名请求（GET）：curl 失败或响应含 invalid-signature 返回 false，否则返回响应体
+function alipay_gateway_probe(array $params) {
+    $url = alipay_gateway() . '?' . http_build_query($params);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+    ]);
+    $body = curl_exec($ch);
+    if ($body === false) {
+        // phpStudy 环境若缺 CA 报错可回退关闭校验（仅限沙箱）
+        $err = curl_error($ch);
+        curl_close($ch);
+        error_log('alipay_gateway_probe curl: ' . $err . '，回退关闭 SSL 校验（仅限沙箱）');
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
+        ]);
+        $body = curl_exec($ch);
+        if ($body === false) { curl_close($ch); return false; }
+    }
+    curl_close($ch);
+    return (string)$body;
+}
+
+// 预检：向网关发送同一签名请求，invalid-signature 时换新时间戳重签重试
+// 返回：通过的最终参数数组（含最终 timestamp/sign）；全部失败返回 null
+function alipay_signed_request_with_retry(array $baseParams, int $maxAttempts = 8): ?array {
+    for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+        if ($attempt > 0) usleep(300000);
+        $params = $baseParams;
+        $params['timestamp'] = date('Y-m-d H:i:s');
+        $params = alipay_sign($params);
+        $body = alipay_gateway_probe($params);
+        if ($body !== false && strpos($body, 'invalid-signature') === false) return $params;
+    }
+    return null;
+}
+
 // 主动查询交易状态（alipay.trade.query）：返回 trade_status 字符串，查询失败/无此单返回 null
 function alipay_query_trade($orderNo) {
     $params = [

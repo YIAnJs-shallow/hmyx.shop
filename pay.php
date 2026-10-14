@@ -11,13 +11,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST' && ($_POST['action'] ?? '')==='a
     $payable = (int)cents($order['total_amount']) - (int)cents($order['discount_amount']) - (int)$order['points_discount_cents'];
     $titles = rows('SELECT product_title AS title FROM order_items WHERE order_id=?', [$id]);
     $subject = mb_substr(implode('、', array_column($titles, 'title')), 0, 60, 'UTF-8');
-    $params = alipay_sign([
+    // 跳转前预检：沙箱网关存在 invalid-signature 平台侧抖动，换签重试拿到可用参数再渲染表单，
+    // 保证浏览器提交的 URL 与预检通过的 URL 完全一致（timestamp/sign 均来自预检结果）
+    $params = alipay_signed_request_with_retry([
         'app_id' => ALIPAY_SANDBOX_APP_ID,
         'method' => 'alipay.trade.page.pay',
         'return_url' => ALIPAY_SITE_BASE.'/pay_return.php',
         'notify_url' => ALIPAY_SITE_BASE.'/pay_notify.php',
         'charset' => 'utf-8',
-        'timestamp' => date('Y-m-d H:i:s'),
         'version' => '1.0',
         'biz_content' => json_encode([
             'out_trade_no' => $order['order_no'],
@@ -25,8 +26,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST' && ($_POST['action'] ?? '')==='a
             'subject' => $subject,
         ], JSON_UNESCAPED_UNICODE),
     ]);
+    if ($params === null) {
+        page_start('支付宝沙箱网关不稳定');
+        echo '<section class="card"><p>订单号 '.h($order['order_no']).' · 实付 ¥ '.money($payable).'</p>'
+            .'<p class="notice">支付宝沙箱网关暂时不稳定，请稍后重试或使用演示支付。</p>'
+            .'<form class="inline" method="post" action="pay.php?order_id='.$id.'">'.csrf_field().'<input type="hidden" name="action" value="alipay"><button>重试支付宝支付</button></form> '
+            .action_button($id,'cancel','取消订单').' <a href="my_orders.php">返回订单中心</a></section>';
+        page_end(); exit;
+    }
     page_start('正在跳转支付宝沙箱收银台');
-    echo '<section class="card"><p>订单号 '.h($order['order_no']).' · 实付 ¥ '.money($payable).'</p><p>正在跳转支付宝沙箱收银台，请稍候……</p><form id="alipay-form" method="get" action="'.h(ALIPAY_GATEWAY).'">';
+    echo '<section class="card"><p>订单号 '.h($order['order_no']).' · 实付 ¥ '.money($payable).'</p><p>正在跳转支付宝沙箱收银台，请稍候……</p><form id="alipay-form" method="get" action="'.h(alipay_gateway()).'">';
     foreach ($params as $k => $v) echo '<input type="hidden" name="'.h($k).'" value="'.h($v).'">';
     echo '</form><script>document.getElementById("alipay-form").submit();</script></section>';
     page_end(); exit;

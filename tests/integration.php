@@ -670,6 +670,21 @@ $alipayRow = one('SELECT status,payment_method,paid_at FROM orders WHERE id=?',[
 check($alipayRow['status']==='paid' && $alipayRow['payment_method']==='alipay_sandbox' && $alipayRow['paid_at']!==null,'alipay sandbox payment reuses paid transition and records payment method');
 rejects(function()use($alipayOrder,$buyer){change_order($alipayOrder,$buyer,'pay',['payment_method'=>'alipay_sandbox']);},'repeat alipay sandbox payment rejected idempotently');
 putenv('SHOP_DEMO_PAYMENT=1');
+// 6) 预检重试：网关不可达（注入 ALIPAY_GATEWAY_OVERRIDE）时返回 null；pay.php 预检全败展示重试提示而非跳转表单
+putenv('ALIPAY_GATEWAY_OVERRIDE=http://127.0.0.1:1/');
+$retryBaseParams = ['app_id'=>ALIPAY_SANDBOX_APP_ID,'method'=>'alipay.trade.page.pay','charset'=>'utf-8','version'=>'1.0','biz_content'=>json_encode(['out_trade_no'=>'QA'.time(),'total_amount'=>'0.01','subject'=>'预检测试'],JSON_UNESCAPED_UNICODE)];
+check(alipay_signed_request_with_retry($retryBaseParams, 3)===null,'signed request retry returns null when all attempts fail (unreachable gateway)');
+$retryOrder=(int)create_orders($buyer,$p1,1,$address,'alipay-retry-test')[0];
+// pay.php 的 POST 分支会 exit，须用子进程渲染（沿用 foreignScript 模式），CSRF 与网关覆盖均经环境/会话注入
+$retryScript = tempnam(sys_get_temp_dir(),'qa_').'.php';
+file_put_contents($retryScript, '<?php $_SERVER["REQUEST_METHOD"]="POST";$_GET=["order_id"=>'.$retryOrder.'];$_POST=["action"=>"alipay","csrf_token"=>"qa-csrf"];$_SESSION=["user_id"=>'.$buyer.',"role"=>"user","csrf_token"=>"qa-csrf"];require '.var_export(realpath(__DIR__.'/../pay.php'),true).';');
+putenv('DB_NAME='.$testDb);
+$payPreflightFail = shell_exec(escapeshellarg(PHP_BINARY).' '.escapeshellarg($retryScript).' 2>NUL');
+putenv('DB_NAME');
+unlink($retryScript);
+check(strpos($payPreflightFail,'支付宝沙箱网关暂时不稳定')!==false && strpos($payPreflightFail,'重试支付宝支付')!==false && strpos($payPreflightFail,'取消订单')!==false,'pay page shows retry notice with retry and cancel buttons when preflight fails');
+check(strpos($payPreflightFail,'alipay-form')===false && one('SELECT status FROM orders WHERE id=?',[$retryOrder])['status']==='pending','pay page renders no gateway redirect form and keeps order pending on preflight failure');
+putenv('ALIPAY_GATEWAY_OVERRIDE');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
