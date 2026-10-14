@@ -55,6 +55,20 @@ function notify($userId, $type, $title, $body, $link = '') {
             [(int)$userId, $type, mb_substr($title, 0, 100), mb_substr($body, 0, 255), (string)$link]);
     } catch (Throwable $e) { error_log('notify failed: '.$e->getMessage()); }
 }
+// ===== 收藏商品降价提醒：改价后对收藏该商品的所有用户各发一条站内通知（须在改价事务内调用，一次降价一轮） =====
+function notify_price_drop(array $product, $newPriceCents) {
+    $oldCents = (int)round((float)$product['price'] * 100);
+    $newCents = (int)$newPriceCents;
+    if ($newCents <= 0 || $newCents >= $oldCents) return 0;
+    $body = '你收藏的《'.$product['title'].'》降价了：原价 '.money($oldCents).' 元 → 现价 '.money($newCents).' 元';
+    $link = 'detail.php?id='.(int)$product['id'];
+    $count = 0;
+    foreach (rows('SELECT user_id FROM favorites WHERE product_id=?', [(int)$product['id']]) as $f) {
+        notify((int)$f['user_id'], 'price', '收藏商品降价', $body, $link);
+        $count++;
+    }
+    return $count;
+}
 // ===== 限时特价：NOW() 落在 flash 区间且特价低于原价时生效（SKU 模式不参与） =====
 function flash_price_cents(array $product) {
     $flash = (int)($product['flash_price_cents'] ?? 0);

@@ -387,6 +387,13 @@ check($hintZero!==null && !$hintZero['met'] && $hintZero['gap_cents']===5000 && 
 check(coupon_threshold_hint($other,5970)===null,'user without coupons gets no cart hint');
 query('DELETE FROM cart WHERE user_id=?',[$buyer]);
 check(strpos(file_get_contents(__DIR__.'/../cart.php'),'coupon-hint')!==false && strpos(file_get_contents(__DIR__.'/../css/shop.css'),'coupon-progress')!==false,'cart page renders coupon hint banner with progress bar styles');
+// ===== 收藏商品降价提醒（改价低于原价→收藏用户各一条站内通知，同轮不重复） =====
+$p1Row=one('SELECT * FROM products WHERE id=?',[$p1]); // 平台测试商品 ¥19.90，仅 buyer 收藏
+check(notify_price_drop($p1Row,1500)===1,'price drop notifies every favoriting user once');
+$dropNotice=one("SELECT * FROM user_notifications WHERE user_id=? AND type='price' ORDER BY id DESC LIMIT 1",[$buyer]);
+check($dropNotice!==null && strpos($dropNotice['body'],'《平台测试商品》降价了：原价 19.90 元 → 现价 15.00 元')!==false && $dropNotice['link']==='detail.php?id='.$p1,'price drop notification body and product link correct');
+check(notify_price_drop($p1Row,1990)===0 && notify_price_drop($p1Row,2500)===0,'no notification when price unchanged or raised');
+check((int)one("SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND type='price'",[$buyer])['n']===1,'one price-drop round writes exactly one notification per favoriting user');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());

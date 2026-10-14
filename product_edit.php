@@ -283,6 +283,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
+                // 收藏降价提醒：新价低于原价时对收藏用户各发一条站内通知（同一事务内一次写入，天然不重复）
+                notify_price_drop($product, (int)round($price * 100));
+
                 if ($db instanceof PDO) $db->commit(); else $db->commit();
                 $transactionStarted = false;
                 $success_tip = $is_admin ? '商品修改成功！' : '商品修改成功，已重新提交管理员审核！';

@@ -279,6 +279,11 @@ query("CREATE TABLE IF NOT EXISTS user_notifications (
     KEY idx_user_notifications (user_id, read_at),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// 收藏商品降价提醒：type 枚举幂等扩展 'price'（已有库升级，缺则补）
+$notifType = one("SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='user_notifications' AND COLUMN_NAME='type'");
+if ($notifType && strpos($notifType['COLUMN_TYPE'], "'price'") === false) {
+    query("ALTER TABLE user_notifications MODIFY type enum('message','order','refund','coupon','price') NOT NULL");
+}
 
 // ===== 限时特价与限购：flash 区间内展示价用特价，limit_per_user=0 表示不限购 =====
 add_column('products','flash_price_cents','int NULL');
