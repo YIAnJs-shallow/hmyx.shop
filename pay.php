@@ -9,7 +9,7 @@ if (!$order) { http_response_code(404); page_start('订单不存在'); page_end(
 if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST' && ($_POST['action'] ?? '')==='alipay') {
     if ($order['status']!=='pending') redirect_to('pay.php?order_id='.$id, $order['status']==='paid' ? '订单已支付，请勿重复付款' : '当前订单状态不可支付');
     $payable = (int)cents($order['total_amount']) - (int)cents($order['discount_amount']) - (int)$order['points_discount_cents'];
-    $titles = rows('SELECT title FROM order_items WHERE order_id=?', [$id]);
+    $titles = rows('SELECT product_title AS title FROM order_items WHERE order_id=?', [$id]);
     $subject = mb_substr(implode('、', array_column($titles, 'title')), 0, 60, 'UTF-8');
     $params = alipay_sign([
         'app_id' => ALIPAY_SANDBOX_APP_ID,
