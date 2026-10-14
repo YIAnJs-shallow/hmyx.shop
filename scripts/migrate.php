@@ -328,4 +328,13 @@ foreach ($material_backfill as $pid=>$mval) {
     query('UPDATE products SET material=? WHERE id=? AND material=\'\'', [$mval, $pid]);
 }
 
+// ===== 商品浏览足迹：登录用户浏览详情页记录（插入不去重，展示端按商品最新一条去重） =====
+query("CREATE TABLE IF NOT EXISTS user_browsing (
+    id bigint AUTO_INCREMENT PRIMARY KEY,
+    user_id int NOT NULL,
+    product_id int NOT NULL,
+    viewed_at datetime NOT NULL,
+    KEY idx_user_time (user_id, viewed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 echo "Migration complete.\n";

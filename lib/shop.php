@@ -14,6 +14,22 @@ function query($sql, $params = []) {
 }
 function rows($sql, $params = []) { return query($sql, $params)->get_result()->fetch_all(MYSQLI_ASSOC); }
 function one($sql, $params = []) { return query($sql, $params)->get_result()->fetch_assoc(); }
+// ===== 商品浏览足迹：登录用户浏览详情页时记录（未登录 userId=0 不写入；失败仅记日志，不影响页面渲染） =====
+function record_browsing($userId, $productId) {
+    if ((int)$userId <= 0 || (int)$productId <= 0) return false;
+    try {
+        query('INSERT INTO user_browsing(user_id,product_id,viewed_at) VALUES(?,?,NOW())', [(int)$userId, (int)$productId]);
+        return true;
+    } catch (Throwable $e) { error_log('record_browsing failed: '.$e->getMessage()); return false; }
+}
+// 用户最近浏览足迹：同一商品只取最新一条，关联商品取名称/价格/图片（下架商品不展示）
+function browsing_history($userId, $limit = 20) {
+    return rows('SELECT b.product_id, MAX(b.viewed_at) AS last_viewed, p.title, p.price, p.image_url
+                 FROM user_browsing b JOIN products p ON p.id = b.product_id
+                 WHERE b.user_id = ? AND p.status = 1 AND p.audit_status = "approved"
+                 GROUP BY b.product_id, p.title, p.price, p.image_url
+                 ORDER BY last_viewed DESC LIMIT '.(int)$limit, [(int)$userId]);
+}
 function uid() {
     if (empty($_SESSION['user_id'])) login_redirect(current_page_url());
     return (int)$_SESSION['user_id'];

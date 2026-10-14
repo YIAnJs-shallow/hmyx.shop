@@ -394,6 +394,20 @@ $dropNotice=one("SELECT * FROM user_notifications WHERE user_id=? AND type='pric
 check($dropNotice!==null && strpos($dropNotice['body'],'《平台测试商品》降价了：原价 19.90 元 → 现价 15.00 元')!==false && $dropNotice['link']==='detail.php?id='.$p1,'price drop notification body and product link correct');
 check(notify_price_drop($p1Row,1990)===0 && notify_price_drop($p1Row,2500)===0,'no notification when price unchanged or raised');
 check((int)one("SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND type='price'",[$buyer])['n']===1,'one price-drop round writes exactly one notification per favoriting user');
+// ===== 商品浏览足迹（登录写入不去重、展示按商品最新去重、未登录不写入） =====
+check(record_browsing($buyer,$p1)===true,'logged-in detail view inserts browsing footprint');
+check(record_browsing($buyer,$p1)===true,'repeat view inserts another row without dedup on write');
+check(record_browsing(0,$p1)===false && record_browsing($buyer,0)===false && (int)one('SELECT COUNT(*) AS n FROM user_browsing WHERE product_id=?',[$p1])['n']===2,'guest or invalid product writes no footprint');
+query('INSERT INTO user_browsing(user_id,product_id,viewed_at) VALUES(?,?,NOW() - INTERVAL 2 MINUTE)',[$buyer,$p2]);
+query('INSERT INTO user_browsing(user_id,product_id,viewed_at) VALUES(?,?,NOW())',[$buyer,$p2]);
+query('UPDATE user_browsing SET viewed_at = NOW() - INTERVAL 2 MINUTE WHERE product_id=?',[$p1]); // p2 最新浏览在前
+$history=browsing_history($buyer);
+check(count($history)===2,'browsing history shows each product once');
+check((int)$history[0]['product_id']===$p2 && $history[0]['title']==='店铺测试商品' && $history[0]['price']==='30.10','history orders by latest view and joins product name/price');
+query("UPDATE products SET audit_status='pending' WHERE id=?",[$p1]);
+check(count(browsing_history($buyer))===1,'unapproved products hidden from browsing history');
+query("UPDATE products SET audit_status='approved' WHERE id=?",[$p1]);
+check(strpos(file_get_contents(__DIR__.'/../detail.php'),'record_browsing')!==false && strpos(file_get_contents(__DIR__.'/../user_center.php'),'浏览足迹')!==false,'detail page records footprint and user center renders browsing block');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());

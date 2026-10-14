@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/lib/security.php';
 require_once 'config/db.php';
+require_once __DIR__ . '/lib/shop.php';
 
 $db = isset($conn) ? $conn : (isset($pdo) ? $pdo : null);
 
@@ -349,6 +350,30 @@ $username = !empty($user['username']) ? $user['username'] : ($_SESSION['username
 
     </div>
 </div>
+
+        <!-- 3. 浏览足迹：最近浏览的商品（同一商品只显示最新一次浏览） -->
+        <?php $browsing = $is_logged_in ? browsing_history($user_id) : []; ?>
+        <?php if ($browsing): ?>
+        <div style="background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.03); margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h4 style="margin: 0; color: #1e293b; font-size: 1rem; border-left: 4px solid #2563eb; padding-left: 8px;">浏览足迹</h4>
+                <span style="color: #64748b; font-size: 0.85rem;">最近浏览的 <?= count($browsing) ?> 件商品</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px;">
+                <?php foreach ($browsing as $b): ?>
+                <a href="detail.php?id=<?= (int)$b['product_id'] ?>" style="text-decoration: none; color: #334155; background: #f8fafc; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <?php if (!empty($b['image_url'])): ?>
+                        <img src="<?php echo htmlspecialchars($b['image_url']); ?>" alt="<?php echo htmlspecialchars($b['title']); ?>" style="width: 100%; height: 100px; object-fit: cover; border-radius: 6px; background: #e2e8f0;">
+                    <?php else: ?>
+                        <div style="width: 100%; height: 100px; border-radius: 6px; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 1.6rem;">🛍️</div>
+                    <?php endif; ?>
+                    <span style="font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><?php echo htmlspecialchars($b['title']); ?></span>
+                    <span style="font-size: 0.9rem; font-weight: bold; color: #c75022;">¥ <?php echo htmlspecialchars($b['price']); ?></span>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- 商家/个人管理中心操作区 -->
 <div class="shop-manage-box">

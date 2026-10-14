@@ -3,6 +3,8 @@ require_once __DIR__.'/lib/shop.php';
 $id=(int)($_GET['id'] ?? $_GET['product_id'] ?? 0);
 $p=one("SELECT p.*,s.shop_name FROM products p LEFT JOIN shops s ON s.id=p.shop_id WHERE p.id=? AND p.status=1 AND p.audit_status='approved' AND (p.shop_id IS NULL OR s.status=1)",[$id]);
 if(!$p) { http_response_code(404); page_start('商品不存在或已下架'); page_end(); exit; }
+// 浏览足迹：登录用户访问详情页成功时记录（未登录不写入）
+record_browsing((int)($_SESSION['user_id'] ?? 0), $id);
 page_start($p['title']);
 $reviews=rows('SELECT r.*,u.username FROM reviews r JOIN users u ON u.id=r.user_id WHERE r.product_id=? AND r.parent_id IS NULL ORDER BY r.id DESC LIMIT 30',[$id]);
 // 追评与晒图统计只针对当前展示的首评（评分均值不含 rating 固定为 0 的追评）
