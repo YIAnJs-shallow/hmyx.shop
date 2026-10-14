@@ -295,7 +295,10 @@ function change_order($id, $actor, $action, $data = []) {
             release_stock($order);
             query("UPDATE orders SET status='cancelled' WHERE id=?", [$id]);
         } elseif ($action === 'pay' && $owner && $order['status'] === 'pending') {
-            if (getenv('SHOP_DEMO_PAYMENT') !== '1') throw new DomainException('支付演示未开启，尚未接入真实支付');
+            // 支付渠道：默认演示支付；支付宝沙箱经 return/notify 验签+主动查单确认后传入 alipay_sandbox
+            $paymentMethod = $data['payment_method'] ?? 'demo';
+            if (!in_array($paymentMethod, ['demo', 'alipay_sandbox'], true)) throw new DomainException('未知支付渠道');
+            if ($paymentMethod === 'demo' && getenv('SHOP_DEMO_PAYMENT') !== '1') throw new DomainException('支付演示未开启，尚未接入真实支付');
             if (!(int)$order['stock_reserved']) throw new DomainException('旧订单未预留库存，请取消后重新下单');
             if (strtotime($order['created_at']) <= time()-10800) throw new DomainException('订单已超时，请返回订单中心');
             // 积分抵现原子扣减：余额充足则按下单记录扣（grant_points 幂等 + 余额校验），不足则放弃抵扣按原价支付（取消/超时关单不涉及积分，不退）
@@ -307,7 +310,7 @@ function change_order($id, $actor, $action, $data = []) {
                     query('UPDATE orders SET points_paid=0, points_discount_cents=0 WHERE id=?', [$id]);
                 }
             }
-            query("UPDATE orders SET status='paid',paid_at=NOW(),payment_method='demo' WHERE id=?", [$id]);
+            query("UPDATE orders SET status='paid',paid_at=NOW(),payment_method=? WHERE id=?", [$paymentMethod, $id]);
         } elseif ($action === 'ship' && $manager && $order['status'] === 'paid') {
             if (one("SELECT id FROM refund_requests WHERE order_id=? AND status='pending'", [$id])) throw new DomainException('此订单正在申请退款，请先处理');
             $company = trim($data['express_company'] ?? ''); $number = trim($data['express_no'] ?? '');

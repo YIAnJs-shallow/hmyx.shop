@@ -23,3 +23,11 @@ define('MAIL_FROM_NAME', '惠蒙优选'); // 发件人显示名
 // 非白名单 IP 访问 admin/ 目录任何入口（含登录页）一律返回 404；未定义该常量时默认仅允许本机
 // 示例：'127.0.0.1,::1,192.168.1.100'（支持 IPv4 与 IPv6 字面量，不支持网段）
 define('ADMIN_ALLOWED_IPS', '127.0.0.1,::1');
+
+// ===== 支付宝沙箱支付 =====
+// 来源：支付宝开放平台（open.alipay.com）→ 控制台 → 沙箱环境 → 自定义密钥（RSA2/SHA256WithRSA）
+// app_id 为沙箱应用 APPID；gateway 为沙箱网关；两把密钥均为不含 PEM 头尾的 Base64 单行文本
+define('ALIPAY_SANDBOX_APP_ID', '');          // 沙箱应用 APPID
+define('ALIPAY_GATEWAY', '');                 // 沙箱网关地址
+define('ALIPAY_APP_PRIVATE_KEY', '');         // 应用私钥（PKCS8，Base64 单行）
+define('ALIPAY_ALIPAY_PUBLIC_KEY', '');       // 支付宝公钥（Base64 单行，用于验签）

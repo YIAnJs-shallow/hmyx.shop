@@ -623,6 +623,53 @@ $guestPoints=render_points_page([]);
 check(strpos($guestPoints,'请先登录')!==false,'points page rejects guests');
 $memberPoints=render_points_page(['user_id'=>$signinPlain,'role'=>'user']);
 check(strpos($memberPoints,'当前积分余额')!==false && strpos($memberPoints,'积分明细')!==false && strpos($memberPoints,'每日签到')!==false,'logged-in points page shows balance, signin calendar and point log');
+// ===== 支付宝沙箱支付：签名验签、发起按钮可见性、return/notify 验签防护与支付成功复用 =====
+require_once __DIR__.'/../lib/alipay.php';
+// 1) 签名/验签对称自测：应用私钥签、应用公钥验（不依赖真实支付宝公钥）
+$appPub = openssl_pkey_get_details(alipay_private_key_resource())['key'];
+$signed = alipay_sign(['out_trade_no'=>'QA'.time(),'total_amount'=>'19.90','subject'=>'测试商品']);
+check(alipay_verify($signed,$appPub),'alipay sign/verify round-trip with app keypair');
+$tampered = $signed; $tampered['total_amount'] = '0.01';
+check(!alipay_verify($tampered,$appPub),'tampered alipay parameter fails verification');
+check(!alipay_verify(['out_trade_no'=>'QA-no-sign']),'alipay verify rejects params without sign');
+// 2) 发起按钮可见性：pending 可见、已支付不可见
+$alipayOrder = (int)create_orders($buyer,$p1,1,$address,'alipay-btn-test')[0];
+function render_alipay_page($file, array $session, array $get, array $post = []) {
+    global $conn;
+    $backupGet=$_GET; $backupPost=$_POST; $backupSession=$_SESSION;
+    $_SESSION=$session; $_GET=$get; $_POST=$post;
+    ob_start(); include $file; $html=ob_get_clean();
+    $_GET=$backupGet; $_POST=$backupPost; $_SESSION=$backupSession;
+    return $html;
+}
+$payPending = render_alipay_page(__DIR__.'/../pay.php', ['user_id'=>$buyer,'role'=>'user'], ['order_id'=>$alipayOrder]);
+check(strpos($payPending,'支付宝沙箱支付')!==false,'pay page shows alipay sandbox button for pending order');
+$payPaid = render_alipay_page(__DIR__.'/../pay.php', ['user_id'=>$buyer,'role'=>'user'], ['order_id'=>$shortOrder]);
+check(strpos($payPaid,'支付宝沙箱支付')===false,'pay page hides alipay button for paid order');
+$foreignScript = tempnam(sys_get_temp_dir(),'qa_').'.php';
+file_put_contents($foreignScript, '<?php $_SERVER["REQUEST_METHOD"]="GET";$_GET=["order_id"=>'.$alipayOrder.'];$_SESSION=["user_id"=>'.$other.',"role"=>"user"];require '.var_export(realpath(__DIR__.'/../pay.php'),true).';');
+putenv('DB_NAME='.$testDb);
+$foreignOut = shell_exec(escapeshellarg(PHP_BINARY).' '.escapeshellarg($foreignScript).' 2>NUL');
+putenv('DB_NAME');
+unlink($foreignScript);
+check(strpos((string)$foreignOut,'订单不存在')!==false,'pay page rejects foreign user order');
+// 3) pay_return.php：缺参/验签失败不改订单状态
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+$returnMissing = render_alipay_page(__DIR__.'/../pay_return.php', ['user_id'=>$buyer,'role'=>'user'], []);
+check(strpos($returnMissing,'验签失败')!==false && one('SELECT status FROM orders WHERE id=?',[$alipayOrder])['status']==='pending','pay_return with missing params shows verify failure and keeps order pending');
+$returnForged = render_alipay_page(__DIR__.'/../pay_return.php', ['user_id'=>$buyer,'role'=>'user'], ['out_trade_no'=>one('SELECT order_no FROM orders WHERE id=?',[$alipayOrder])['order_no'],'trade_no'=>'2026010100000','trade_status'=>'TRADE_SUCCESS','sign'=>'forged-sign','sign_type'=>'RSA2']);
+check(strpos($returnForged,'验签失败')!==false && one('SELECT status FROM orders WHERE id=?',[$alipayOrder])['status']==='pending','pay_return with forged sign shows verify failure and keeps order pending');
+// 4) pay_notify.php：验签失败输出 fail 且订单状态不变
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+$notifyForged = render_alipay_page(__DIR__.'/../pay_notify.php', ['user_id'=>$buyer,'role'=>'user'], [], ['out_trade_no'=>one('SELECT order_no FROM orders WHERE id=?',[$alipayOrder])['order_no'],'trade_status'=>'TRADE_SUCCESS','sign'=>'forged-sign','sign_type'=>'RSA2']);
+check(trim($notifyForged)==='fail' && one('SELECT status FROM orders WHERE id=?',[$alipayOrder])['status']==='pending','pay_notify with forged sign replies fail and keeps order pending');
+// 5) 支付成功分支复用：alipay_sandbox 渠道在演示支付关闭时仍可走通，且幂等防重
+putenv('SHOP_DEMO_PAYMENT=0');
+change_order($alipayOrder,$buyer,'pay',['payment_method'=>'alipay_sandbox']);
+$alipayRow = one('SELECT status,payment_method,paid_at FROM orders WHERE id=?',[$alipayOrder]);
+check($alipayRow['status']==='paid' && $alipayRow['payment_method']==='alipay_sandbox' && $alipayRow['paid_at']!==null,'alipay sandbox payment reuses paid transition and records payment method');
+rejects(function()use($alipayOrder,$buyer){change_order($alipayOrder,$buyer,'pay',['payment_method'=>'alipay_sandbox']);},'repeat alipay sandbox payment rejected idempotently');
+putenv('SHOP_DEMO_PAYMENT=1');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
