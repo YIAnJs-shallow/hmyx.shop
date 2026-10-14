@@ -4,6 +4,8 @@ require_once __DIR__ . '/lib/security.php';
 require_once 'config/db.php';
 
 require_once __DIR__ . '/lib/shop.php';
+
+require_once __DIR__ . '/lib/risk_check.php';
 if (($_SESSION['role'] ?? '') === 'admin') { header('Location: admin/login.php', true, 303); exit; }
 $db = isset($pdo) ? $pdo : (isset($conn) ? $conn : null);
 
@@ -137,6 +139,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         catch (DomainException $e) { $msg = $e->getMessage(); $msg_type = 'error'; }
     }
 
+    // 风控预检（商户提交审核时）：block 拒绝保存并展示原因，warn 由保存成功分支写审核预警备注
+    $riskPrecheck = (!$is_admin && $status === 1)
+        ? risk_check_product(['title' => $title, 'detail' => $detail, 'price' => $price, 'category_id' => $category_id_val, 'image_url' => $image_url, 'id' => null])
+        : null;
+
     if ($msg_type !== 'error') {
         if ($sku_invalid) {
             $msg = '每个规格行须完整填写名称、大于零的价格（最多两位小数）与非负整数库存！';
@@ -146,6 +153,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg_type = 'error';
         } elseif (empty($title) || mb_strlen($title) > 100) {
             $msg = '请填写商品名称！';
+            $msg_type = 'error';
+        } elseif ($riskPrecheck !== null && $riskPrecheck['risk_level'] === 'block') {
+            $msg = '商品未通过风控预检：' . implode('；', $riskPrecheck['reasons']);
             $msg_type = 'error';
         } else {
             try {
@@ -166,8 +176,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!$exec_ok) $mysqli_err = $stmt->error;
                 }
 
+                // 预检 warn 需要新商品 id 写预警备注：主表 INSERT 后立即取自增 id（后续规格写入会覆盖 insert_id）
+                $newProductId = !empty($ok) ? (int)($db instanceof PDO ? $db->lastInsertId() : (int)$db->insert_id) : 0;
+
                 if (!empty($ok) && $sku_rows) {
-                    $newProductId = $db instanceof PDO ? (int)$db->lastInsertId() : (int)$db->insert_id;
                     if ($db instanceof PDO) {
                         $stmt = $db->prepare("INSERT INTO product_skus (product_id, sku_name, price_cents, stock, image_url) VALUES (?, ?, ?, ?, ?)");
                         foreach ($sku_rows as $row) $stmt->execute([$newProductId, $row['name'], $row['price_cents'], $row['stock'], $row['image_url']]);
@@ -183,6 +195,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (!empty($ok)) {
                     $db->commit();
+                    // 风控预警：warn 级别正常保存，原因写入审核日志备注供审核中心展示
+                    if ($riskPrecheck !== null && $riskPrecheck['risk_level'] === 'warn') risk_log_warn($newProductId, $riskPrecheck['reasons']);
                     if ($status === 0) {
                         $status_tip = '商品已暂存为草稿！';
                     } elseif ($audit_status === 'pending') {

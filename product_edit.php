@@ -4,6 +4,8 @@ require_once __DIR__ . '/lib/security.php';
 require_once 'config/db.php';
 
 require_once __DIR__ . '/lib/shop.php';
+
+require_once __DIR__ . '/lib/risk_check.php';
 if (($_SESSION['role'] ?? '') === 'admin') { header('Location: admin/login.php', true, 303); exit; }
 $db = isset($pdo) ? $pdo : (isset($conn) ? $conn : null);
 
@@ -185,6 +187,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg = $e->getMessage(); $msg_type = 'error';
     }
 
+    // 风控预检（商户提交审核时）：生效主图取新上传（临时文件可直接读内容）或沿用旧图；block 拒绝保存，warn 保存后写预警备注
+    $riskEffectiveImage = $product['image_url'] ?? '';
+    if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) $riskEffectiveImage = $_FILES['image']['tmp_name'];
+    $riskPrecheck = (!$is_admin && $status === 1)
+        ? risk_check_product(['title' => $title, 'detail' => $detail, 'price' => $price, 'category_id' => $category_id_val, 'image_url' => $riskEffectiveImage, 'id' => $product_id])
+        : null;
+
     if ($msg_type === 'error') {
         // 特价/限购字段校验失败：$msg 已有提示，直接回到表单
     } elseif ($sku_invalid) {
@@ -195,6 +204,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg_type = 'error';
     } elseif (empty($title) || mb_strlen($title) > 100) {
         $msg = '请填写商品名称！';
+        $msg_type = 'error';
+    } elseif ($riskPrecheck !== null && $riskPrecheck['risk_level'] === 'block') {
+        $msg = '商品未通过风控预检：' . implode('；', $riskPrecheck['reasons']);
         $msg_type = 'error';
     } else {
         $transactionStarted = false;
@@ -288,6 +300,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($db instanceof PDO) $db->commit(); else $db->commit();
                 $transactionStarted = false;
+                // 风控预警：warn 级别正常保存，原因写入审核日志备注供审核中心展示
+                if ($riskPrecheck !== null && $riskPrecheck['risk_level'] === 'warn') risk_log_warn($product_id, $riskPrecheck['reasons']);
                 $success_tip = $is_admin ? '商品修改成功！' : '商品修改成功，已重新提交管理员审核！';
                 echo "<script>alert('{$success_tip}'); location.href='{$back_url}';</script>";
                 exit();

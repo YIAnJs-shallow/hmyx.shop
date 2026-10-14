@@ -138,6 +138,21 @@ if (!empty($rows) && $tab !== 'records') {
     }
 }
 
+// 系统风控预警：商户提交时自动预检标记的 warn 原因（admin_audit_logs 中 action=product.risk.warn，每商品取最近一条）
+$risk_warns = [];
+if (!empty($rows) && $tab === 'pending') {
+    $ids = array_column($rows, 'id');
+    $id_list = implode(',', array_map('intval', $ids));
+    $wres = $conn->query("SELECT target_id, detail FROM admin_audit_logs WHERE action = 'product.risk.warn' AND target_type = 'product' AND target_id IN ({$id_list}) ORDER BY id DESC");
+    while ($w = $wres->fetch_assoc()) {
+        $pid = (int)$w['target_id'];
+        if (isset($risk_warns[$pid])) continue;
+        $detail = json_decode($w['detail'], true);
+        $reasons = is_array($detail['reasons'] ?? null) ? array_values(array_filter(array_map('strval', $detail['reasons']), function ($s) { return $s !== ''; })) : [];
+        $risk_warns[$pid] = $reasons ? '系统预警：' . implode('；', $reasons) : '';
+    }
+}
+
 $audit_badge = [
     'pending'  => '<span style="background:#fef3c7;color:#b45309;padding:3px 10px;border-radius:12px;font-size:12px;">待审核</span>',
     'approved' => '<span style="background:#d1fae5;color:#047857;padding:3px 10px;border-radius:12px;font-size:12px;">已通过</span>',
@@ -265,6 +280,9 @@ $tab_titles = ['pending' => '待审核', 'approved' => '已通过', 'rejected' =
                         </a>
                         <?php if ($tab === 'rejected' && !empty($last_comments[$r['id']])): ?>
                             <div class="reject-reason">驳回原因：<?php echo htmlspecialchars($last_comments[$r['id']]); ?></div>
+                        <?php endif; ?>
+                        <?php if ($tab === 'pending' && !empty($risk_warns[$r['id']])): ?>
+                            <div class="reject-reason" style="color:#b45309;">风控预警：<?php echo htmlspecialchars($risk_warns[$r['id']]); ?></div>
                         <?php endif; ?>
                     </td>
                     <td><?php echo htmlspecialchars($r['shop_name'] ?? '平台自营'); ?></td>

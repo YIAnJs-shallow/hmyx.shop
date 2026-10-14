@@ -504,6 +504,39 @@ $pageHtml = render_home(['sort' => 'price_desc', 'price_min' => '1', 'price_max'
 check(preg_match('#<a href="([^"]*)">下一页</a>#', $pageHtml, $pageMatch) === 1, 'pagination next link rendered when results exceed one page');
 $nextHref = html_entity_decode($pageMatch[1]);
 check(strpos($nextHref, 'sort=price_desc') !== false && strpos($nextHref, 'price_min=1') !== false && strpos($nextHref, 'price_max=999') !== false && strpos($nextHref, 'in_stock=1') !== false && strpos($nextHref, 'page=2') !== false, 'pagination link carries all filter params');
+// ===== 商品风控自动预检（lib/risk_check.php：违禁词/价格/重复图片 + 预警入审核日志） =====
+require_once __DIR__.'/../lib/risk_check.php';
+$riskCountBefore=(int)one('SELECT COUNT(*) AS n FROM products')['n'];
+$riskBanned=risk_check_product(['title'=>'高仿名表 特价','detail'=>'支持代开发票','price'=>100,'category_id'=>$category,'image_url'=>'','id'=>null]);
+check($riskBanned['risk_level']==='block' && strpos($riskBanned['reasons'][0],'违禁词')!==false,'banned words in title or detail block the submission');
+check((int)one('SELECT COUNT(*) AS n FROM products')['n']===$riskCountBefore,'blocked precheck writes no product rows');
+check(risk_check_product(['title'=>'正常标题','detail'=>'正常详情','price'=>0,'category_id'=>$category,'image_url'=>'','id'=>null])['risk_level']==='block','zero price blocks the submission');
+// 低价预警：同分类 2 个在售基准商品均价 100，5 元低于 10% 阈值
+query("INSERT INTO categories(category_name,parent_id) VALUES('风控测试分类',0)"); $riskCat=(int)$conn->insert_id;
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('风控基准甲','100.00',5,?,1,'approved')",[$riskCat]);
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('风控基准乙','100.00',5,?,1,'approved')",[$riskCat]);
+$riskLow=risk_check_product(['title'=>'低价测试','detail'=>'','price'=>5,'category_id'=>$riskCat,'image_url'=>'','id'=>null]);
+check($riskLow['risk_level']==='warn' && $riskLow['reasons']===['价格显著低于同类均价'],'price below 10% of category average warns');
+// 正常商品：同分类正常定价且无重复图 → none
+$riskImgA=sys_get_temp_dir().'/risk_a_'.getmypid().'.img'; $riskImgB=sys_get_temp_dir().'/risk_b_'.getmypid().'.img';
+file_put_contents($riskImgA,'risk-check-image-content'); file_put_contents($riskImgB,'risk-check-image-content');
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status,image_url) VALUES('风控图片基准','100.00',5,?,1,'approved',?)",[$riskCat,$riskImgA]); $riskImgProductId=(int)$conn->insert_id;
+check(risk_check_product(['title'=>'正常商品','detail'=>'','price'=>90,'category_id'=>$riskCat,'image_url'=>'','id'=>null])===['risk_level'=>'none','reasons'=>[]],'normal product passes precheck as none');
+// 重复图片：同内容主图 warn；编辑自身（排除自身 id）不误报
+$riskDup=risk_check_product(['title'=>'图片重复测试','detail'=>'','price'=>90,'category_id'=>$riskCat,'image_url'=>$riskImgB,'id'=>null]);
+check($riskDup['risk_level']==='warn' && in_array('图片与已有商品重复',$riskDup['reasons'],true),'identical main image content warns as duplicate');
+check(risk_check_product(['title'=>'图片重复测试','detail'=>'','price'=>90,'category_id'=>$riskCat,'image_url'=>$riskImgA,'id'=>$riskImgProductId])===['risk_level'=>'none','reasons'=>[]],'editing own product image does not trigger duplicate warning');
+// 分类内不足 2 个在售商品时低价规则跳过
+query("INSERT INTO categories(category_name,parent_id) VALUES('风控稀疏分类',0)"); $riskSparse=(int)$conn->insert_id;
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('风控稀疏基准','100.00',5,?,1,'approved')",[$riskSparse]);
+check(risk_check_product(['title'=>'稀疏分类低价','detail'=>'','price'=>1,'category_id'=>$riskSparse,'image_url'=>'','id'=>null])['risk_level']==='none','low-price rule skipped when category has fewer than two on-sale products');
+// warn 预警写入审核日志备注，供审核中心待审列表展示
+risk_log_warn($riskImgProductId,['价格显著低于同类均价']);
+$riskLog=one("SELECT detail FROM admin_audit_logs WHERE action='product.risk.warn' AND target_type='product' AND target_id=? ORDER BY id DESC LIMIT 1",[$riskImgProductId]);
+check($riskLog!==null && strpos($riskLog['detail'],'价格显著低于同类均价')!==false,'warn reasons recorded in audit log for audit center display');
+check(strpos(file_get_contents(__DIR__.'/../product_add.php'),'risk_check_product')!==false && strpos(file_get_contents(__DIR__.'/../product_edit.php'),'risk_check_product')!==false,'merchant add and edit run risk precheck before save');
+check(strpos(file_get_contents(__DIR__.'/../admin/product_audit.php'),'product.risk.warn')!==false && strpos(file_get_contents(__DIR__.'/../admin/product_audit.php'),'风控预警')!==false,'audit center renders risk warn reasons for pending products');
+@unlink($riskImgA); @unlink($riskImgB);
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
