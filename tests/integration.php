@@ -537,6 +537,33 @@ check($riskLog!==null && strpos($riskLog['detail'],'价格显著低于同类均�
 check(strpos(file_get_contents(__DIR__.'/../product_add.php'),'risk_check_product')!==false && strpos(file_get_contents(__DIR__.'/../product_edit.php'),'risk_check_product')!==false,'merchant add and edit run risk precheck before save');
 check(strpos(file_get_contents(__DIR__.'/../admin/product_audit.php'),'product.risk.warn')!==false && strpos(file_get_contents(__DIR__.'/../admin/product_audit.php'),'风控预警')!==false,'audit center renders risk warn reasons for pending products');
 @unlink($riskImgA); @unlink($riskImgB);
+// ===== 订单留言准实时轮询（api_order_messages.php：after_id 增量 / 参与方校验 / 非法参数忽略） =====
+// 进程内调用留言 API：注入 $_GET/$_SESSION 后 include，捕获 JSON 再还原（API 用 return 结束，可在函数内安全 include）
+function fetch_order_messages(array $get, array $session) {
+    global $conn;
+    $backupGet = $_GET; $backupSession = $_SESSION;
+    $_GET = $get; $_SESSION = $session;
+    ob_start();
+    include __DIR__.'/../api_order_messages.php';
+    $out = ob_get_clean();
+    $_GET = $backupGet; $_SESSION = $backupSession;
+    return json_decode($out, true);
+}
+$pollOrder=(int)create_orders($buyer,$p1,1,$address,'msg-poll')[0];
+send_order_message($pollOrder,$buyer,'轮询测试第一条留言');
+send_order_message($pollOrder,$buyer,'轮询测试第二条留言');
+send_order_message($pollOrder,$buyer,'轮询测试第三条留言');
+$pollAll=fetch_order_messages(['order_id'=>$pollOrder],['user_id'=>$buyer,'role'=>'user']);
+check($pollAll['success']===true && count($pollAll['messages'])===3 && $pollAll['messages'][0]['content']==='轮询测试第一条留言','participant buyer fetches all order messages');
+$pollAfter=fetch_order_messages(['order_id'=>$pollOrder,'after_id'=>(string)$pollAll['messages'][1]['id']],['user_id'=>$buyer,'role'=>'user']);
+check($pollAfter['success']===true && count($pollAfter['messages'])===1 && $pollAfter['messages'][0]['content']==='轮询测试第三条留言','after_id returns only messages with greater id');
+check(fetch_order_messages(['order_id'=>$pollOrder,'after_id'=>'-5'],['user_id'=>$buyer,'role'=>'user'])['messages']===$pollAll['messages'],'negative after_id ignored and falls back to full listing');
+check(fetch_order_messages(['order_id'=>$pollOrder,'after_id'=>'abc'],['user_id'=>$buyer,'role'=>'user'])['messages']===$pollAll['messages'],'non-numeric after_id ignored and falls back to full listing');
+check(fetch_order_messages(['order_id'=>$pollOrder],['user_id'=>$other,'role'=>'user'])===['success'=>false,'messages'=>[]],'non-participant cannot poll order messages');
+check(fetch_order_messages(['order_id'=>$pollOrder],[])===['success'=>false,'messages'=>[]],'guest cannot poll order messages');
+$msgPageSrc=file_get_contents(__DIR__.'/../order_messages.php');
+check(strpos($msgPageSrc,'setInterval')!==false && strpos($msgPageSrc,'api_order_messages.php')!==false && strpos($msgPageSrc,'visibilitychange')!==false && strpos($msgPageSrc,'document.hidden')!==false,'message page polls with pause on hidden and appends via the incremental api');
+check(strpos($msgPageSrc,'textContent')!==false && strpos($msgPageSrc,'innerHTML')===false,'message polling appends with textContent only (no innerHTML)');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
