@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/../config/db.php';
+require_once __DIR__.'/points.php';
 
 function query($sql, $params = []) {
     global $conn;
@@ -185,11 +186,11 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId
     unset($line);
     return $lines;
 }
-function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0, $skuId = 0) {
+function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0, $skuId = 0, $usePoints = 0) {
     global $conn;
     $conn->begin_transaction();
     try {
-        one('SELECT id FROM users WHERE id=? FOR UPDATE', [$userId]);
+        $buyer = one('SELECT id, points FROM users WHERE id=? FOR UPDATE', [$userId]);
         $prior = rows('SELECT id FROM orders WHERE user_id=? AND checkout_token=? ORDER BY id', [$userId, $token]);
         if ($prior) { $conn->commit(); return array_column($prior, 'id'); }
         $address = one('SELECT * FROM user_addresses WHERE id=? AND user_id=?', [$addressId, $userId]);
@@ -222,12 +223,20 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
             foreach ($groups as $shopId => $items) $orderTotals[$shopId] = array_sum(array_column($items, 'subtotal_cents'));
             $shares = coupon_split_discount($discountTotal, $orderTotals);
         }
+        // 积分抵现：1 积分 = 1 分，单笔订单最多抵应付金额的 10%（向下取整到分）；可用积分按下单顺序逐单分配
+        $availablePoints = $usePoints ? max(0, (int)($buyer['points'] ?? 0)) : 0;
         foreach ($groups as $shopId => $items) {
             $total = array_sum(array_column($items, 'subtotal_cents'));
             if ($total > 9999999999) throw new DomainException('订单金额超出允许范围');
+            $pointsPaid = 0; $pointsDiscount = 0;
+            $payableCents = $total - (int)($shares[$shopId] ?? 0);
+            if ($availablePoints > 0 && $payableCents > 0) {
+                $pointsDiscount = min(intdiv($payableCents, 10), $availablePoints);
+                if ($pointsDiscount > 0) { $pointsPaid = $pointsDiscount; $availablePoints -= $pointsDiscount; }
+            }
             $number = 'HM'.date('YmdHis').bin2hex(random_bytes(6));
-            query("INSERT INTO orders(order_no,user_id,total_amount,status,receiver_name,receiver_phone,receiver_address,shop_id,checkout_token,stock_reserved) VALUES(?,?,?,'pending',?,?,?,?,?,1)",
-                [$number,$userId,money($total),$address['receiver_name'],$address['receiver_phone'],$address['receiver_address'],$shopId ?: null,$token]);
+            query("INSERT INTO orders(order_no,user_id,total_amount,status,receiver_name,receiver_phone,receiver_address,shop_id,checkout_token,stock_reserved,points_paid,points_discount_cents) VALUES(?,?,?,'pending',?,?,?,?,?,1,?,?)",
+                [$number,$userId,money($total),$address['receiver_name'],$address['receiver_phone'],$address['receiver_address'],$shopId ?: null,$token,$pointsPaid,$pointsDiscount]);
             $orderId = (int)$conn->insert_id;
             if (isset($shares[$shopId])) query('UPDATE orders SET discount_amount=?, coupon_user_id=? WHERE id=?', [money($shares[$shopId]), (int)$userCouponId, $orderId]);
             $ids[] = $orderId;
@@ -289,6 +298,15 @@ function change_order($id, $actor, $action, $data = []) {
             if (getenv('SHOP_DEMO_PAYMENT') !== '1') throw new DomainException('支付演示未开启，尚未接入真实支付');
             if (!(int)$order['stock_reserved']) throw new DomainException('旧订单未预留库存，请取消后重新下单');
             if (strtotime($order['created_at']) <= time()-10800) throw new DomainException('订单已超时，请返回订单中心');
+            // 积分抵现原子扣减：余额充足则按下单记录扣（grant_points 幂等 + 余额校验），不足则放弃抵扣按原价支付（取消/超时关单不涉及积分，不退）
+            if ((int)$order['points_paid'] > 0) {
+                $payer = one('SELECT points FROM users WHERE id=? FOR UPDATE', [(int)$order['user_id']]);
+                if ($payer && (int)$payer['points'] >= (int)$order['points_paid']) {
+                    grant_points((int)$order['user_id'], 'pay', -(int)$order['points_paid'], (int)$id, '订单支付积分抵扣');
+                } else {
+                    query('UPDATE orders SET points_paid=0, points_discount_cents=0 WHERE id=?', [$id]);
+                }
+            }
             query("UPDATE orders SET status='paid',paid_at=NOW(),payment_method='demo' WHERE id=?", [$id]);
         } elseif ($action === 'ship' && $manager && $order['status'] === 'paid') {
             if (one("SELECT id FROM refund_requests WHERE order_id=? AND status='pending'", [$id])) throw new DomainException('此订单正在申请退款，请先处理');
@@ -298,6 +316,10 @@ function change_order($id, $actor, $action, $data = []) {
             notify((int)$order['user_id'], 'order', '您的订单已发货（运单号 '.$number.'）', '订单 '.$order['order_no'].' 已由'.$company.'发出，运单号 '.$number.'，请注意查收。', 'my_orders.php');
         } elseif ($action === 'receive' && $owner && $order['status'] === 'shipped') {
             query("UPDATE orders SET status='completed',completed_at=NOW() WHERE id=?", [$id]);
+            // 确认收货发分：实付 = 商品合计 - 优惠券优惠 - 积分抵扣部分，每 1 元 = 1 分（向下取整）
+            $paidCents = (int)round(((float)$order['total_amount']) * 100) - (int)round(((float)$order['discount_amount']) * 100) - (int)$order['points_discount_cents'];
+            $earned = max(0, intdiv($paidCents, 100));
+            if ($earned > 0) grant_points((int)$order['user_id'], 'order', $earned, (int)$id, '确认收货赠送积分');
         } elseif ($action === 'refund' && $owner && $order['status'] === 'paid') {
             if (one('SELECT id FROM refund_requests WHERE order_id=?', [$id])) throw new DomainException('已提交退款申请');
             if ($order['payment_method'] !== 'demo') throw new DomainException('此订单需联系商家核实支付后办理退款');
@@ -519,7 +541,9 @@ function create_review($userId, $orderItemId, $rating, $content, $tags = '') {
     if (mb_strlen($content) < 2 || mb_strlen($content) > 1000) throw new DomainException('评价内容为 2 至 1000 字');
     $tags = sanitize_review_tags($tags);
     query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content,tags) VALUES(?,?,?,?,?,?)', [$userId, (int)$orderItemId, (int)$item['product_id'], $rating, $content, $tags]);
-    return (int)$GLOBALS['conn']->insert_id;
+    $reviewId = (int)$GLOBALS['conn']->insert_id;
+    grant_points($userId, 'review', 10, $reviewId, '首次评价奖励');
+    return $reviewId;
 }
 // 追评：parent_id 指向首评，rating 固定 0；每个首评仅允许一条（查询保证，不加唯一索引）
 function append_review($userId, $orderItemId, $content) {
@@ -531,7 +555,9 @@ function append_review($userId, $orderItemId, $content) {
     $content = trim((string)$content);
     if (mb_strlen($content) < 2 || mb_strlen($content) > 1000) throw new DomainException('追评内容为 2 至 1000 字');
     query('INSERT INTO reviews(user_id,order_item_id,product_id,rating,content,parent_id) VALUES(?,?,?,0,?,?)', [$userId, (int)$orderItemId, (int)$item['product_id'], $content, (int)$first['id']]);
-    return (int)$GLOBALS['conn']->insert_id;
+    $followupId = (int)$GLOBALS['conn']->insert_id;
+    grant_points($userId, 'followup', 5, $followupId, '追评奖励');
+    return $followupId;
 }
 // 商家回复：仅本店商品的首评，每条仅可回复一次（replied_at 为准）
 function merchant_reply_review($merchantUserId, $reviewId, $content) {

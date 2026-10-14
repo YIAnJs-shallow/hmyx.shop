@@ -351,6 +351,17 @@ $username = !empty($user['username']) ? $user['username'] : ($_SESSION['username
     </div>
 </div>
 
+        <!-- 我的积分入口：余额 + 签到/明细链接（与 points.php 互链） -->
+        <?php if ($is_logged_in): $pointsBalance = (int)one('SELECT points FROM users WHERE id=?', [(int)$user_id])['points']; ?>
+        <div style="background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.03); margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h4 style="margin: 0 0 5px 0; color: #1e293b; font-size: 1rem; border-left: 4px solid #f59e0b; padding-left: 8px;">我的积分</h4>
+                <p style="margin: 0; color: #475569; font-size: 0.9rem;">当前积分余额：<strong style="color: #c75022; font-size: 1.2rem;"><?php echo (int)$pointsBalance; ?></strong> 分 · 每日签到 +5，连续满 7 天额外 +20</p>
+            </div>
+            <a href="points.php" style="background: #f59e0b; color: #fff; padding: 9px 20px; border-radius: 20px; text-decoration: none; font-weight: bold; font-size: 0.9rem;">📅 去签到 / 查看明细</a>
+        </div>
+        <?php endif; ?>
+
         <!-- 3. 浏览足迹：最近浏览的商品（同一商品只显示最新一次浏览） -->
         <?php $browsing = $is_logged_in ? browsing_history($user_id) : []; ?>
         <?php if ($browsing): ?>

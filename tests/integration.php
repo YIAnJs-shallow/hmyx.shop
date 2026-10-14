@@ -564,6 +564,65 @@ check(fetch_order_messages(['order_id'=>$pollOrder],[])===['success'=>false,'mes
 $msgPageSrc=file_get_contents(__DIR__.'/../order_messages.php');
 check(strpos($msgPageSrc,'setInterval')!==false && strpos($msgPageSrc,'api_order_messages.php')!==false && strpos($msgPageSrc,'visibilitychange')!==false && strpos($msgPageSrc,'document.hidden')!==false,'message page polls with pause on hidden and appends via the incremental api');
 check(strpos($msgPageSrc,'textContent')!==false && strpos($msgPageSrc,'innerHTML')===false,'message polling appends with textContent only (no innerHTML)');
+// ===== 签到+积分体系：签到/连签加成/评价发分/订单发分/结算抵现/积分中心页 =====
+require_once __DIR__.'/../lib/points.php';
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+// 1) 每日签到 +5；同日重复签到返回已有记录且不重复发放
+$signinPlain=insert_user('qa_signin_plain','user');
+$r1=try_signin($signinPlain);
+check($r1['ok']===true && $r1['streak']===1 && (int)one('SELECT points FROM users WHERE id=?',[$signinPlain])['points']===5,'daily signin grants 5 points with streak 1');
+$r2=try_signin($signinPlain);
+check($r2['ok']===false && (int)$r2['record']['streak']===1 && (int)one('SELECT points FROM users WHERE id=?',[$signinPlain])['points']===5 && (int)one('SELECT COUNT(*) AS n FROM points_log WHERE user_id=? AND type=?',[$signinPlain,'signin'])['n']===1,'repeat signin same day returns existing record without double grant');
+// 2) 连续签到第 7 天：5+20=25
+$signinWeek=insert_user('qa_signin_week','user');
+for ($d=6;$d>=1;$d--) query('INSERT INTO user_signins(user_id,sign_date,streak) VALUES(?,?,?)',[$signinWeek,date('Y-m-d',strtotime("-{$d} day")),7-$d]);
+$r7=try_signin($signinWeek);
+check($r7['ok']===true && $r7['streak']===7 && (int)one('SELECT points FROM users WHERE id=?',[$signinWeek])['points']===25 && (int)one('SELECT change_points FROM points_log WHERE user_id=? AND type=? ORDER BY id DESC LIMIT 1',[$signinWeek,'signin'])['change_points']===25,'seventh consecutive signin day grants 25 points in one entry');
+// 3) 首评 +10、追评 +5，各发放一次且幂等（cron 已完成的 cronShip 订单尚未评价）
+$pointsItem=(int)one('SELECT id FROM order_items WHERE order_id=?',[$cronShip])['id'];
+$reviewBalanceBefore=(int)one('SELECT points FROM users WHERE id=?',[$buyer])['points'];
+$pointsReviewId=create_review($buyer,$pointsItem,5,'积分测试首评');
+check((int)one('SELECT points FROM users WHERE id=?',[$buyer])['points']===$reviewBalanceBefore+10 && (int)one('SELECT change_points FROM points_log WHERE type=? AND ref_id=?',['review',$pointsReviewId])['change_points']===10,'first review grants 10 points once');
+grant_points($buyer,'review',10,$pointsReviewId,'幂等重放');
+check((int)one('SELECT points FROM users WHERE id=?',[$buyer])['points']===$reviewBalanceBefore+10 && (int)one('SELECT COUNT(*) AS n FROM points_log WHERE type=? AND ref_id=?',['review',$pointsReviewId])['n']===1,'review point grant is idempotent on replay');
+$pointsFollowId=append_review($buyer,$pointsItem,'积分测试追评');
+check((int)one('SELECT points FROM users WHERE id=?',[$buyer])['points']===$reviewBalanceBefore+15 && (int)one('SELECT change_points FROM points_log WHERE type=? AND ref_id=?',['followup',$pointsFollowId])['change_points']===5,'follow-up review grants 5 points once');
+// 4) 结算积分抵现：30.10 元店铺商品上限抵 10%（301 分=3.01 元），支付时原子扣减；确认收货按实付（2709 分）发 27 分
+query('UPDATE products SET stock=stock+10 WHERE id=?',[$p2]);
+query('UPDATE users SET points=points+5000 WHERE id=?',[$buyer]);
+$pointsBase=(int)one('SELECT points FROM users WHERE id=?',[$buyer])['points'];
+$pointsOrder=(int)create_orders($buyer,$p2,1,$address,'points-order',0,0,1)[0];
+$pointsOrderRow=one('SELECT * FROM orders WHERE id=?',[$pointsOrder]);
+check((int)$pointsOrderRow['points_paid']===301 && (int)$pointsOrderRow['points_discount_cents']===301,'points deduction capped at 10% of order payable despite ample balance');
+change_order($pointsOrder,$buyer,'pay');
+check((int)one('SELECT points FROM users WHERE id=?',[$buyer])['points']===$pointsBase-301 && (int)one('SELECT change_points FROM points_log WHERE type=? AND ref_id=?',['pay',$pointsOrder])['change_points']===-301,'successful payment atomically deducts the planned points');
+$_SESSION['role']='merchant'; change_order($pointsOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'PTS00001']); $_SESSION['role']='user';
+change_order($pointsOrder,$buyer,'receive');
+check((int)one('SELECT points FROM users WHERE id=?',[$buyer])['points']===$pointsBase-301+27 && (int)one('SELECT change_points FROM points_log WHERE type=? AND ref_id=?',['order',$pointsOrder])['change_points']===27,'completed order grants floor((paid minus points discount)/100) points');
+// 5) 支付时余额不足：放弃抵扣按原价支付，不扣分、不留扣减流水
+$shortOrder=(int)create_orders($buyer,$p2,1,$address,'points-short',0,0,1)[0];
+check((int)one('SELECT points_paid FROM orders WHERE id=?',[$shortOrder])['points_paid']===301,'planned points deduction recorded on order before payment');
+query('UPDATE users SET points=0 WHERE id=?',[$buyer]);
+change_order($shortOrder,$buyer,'pay');
+$shortRow=one('SELECT points_paid,points_discount_cents FROM orders WHERE id=?',[$shortOrder]);
+check((int)$shortRow['points_paid']===0 && (int)$shortRow['points_discount_cents']===0 && one('SELECT id FROM points_log WHERE type=? AND ref_id=?',['pay',$shortOrder])===null && (int)one('SELECT points FROM users WHERE id=?',[$buyer])['points']===0,'insufficient points at payment skips deduction and pays the full amount');
+// 6) 页面落点：结算页勾选框、个人中心入口、积分中心登录门禁与余额明细展示
+check(strpos(file_get_contents(__DIR__.'/../checkout.php'),'use_points')!==false && strpos(file_get_contents(__DIR__.'/../pay.php'),'积分抵扣')!==false,'checkout offers points checkbox and pay page shows deduction line');
+check(strpos(file_get_contents(__DIR__.'/../user_center.php'),'我的积分')!==false && strpos(file_get_contents(__DIR__.'/../user_center.php'),'points.php')!==false,'user center renders points entry block linking to points page');
+function render_points_page(array $session) {
+    global $conn;
+    $backupGet=$_GET; $backupSession=$_SESSION;
+    $_SESSION=$session; $_GET=[];
+    ob_start();
+    include __DIR__.'/../points.php';
+    $html=ob_get_clean();
+    $_GET=$backupGet; $_SESSION=$backupSession;
+    return $html;
+}
+$guestPoints=render_points_page([]);
+check(strpos($guestPoints,'请先登录')!==false,'points page rejects guests');
+$memberPoints=render_points_page(['user_id'=>$signinPlain,'role'=>'user']);
+check(strpos($memberPoints,'当前积分余额')!==false && strpos($memberPoints,'积分明细')!==false && strpos($memberPoints,'每日签到')!==false,'logged-in points page shows balance, signin calendar and point log');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());

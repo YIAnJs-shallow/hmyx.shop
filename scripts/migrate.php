@@ -340,4 +340,26 @@ query("CREATE TABLE IF NOT EXISTS user_browsing (
     KEY idx_user_time (user_id, viewed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// ===== 签到+积分体系：users 余额列 / 积分流水 / 签到记录 / 订单积分抵扣列 =====
+add_column('users','points','int NOT NULL DEFAULT 0');
+query("CREATE TABLE IF NOT EXISTS points_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    change_points INT NOT NULL COMMENT '正加负减',
+    type ENUM('signin','order','review','followup','redeem','pay') NOT NULL,
+    ref_id INT NULL COMMENT '关联 order_id/review_id，signin 传 0',
+    remark VARCHAR(100) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_user (user_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+query("CREATE TABLE IF NOT EXISTS user_signins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    sign_date DATE NOT NULL,
+    streak INT NOT NULL DEFAULT 1 COMMENT '当日连续签到天数',
+    UNIQUE KEY uk_user_date (user_id, sign_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+add_column('orders','points_paid','int NOT NULL DEFAULT 0');
+add_column('orders','points_discount_cents','int NOT NULL DEFAULT 0');
+
 echo "Migration complete.\n";
