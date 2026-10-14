@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/lib/shop.php';
+require_once __DIR__.'/lib/coupon.php';
 $userId=uid();
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     $conn->begin_transaction();
@@ -40,7 +41,25 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 }
 $items=rows('SELECT c.id AS cart_id,c.quantity,c.sku_id,s.sku_name,s.price_cents AS sku_price_cents,s.stock AS sku_stock,p.* FROM cart c LEFT JOIN products p ON p.id=c.product_id LEFT JOIN product_skus s ON s.id=c.sku_id AND s.status=1 WHERE c.user_id=? ORDER BY c.id DESC',[$userId]);
 page_start('我的购物车'); $total=0;
+// 凑单提示用预合计（与下方逐项合计同一口径，不含运费）
+$cartTotal=0;
+foreach ($items as $item) {
+    $unit=$item['sku_id']!==null && (int)$item['sku_id']>0 ? (int)($item['sku_price_cents'] ?? 0) : ($item['price']!==null ? cents($item['price']) : 0);
+    $cartTotal+=$unit*(int)$item['quantity'];
+}
+$hint=$items ? coupon_threshold_hint($userId,$cartTotal) : null;
 if (!$items) echo '<div class="card empty">购物车还是空的，<a href="index.php">去选购商品</a></div>';
+if ($hint): ?>
+<section class="card coupon-hint">
+<?php if ($hint['met']): ?>
+    <p>已满足满减条件，结算时可省 <strong class="price">¥ <?=money($hint['save_cents'])?></strong>（<?=h($hint['coupon']['title'])?>）。</p>
+<?php else: ?>
+    <p>还差 <strong class="price">¥ <?=money($hint['gap_cents'])?></strong> 可用「<?=h($hint['coupon']['title'])?>」，结算时立减 ¥ <?=money((int)$hint['coupon']['discount_cents'])?>。</p>
+<?php endif; ?>
+    <div class="coupon-progress"><div class="coupon-progress-bar" style="width:<?=min(100,(int)$hint['progress'])?>%"></div></div>
+    <p class="muted">满额进度：¥ <?=money($cartTotal)?> / ¥ <?=money($hint['threshold_cents'])?></p>
+</section>
+<?php endif; ?>
 foreach ($items as $item):
 $stock=$item['sku_id']!==null && (int)$item['sku_id']>0 ? (int)($item['sku_stock'] ?? -1) : (int)$item['stock'];
 $valid=$item['id'] && $item['status']==1 && $item['audit_status']==='approved' && $stock>=0 && $item['quantity']<=$stock;

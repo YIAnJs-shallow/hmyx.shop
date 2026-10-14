@@ -34,3 +34,7 @@
 .search-fixed-bar .search-input::placeholder,
 .hero-inner .search-input::placeholder{color:#cbd5e1}
 .search-input:-webkit-autofill{-webkit-box-shadow:0 0 0 1000px #0f172a inset;-webkit-text-fill-color:#fff;transition:background-color 9999s}
+/* ===== 购物车凑单满减提示横条（cart.php 专属，沿用 notice 绿色系与主色进度条） ===== */
+.coupon-hint{border-color:#16856c;background:#e5f4ef}
+.coupon-progress{background:#fff;border:1px solid #bbccd1;border-radius:25px;height:10px;overflow:hidden;margin:10px 0}
+.coupon-progress-bar{background:#08776b;height:100%;border-radius:25px;transition:width .3s}

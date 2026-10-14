@@ -375,6 +375,18 @@ $indexHtml=file_get_contents(__DIR__.'/../index.php');
 check(strpos($indexHtml,'js/sky.js')!==false && strpos($indexHtml,'home-hero')!==false && strpos($indexHtml,'hero-brand')!==false
     && strpos($indexHtml,'home-grid')===false && strpos($indexHtml,'cat-panel')===false && strpos($indexHtml,'side-rail')===false,
     'homepage includes sky.js and hero banner without three-column layout residue');
+// ===== 购物车凑单满减提示（复用 coupons_for_user，门槛最低券 + 差额/可省计算） =====
+// buyer 已领「满50减5」（discount 500 / min_spend 5000）且未使用；购物车放 1 件 ¥19.90
+query('INSERT INTO cart(user_id,product_id,quantity) VALUES(?,?,1)',[$buyer,$p1]);
+$hintGap=coupon_threshold_hint($buyer,1990);
+check($hintGap!==null && !$hintGap['met'] && $hintGap['gap_cents']===3010 && $hintGap['threshold_cents']===5000 && $hintGap['progress']===40 && $hintGap['coupon']['title']==='满50减5','cart coupon hint computes gap, threshold and progress below threshold');
+$hintMet=coupon_threshold_hint($buyer,5970);
+check($hintMet['met'] && $hintMet['save_cents']===500 && $hintMet['progress']===100,'cart coupon hint reports savings once threshold met');
+$hintZero=coupon_threshold_hint($buyer,0);
+check($hintZero!==null && !$hintZero['met'] && $hintZero['gap_cents']===5000 && $hintZero['progress']===0,'hint handles zero cart total with full gap and zero progress');
+check(coupon_threshold_hint($other,5970)===null,'user without coupons gets no cart hint');
+query('DELETE FROM cart WHERE user_id=?',[$buyer]);
+check(strpos(file_get_contents(__DIR__.'/../cart.php'),'coupon-hint')!==false && strpos(file_get_contents(__DIR__.'/../css/shop.css'),'coupon-progress')!==false,'cart page renders coupon hint banner with progress bar styles');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());

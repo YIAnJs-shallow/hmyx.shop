@@ -30,6 +30,25 @@ function coupons_for_user($userId, $grandTotalCents = null) {
     return rows($sql, $params);
 }
 
+/**
+ * 购物车凑单提示：取用户未使用券中门槛最低的一张，结合购物车合计（不含运费）计算提示数据
+ * 返回 null（无可用券）或 ['coupon','met','threshold_cents','gap_cents','save_cents','progress']
+ */
+function coupon_threshold_hint($userId, $cartTotalCents) {
+    $coupons = coupons_for_user($userId);
+    if (!$coupons) return null;
+    usort($coupons, function ($a, $b) { return [(int)$a['min_spend_cents'], (int)$a['id']] <=> [(int)$b['min_spend_cents'], (int)$b['id']]; });
+    $coupon = $coupons[0];
+    $threshold = (int)$coupon['min_spend_cents'];
+    if ((int)$cartTotalCents >= $threshold) {
+        return ['coupon' => $coupon, 'met' => true, 'threshold_cents' => $threshold, 'gap_cents' => 0,
+                'save_cents' => coupon_preview($coupon, $cartTotalCents), 'progress' => 100];
+    }
+    return ['coupon' => $coupon, 'met' => false, 'threshold_cents' => $threshold,
+            'gap_cents' => $threshold - (int)$cartTotalCents, 'save_cents' => 0,
+            'progress' => (int)$cartTotalCents > 0 ? (int)round($cartTotalCents * 100 / $threshold) : 0];
+}
+
 /** 结算预览：选中券对总金额的优惠（不落库） */
 function coupon_preview($coupon, $grandTotalCents) {
     $discount = (int)$coupon['discount_cents'];
