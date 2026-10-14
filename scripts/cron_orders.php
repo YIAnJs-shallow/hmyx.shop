@@ -1,6 +1,6 @@
 <?php
 // 订单定时任务：CLI 运行 `php scripts/cron_orders.php`
-// 1) 超时关单：待支付超过 15 分钟的订单逐单在事务内取消并回补库存，写站内取消通知
+// 1) 超时关单：待支付超过 3 小时的订单逐单在事务内取消并回补库存，写站内取消通知（窗口与 expire_orders/pay.php 倒计时的 10800 秒一致）
 // 2) 自动确认收货：已发货超过 7 天的订单复用 change_order 的 receive 分支（等价于用户手动确认）
 // 幂等依赖 FOR UPDATE + WHERE 状态条件：重复运行不会产生重复副作用
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
@@ -9,15 +9,15 @@ require_once __DIR__.'/../lib/shop.php';
 function cron_close_timeout_orders() {
     global $conn;
     $closed = 0;
-    foreach (rows("SELECT id FROM orders WHERE status='pending' AND created_at < NOW() - INTERVAL 15 MINUTE") as $candidate) {
+    foreach (rows("SELECT id FROM orders WHERE status='pending' AND created_at < NOW() - INTERVAL 3 HOUR") as $candidate) {
         $conn->begin_transaction();
         try {
             // 事务内锁定订单行并复核状态与超时条件，防止与支付/取消并发产生重复回补
-            $order = one("SELECT * FROM orders WHERE id=? AND status='pending' AND created_at < NOW() - INTERVAL 15 MINUTE FOR UPDATE", [(int)$candidate['id']]);
+            $order = one("SELECT * FROM orders WHERE id=? AND status='pending' AND created_at < NOW() - INTERVAL 3 HOUR FOR UPDATE", [(int)$candidate['id']]);
             if (!$order) { $conn->commit(); continue; }
             release_stock($order);
             query("UPDATE orders SET status='cancelled' WHERE id=?", [(int)$order['id']]);
-            notify((int)$order['user_id'], 'order', '订单超时未支付已自动取消', '订单 '.$order['order_no'].' 超过 15 分钟未支付，已自动取消并退回库存，如仍需购买请重新下单。', 'my_orders.php');
+            notify((int)$order['user_id'], 'order', '订单超时未支付已自动取消', '订单 '.$order['order_no'].' 超过 3 小时未支付，已自动取消并退回库存，如仍需购买请重新下单。', 'my_orders.php');
             $conn->commit();
             $closed++;
         } catch (Throwable $e) {

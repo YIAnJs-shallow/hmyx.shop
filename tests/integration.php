@@ -432,7 +432,7 @@ $cronStockP1=(int)one('SELECT stock FROM products WHERE id=?',[$p1])['stock'];
 $cronNotifyBefore=(int)one("SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND title='订单超时未支付已自动取消'",[$buyer])['n'];
 $cronFresh=(int)create_orders($buyer,$p1,1,$address,'cron-fresh')[0];
 $cronExpired=(int)create_orders($buyer,$p1,1,$address,'cron-expired')[0];
-query('UPDATE orders SET created_at=NOW()-INTERVAL 20 MINUTE WHERE id=?',[$cronExpired]);
+query('UPDATE orders SET created_at=NOW()-INTERVAL 4 HOUR WHERE id=?',[$cronExpired]);
 $cronShip=(int)create_orders($buyer,$p2,1,$address,'cron-ship')[0]; change_order($cronShip,$buyer,'pay');
 $_SESSION['role']='merchant'; change_order($cronShip,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'CRON00001']); $_SESSION['role']='user';
 query('UPDATE orders SET shipped_at=NOW()-INTERVAL 8 DAY WHERE id=?',[$cronShip]);
