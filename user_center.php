@@ -24,7 +24,8 @@ $user = [
 $msg = '';
 $msg_type = 'success';
 
-// 动态检测数据库表中存在哪些字段
+// 动态检测数据库表中存在哪些字段（function_exists 守卫：允许本页被测试在函数作用域内重复 include）
+if (!function_exists('getTableColumns')) {
 function getTableColumns($db) {
     $columns = [];
     if ($db instanceof mysqli) {
@@ -44,6 +45,7 @@ function getTableColumns($db) {
         }
     }
     return $columns;
+}
 }
 
 $user_cols = $is_logged_in ? getTableColumns($db) : [];
@@ -305,6 +307,23 @@ $username = !empty($user['username']) ? $user['username'] : ($_SESSION['username
                 <span style="background: #eff6ff; color: #2563eb; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">
                     <?php echo ($role === 'admin') ? '🏪 商家账号' : '👤 普通买家'; ?>
                 </span>
+                <?php if ($is_logged_in): $memberLevel = one('SELECT l.name, l.discount_percent, u.total_spent_cents FROM users u JOIN user_levels l ON l.id = u.level_id WHERE u.id = ?', [(int)$user_id]); ?>
+                <?php if ($memberLevel): ?>
+                <span class="role-badge" style="background:#fef9c3;color:#a16207;">
+                    会员等级：<?php echo htmlspecialchars($memberLevel['name']); ?><?php echo ((int)$memberLevel['discount_percent'] < 100) ? '（' . (100 - (int)$memberLevel['discount_percent']) / 10 . ' 折）' : ''; ?>
+                </span>
+                <p style="margin: 6px 0 0 0; font-size: 0.82rem; color: #64748b;">
+                    累计实付 <strong style="color:#1e293b;">¥ <?php echo number_format(((int)$memberLevel['total_spent_cents']) / 100, 2); ?></strong>
+                    <?php $nextLevel = one('SELECT name, min_spent_cents FROM user_levels WHERE min_spent_cents > ? ORDER BY min_spent_cents LIMIT 1', [(int)$memberLevel['total_spent_cents']]); ?>
+                    <?php if ($nextLevel): ?>
+                    · 距<?php echo htmlspecialchars($nextLevel['name']); ?>还差 <strong style="color:#dc2626;">¥ <?php echo number_format((((int)$nextLevel['min_spent_cents']) - ((int)$memberLevel['total_spent_cents'])) / 100, 2); ?></strong>
+                    <?php else: ?>
+                    · 已达最高等级
+                    <?php endif; ?>
+                </p>
+                <p style="margin: 2px 0 0 0; font-size: 0.75rem; color: #94a3b8;">等级规则：按累计实付自动升级（银卡 ≥ ¥500、金卡 ≥ ¥2000），确认收货后计入，退款不扣减。</p>
+                <?php endif; ?>
+                <?php endif; ?>
             </div>
         </div>
 

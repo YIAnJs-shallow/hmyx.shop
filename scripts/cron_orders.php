@@ -112,10 +112,40 @@ function cron_expire_group_orders() {
     return $expired;
 }
 
+// 4) 会员等级对账：completed 订单实付 SUM 与 users.total_spent_cents 比对，
+//    漂移则事务内修正快照并重算等级（level_recalc），error_log 记录漂移用户与差额。
+//    实付口径与 level_accrue 完全一致：total_amount − 优惠券 − 积分抵现 − 会员折扣。
+function cron_reconcile_levels() {
+    global $conn;
+    $fixed = 0;
+    foreach (rows("SELECT id, total_spent_cents FROM users WHERE total_spent_cents<>0 OR level_id>1") as $u) {
+        $conn->begin_transaction();
+        try {
+            $user = one('SELECT total_spent_cents FROM users WHERE id=? FOR UPDATE', [(int)$u['id']]);
+            if (!$user) { $conn->commit(); continue; }
+            $sum = one("SELECT COALESCE(SUM(ROUND(o.total_amount*100) - ROUND(o.discount_amount*100) - o.points_discount_cents - o.member_discount_cents),0) AS s
+                        FROM orders o WHERE o.user_id=? AND o.status='completed'", [(int)$u['id']]);
+            $expected = max(0, (int)$sum['s']);
+            if ((int)$user['total_spent_cents'] !== $expected) {
+                error_log('level reconcile: user '.$u['id'].' drifted '.((int)$user['total_spent_cents'] - $expected).' cents, fixed to '.$expected);
+                query('UPDATE users SET total_spent_cents=? WHERE id=?', [$expected, (int)$u['id']]);
+                level_recalc((int)$u['id']);
+                $fixed++;
+            }
+            $conn->commit();
+        } catch (Throwable $e) {
+            $conn->rollback();
+            error_log('cron reconcile level user '.$u['id'].' failed: '.$e->getMessage());
+        }
+    }
+    return $fixed;
+}
+
 // 被测试 include 时不自动执行，仅作为独立 CLI 脚本运行时生效
 if (isset($argv[0]) && realpath($argv[0]) === __FILE__) {
     $closed = cron_close_timeout_orders();
     $received = cron_auto_receive_orders();
     $expiredGroups = cron_expire_group_orders();
-    echo "关单 {$closed} 单，自动收货 {$received} 单，拼团超时处理 {$expiredGroups} 团\n";
+    $reconciled = cron_reconcile_levels();
+    echo "关单 {$closed} 单，自动收货 {$received} 单，拼团超时处理 {$expiredGroups} 团，等级对账修正 {$reconciled} 人\n";
 }

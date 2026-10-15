@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__.'/../config/db.php';
 require_once __DIR__.'/points.php';
+require_once __DIR__.'/level.php';
 require_once __DIR__.'/group_buy.php';
 
 function query($sql, $params = []) {
@@ -236,8 +237,18 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
         $orderTotals = [];
         $shares = [];
         foreach ($groups as $items) $grandTotal += array_sum(array_column($items, 'subtotal_cents'));
+        // 会员等级折扣：叠加顺序写死为 会员折扣 → 优惠券 → 积分抵现（折扣基数逐级缩小，不改行单价）；
+        // 券门槛与积分上限均以折后金额为基数；100%（普通会员）时金额与既有行为完全一致
+        $discountPercent = level_discount_percent($userId);
+        $memberShares = [];
+        if ($discountPercent < 100) {
+            foreach ($groups as $shopId => $items) {
+                $memberShares[$shopId] = (int)round(array_sum(array_column($items, 'subtotal_cents')) * (100 - $discountPercent) / 100);
+            }
+        }
+        $grandMemberDiscount = array_sum($memberShares);
         if ($userCouponId) {
-            $discountTotal = coupon_consume_locked($userId, $userCouponId, $grandTotal);
+            $discountTotal = coupon_consume_locked($userId, $userCouponId, $grandTotal - $grandMemberDiscount);
             foreach ($groups as $shopId => $items) $orderTotals[$shopId] = array_sum(array_column($items, 'subtotal_cents'));
             $shares = coupon_split_discount($discountTotal, $orderTotals);
         }
@@ -247,14 +258,16 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
             $total = array_sum(array_column($items, 'subtotal_cents'));
             if ($total > 9999999999) throw new DomainException('订单金额超出允许范围');
             $pointsPaid = 0; $pointsDiscount = 0;
-            $payableCents = $total - (int)($shares[$shopId] ?? 0);
+            $memberDiscount = (int)($memberShares[$shopId] ?? 0);
+            // 实付 = 小计 − 会员折扣 − 券分摊 − 积分抵现，负数截断为 0
+            $payableCents = max(0, $total - $memberDiscount - (int)($shares[$shopId] ?? 0));
             if ($availablePoints > 0 && $payableCents > 0) {
                 $pointsDiscount = min(intdiv($payableCents, 10), $availablePoints);
                 if ($pointsDiscount > 0) { $pointsPaid = $pointsDiscount; $availablePoints -= $pointsDiscount; }
             }
             $number = 'HM'.date('YmdHis').bin2hex(random_bytes(6));
-            query("INSERT INTO orders(order_no,user_id,total_amount,status,receiver_name,receiver_phone,receiver_address,shop_id,checkout_token,stock_reserved,points_paid,points_discount_cents) VALUES(?,?,?,'pending',?,?,?,?,?,1,?,?)",
-                [$number,$userId,money($total),$address['receiver_name'],$address['receiver_phone'],$address['receiver_address'],$shopId ?: null,$token,$pointsPaid,$pointsDiscount]);
+            query("INSERT INTO orders(order_no,user_id,total_amount,status,receiver_name,receiver_phone,receiver_address,shop_id,checkout_token,stock_reserved,points_paid,points_discount_cents,member_discount_cents) VALUES(?,?,?,'pending',?,?,?,?,?,1,?,?,?)",
+                [$number,$userId,money($total),$address['receiver_name'],$address['receiver_phone'],$address['receiver_address'],$shopId ?: null,$token,$pointsPaid,$pointsDiscount,$memberDiscount]);
             $orderId = (int)$conn->insert_id;
             if (isset($shares[$shopId])) query('UPDATE orders SET discount_amount=?, coupon_user_id=? WHERE id=?', [money($shares[$shopId]), (int)$userCouponId, $orderId]);
             $ids[] = $orderId;
@@ -349,10 +362,12 @@ function change_order($id, $actor, $action, $data = []) {
             notify((int)$order['user_id'], 'order', '您的订单已发货（运单号 '.$number.'）', '订单 '.$order['order_no'].' 已由'.$company.'发出，运单号 '.$number.'，请注意查收。', 'my_orders.php');
         } elseif ($action === 'receive' && $owner && $order['status'] === 'shipped') {
             query("UPDATE orders SET status='completed',completed_at=NOW() WHERE id=?", [$id]);
-            // 确认收货发分：实付 = 商品合计 - 优惠券优惠 - 积分抵扣部分，每 1 元 = 1 分（向下取整）
-            $paidCents = (int)round(((float)$order['total_amount']) * 100) - (int)round(((float)$order['discount_amount']) * 100) - (int)$order['points_discount_cents'];
+            // 确认收货发分：实付 = 商品合计 - 优惠券优惠 - 积分抵扣 - 会员折扣，每 1 元 = 1 分（向下取整）
+            $paidCents = (int)round(((float)$order['total_amount']) * 100) - (int)round(((float)$order['discount_amount']) * 100) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents'];
             $earned = max(0, intdiv($paidCents, 100));
             if ($earned > 0) grant_points((int)$order['user_id'], 'order', $earned, (int)$id, '确认收货赠送积分');
+            // 会员等级积累：与发分同一事务同一实付口径（completed 触发，退款不扣减）
+            level_accrue((int)$order['user_id'], (int)$id, max(0, $paidCents));
         } elseif ($action === 'refund' && $owner && $order['status'] === 'paid') {
             if (one('SELECT id FROM refund_requests WHERE order_id=?', [$id])) throw new DomainException('已提交退款申请');
             if ($order['payment_method'] !== 'demo') throw new DomainException('此订单需联系商家核实支付后办理退款');
@@ -395,6 +410,11 @@ function change_order($id, $actor, $action, $data = []) {
                 release_stock($order);
                 // 已发货订单售后完成后联动订单状态：置已完成（已是 completed 则保持完成时间不变）
                 query("UPDATE orders SET status='completed', completed_at=COALESCE(completed_at, NOW()) WHERE id=?", [$id]);
+                // 已发货订单售后完成联动置 completed 的同样积累等级（与对账 cron 的 SUM(completed) 口径一致；退款终身制不扣减，已是 completed 的订单不重复积累）
+                if ($order['status'] === 'shipped') {
+                    $paidCents = (int)round(((float)$order['total_amount']) * 100) - (int)round(((float)$order['discount_amount']) * 100) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents'];
+                    level_accrue((int)$order['user_id'], (int)$id, max(0, $paidCents));
+                }
                 query("UPDATE after_sale_requests SET status='refunded', received_at=NOW() WHERE id=?", [(int)$request['id']]);
             } else {
                 query("UPDATE after_sale_requests SET status='received', received_at=NOW() WHERE id=?", [(int)$request['id']]);

@@ -391,4 +391,33 @@ add_column('orders','group_buy_id','int NULL');
 add_column('orders','group_member_id','int NULL');
 add_column('orders','group_success','tinyint NOT NULL DEFAULT 0');
 
+// ===== 会员等级体系：阈值表 + users 快照列 + 等级流水 + 订单会员折扣列 =====
+// 建模为 CRMEB 混合式：user_levels 存阈值/折扣，users 冗余 level_id/total_spent_cents 快照，level_log 留痕对账
+query("CREATE TABLE IF NOT EXISTS user_levels (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(20) NOT NULL,
+    min_spent_cents BIGINT NOT NULL COMMENT '升级门槛（累计实付，分）',
+    discount_percent INT NOT NULL DEFAULT 100 COMMENT '100=无折扣，95=95折',
+    sort INT NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// 种子（按 sort 顺序插入保证 普通=1 / 银卡=2 / 金卡=3；uk_name 保证幂等）
+query("INSERT IGNORE INTO user_levels(name,min_spent_cents,discount_percent,sort) VALUES
+    ('普通',0,100,1),
+    ('银卡',50000,98,2),
+    ('金卡',200000,95,3)");
+add_column('users','level_id','tinyint NOT NULL DEFAULT 1');
+add_column('users','total_spent_cents','bigint NOT NULL DEFAULT 0');
+query("CREATE TABLE IF NOT EXISTS level_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    order_id INT NULL,
+    delta_cents BIGINT NOT NULL COMMENT '本次累计实付变动（分）；等级变更行恒为 0',
+    old_level_id TINYINT NOT NULL,
+    new_level_id TINYINT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_user (user_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+add_column('orders','member_discount_cents','int NOT NULL DEFAULT 0');
+
 echo "Migration complete.\n";

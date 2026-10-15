@@ -773,6 +773,85 @@ check(alipay_verify($refundParams,$appPub),'alipay refund request properly signe
 putenv('ALIPAY_GATEWAY_OVERRIDE=http://127.0.0.1:1/');
 check(alipay_trade_refund('QA-REFUND-2',100,'QA-REFUND-2-R1')===false,'alipay refund returns false on unreachable gateway');
 putenv('ALIPAY_GATEWAY_OVERRIDE');
+// ===== 会员等级体系：阈值种子 / completed 积累 / 退款不扣减 / 折扣叠加 / 对账 cron / 用户中心展示 =====
+// 1) 阈值种子与折扣配置
+$levels=rows('SELECT id,name,min_spent_cents,discount_percent FROM user_levels ORDER BY min_spent_cents');
+check(count($levels)===3 && $levels[0]['name']==='普通' && (int)$levels[0]['min_spent_cents']===0 && $levels[1]['name']==='银卡' && (int)$levels[1]['min_spent_cents']===50000 && $levels[2]['name']==='金卡' && (int)$levels[2]['min_spent_cents']===200000,'member level thresholds seeded as 0/500/2000 yuan');
+check((int)$levels[0]['discount_percent']===100 && (int)$levels[1]['discount_percent']===98 && (int)$levels[2]['discount_percent']===95,'member level discounts configured 100/98/95');
+$noOverlap=true; for($li=1;$li<count($levels);$li++){ if((int)$levels[$li]['min_spent_cents']<=(int)$levels[$li-1]['min_spent_cents']) $noOverlap=false; }
+check($noOverlap,'member level threshold ranges do not overlap');
+// 2) 新用户完成 520 元订单 → 累计实付 520 元并升级银卡
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('等级测试商品','520.00',5,?,?,1,'approved')",[$category,$shop]); $pLevel=(int)$conn->insert_id;
+$levelUser=insert_user('qa_level_user','user');
+query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'等级买家','13800000003','测试省测试市等级地址',1)",[$levelUser]); $levelAddress=(int)$conn->insert_id;
+$levelOrder=(int)create_orders($levelUser,$pLevel,1,$levelAddress,'level-silver')[0];
+change_order($levelOrder,$levelUser,'pay');
+$_SESSION['role']='merchant'; change_order($levelOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'LVL00001']);
+$_SESSION=['user_id'=>$levelUser,'role'=>'user']; change_order($levelOrder,$levelUser,'receive');
+check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===52000,'completed order accrues actual paid cents');
+check((int)one('SELECT level_id FROM users WHERE id=?',[$levelUser])['level_id']===(int)$levels[1]['id'],'buyer upgraded to silver at 500 yuan threshold');
+check((int)one('SELECT delta_cents FROM level_log WHERE user_id=? AND order_id=?',[$levelUser,$levelOrder])['delta_cents']===52000,'level log records the accrual with paid cents');
+// 3) 已完成订单售后退款：累计实付不扣减、不降级
+change_order($levelOrder,$levelUser,'after_sale',['reason'=>'完成后申请退货']);
+$_SESSION['role']='merchant'; change_order($levelOrder,$merchant,'after_sale_approve');
+$_SESSION=['user_id'=>$levelUser,'role'=>'user']; change_order($levelOrder,$levelUser,'after_sale_ship',['return_express_company'=>'测试快递','return_express_no'=>'RETLVL001']);
+$_SESSION['role']='merchant'; change_order($levelOrder,$merchant,'after_sale_receive');
+$_SESSION=['user_id'=>$levelUser,'role'=>'user'];
+check(one('SELECT status FROM after_sale_requests WHERE order_id=?',[$levelOrder])['status']==='refunded','level order after-sale refunded');
+check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===52000 && (int)one('SELECT level_id FROM users WHERE id=?',[$levelUser])['level_id']===(int)$levels[1]['id'],'refund keeps lifetime accrual and level without downgrade');
+check(one('SELECT id FROM level_log WHERE user_id=? AND delta_cents<0',[$levelUser])===null,'no negative level log entry is ever written');
+// 4) 累计达 2000 元 → 金卡（下一笔 completed 触发重算并写等级变更流水）
+query("UPDATE users SET total_spent_cents=200000 WHERE id=?",[$levelUser]);
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('等级升级商品','20.00',5,?,?,1,'approved')",[$category,$shop]); $pGold=(int)$conn->insert_id;
+$goldOrder=(int)create_orders($levelUser,$pGold,1,$levelAddress,'level-gold')[0];
+change_order($goldOrder,$levelUser,'pay');
+$_SESSION['role']='merchant'; change_order($goldOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'LVL00002']);
+$_SESSION=['user_id'=>$levelUser,'role'=>'user']; change_order($goldOrder,$levelUser,'receive');
+check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===201960,'gold order accrues paid cents net of silver-level discount on top of adjusted history');
+$goldChange=one('SELECT old_level_id,new_level_id,delta_cents FROM level_log WHERE user_id=? AND delta_cents=0 ORDER BY id DESC LIMIT 1',[$levelUser]);
+check((int)$goldChange['old_level_id']===(int)$levels[1]['id'] && (int)$goldChange['new_level_id']===(int)$levels[2]['id'],'buyer upgraded to gold with a zero-delta change log');
+// 5) 金卡下单：member_discount_cents=5%，券门槛按折后小计判定，实付=小计-会员折扣-券
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('等级测试券：满100减10',1000,10000,100)"); $levelCouponId=(int)$conn->insert_id;
+coupon_claim($levelUser,$levelCouponId);
+$levelCoupon=one('SELECT uc.id FROM user_coupons uc WHERE uc.coupon_id=? AND uc.user_id=?',[$levelCouponId,$levelUser]);
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('等级折扣商品','200.00',5,?,?,1,'approved')",[$category,$shop]); $pMember=(int)$conn->insert_id;
+$goldCouponOrder=(int)create_orders($levelUser,$pMember,1,$levelAddress,'level-coupon-ok',(int)$levelCoupon['id'])[0];
+$goldRow=one('SELECT total_amount,discount_amount,member_discount_cents,points_discount_cents FROM orders WHERE id=?',[$goldCouponOrder]);
+check($goldRow['total_amount']==='200.00' && (int)$goldRow['member_discount_cents']===1000 && $goldRow['discount_amount']==='10.00' && (int)$goldRow['points_discount_cents']===0,'gold member order records 5 percent member discount plus coupon');
+// 券门槛以折后小计为基数：原小计 104 元满 100 门槛、金卡 95 折后 98.80 不满 → 拒单
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('等级门槛商品','104.00',5,?,?,1,'approved')",[$category,$shop]); $pThreshold=(int)$conn->insert_id;
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('等级门槛券：满100减5',500,10000,100)"); $thresholdCouponId=(int)$conn->insert_id;
+coupon_claim($levelUser,$thresholdCouponId);
+$levelCoupon2=one('SELECT uc.id FROM user_coupons uc WHERE uc.coupon_id=? AND uc.user_id=?',[$thresholdCouponId,$levelUser]);
+rejects(function()use($levelUser,$pThreshold,$levelAddress,$levelCoupon2){create_orders($levelUser,$pThreshold,1,$levelAddress,'level-coupon-threshold',(int)$levelCoupon2['id']);},'coupon threshold judged on member-discounted subtotal');
+// 6) 普通会员（100%）订单金额与既有行为完全一致
+$plainUser=insert_user('qa_plain_user','user');
+query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'普通买家','13800000004','测试省测试市普通地址',1)",[$plainUser]); $plainAddress=(int)$conn->insert_id;
+$plainOrder=(int)create_orders($plainUser,$pMember,1,$plainAddress,'plain-order')[0];
+$plainRow=one('SELECT total_amount,discount_amount,member_discount_cents,points_discount_cents FROM orders WHERE id=?',[$plainOrder]);
+check($plainRow['total_amount']==='200.00' && $plainRow['discount_amount']==='0.00' && (int)$plainRow['member_discount_cents']===0 && (int)$plainRow['points_discount_cents']===0,'plain member order keeps legacy amounts with zero member discount');
+// 7) 对账 cron：篡改 total_spent 后按 SUM(completed) 口径修正并重算等级
+query('UPDATE users SET total_spent_cents=12345 WHERE id=?',[$levelUser]);
+check(cron_reconcile_levels()===1,'level reconcile fixes exactly the tampered user');
+check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===53960,'reconcile restores total spent to completed-orders sum');
+check((int)one('SELECT level_id FROM users WHERE id=?',[$levelUser])['level_id']===(int)$levels[1]['id'],'reconcile recalculates level from the restored total');
+check(cron_reconcile_levels()===0,'reconcile rerun finds no drift');
+// 8) 用户中心：未登录不显示等级区块，登录后显示徽章与累计实付
+function render_user_center_page(array $session) {
+    global $conn; // user_center.php 在函数作用域内 include，需要全局数据库连接可见
+    $backupGet=$_GET; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+    $_SESSION=$session; $_GET=[]; $_SERVER['REQUEST_METHOD']='GET';
+    ob_start();
+    include __DIR__.'/../user_center.php';
+    $html=ob_get_clean();
+    $_GET=$backupGet; $_SESSION=$backupSession;
+    if ($backupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$backupMethod;
+    return $html;
+}
+$guestCenterHtml=render_user_center_page([]);
+check(strpos($guestCenterHtml,'会员等级')===false,'user center hides member level section for guests');
+$memberCenterHtml=render_user_center_page(['user_id'=>$levelUser,'role'=>'user']);
+check(strpos($memberCenterHtml,'会员等级：银卡')!==false && strpos($memberCenterHtml,'累计实付')!==false,'user center shows level badge and lifetime spending');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
 foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {

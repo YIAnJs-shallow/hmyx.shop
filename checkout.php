@@ -29,14 +29,19 @@ if ($groupBuyId) {
     }
 }
 $grandTotal=0; foreach ($lines as $line) $grandTotal+=$line['subtotal_cents'];
-$availableCoupons=($lines && !$groupBuyId)?coupons_for_user($userId,$grandTotal):[];
+// 会员等级折扣：先于优惠券计算（叠加顺序 会员折扣 → 券 → 积分），券门槛以折后小计为基数
+$memberPercent=level_discount_percent($userId);
+$memberDiscountCents=$memberPercent<100?(int)round($grandTotal*(100-$memberPercent)/100):0;
+$couponBaseTotal=$grandTotal-$memberDiscountCents;
+$availableCoupons=($lines && !$groupBuyId)?coupons_for_user($userId,$couponBaseTotal):[];
 $selectedCouponId=0;
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     foreach ($availableCoupons as $c) if ((int)$c['id']===(int)($_POST['user_coupon_id'] ?? 0)) $selectedCouponId=(int)$c['id'];
 }
 $selectedCoupon=null;
 foreach ($availableCoupons as $c) if ((int)$c['id']===$selectedCouponId) $selectedCoupon=$c;
-$payable=$grandTotal-($selectedCoupon?coupon_preview($selectedCoupon,$grandTotal):0);
+$couponDiscountCents=$selectedCoupon?coupon_preview($selectedCoupon,$couponBaseTotal):0;
+$payable=max(0,$grandTotal-$memberDiscountCents-$couponDiscountCents);
 // 积分抵现预览：100 积分 = 1 元，单笔最多抵应付金额的 10%（向下取整到分），受当前余额限制
 $availablePoints=(!$groupBuyId)?(int)(one('SELECT points FROM users WHERE id=?',[$userId])['points'] ?? 0):0;
 $pointsDeductible=min(intdiv($payable,10),$availablePoints);
@@ -56,5 +61,5 @@ if ($error) echo '<p class="notice error" role="alert">'.h($error).'</p>';
 <?php if ($availableCoupons): ?><hr class="divider"><label>使用优惠券：<select name="user_coupon_id"><option value="0">不使用</option><?php foreach($availableCoupons as $c): ?><option value="<?=(int)$c['id']?>" <?=(int)$c['id']===$selectedCouponId?'selected':''?>><?=h($c['title'])?>（立减 ¥<?=money((int)$c['discount_cents'])?><?=((int)$c['min_spend_cents']>0?'，满 ¥'.money((int)$c['min_spend_cents']):'')?>）</option><?php endforeach; ?></select></label>
 <?php elseif ($lines): ?><p class="muted">暂无可用优惠券，<a href="my_coupons.php">去领券</a></p><?php endif; ?>
 <?php if ($availablePoints>0 && $payable>0): ?><hr class="divider"><label><input type="checkbox" name="use_points" value="1" <?=(int)($_POST['use_points'] ?? 0)===1?'checked':''?>> 使用积分抵扣（可用积分 <strong><?=(int)$availablePoints?></strong>，本次最多可抵 <strong>¥ <?=money($pointsDeductible)?></strong>，上限为应付金额的 10%，1 元 = 100 积分）</label><?php endif; ?>
-<hr class="divider"><p>商品合计 <strong>¥ <?=money($grandTotal)?></strong></p><p>优惠券优惠 <strong>- ¥ <?=money($grandTotal-$payable)?></strong></p><p>实付 <strong class="price">¥ <?=money($payable)?></strong></p><p class="muted">当前商品免运费；不同店铺分别下单、支付和发货。未付款订单 3 小时后关闭。积分抵扣在支付成功时才扣减，余额不足自动按无抵扣支付。</p><button name="submit_order" value="1" <?=(!$addresses||!$lines)?'disabled':''?>>提交订单</button></section></form>
+<hr class="divider"><p>商品合计 <strong>¥ <?=money($grandTotal)?></strong></p><?php if ($memberDiscountCents>0): ?><p>会员折扣 <strong>- ¥ <?=money($memberDiscountCents)?></strong></p><?php endif; ?><p>优惠券优惠 <strong>- ¥ <?=money($couponDiscountCents)?></strong></p><p>实付 <strong class="price">¥ <?=money($payable)?></strong></p><p class="muted">当前商品免运费；不同店铺分别下单、支付和发货。未付款订单 3 小时后关闭。积分抵扣在支付成功时才扣减，余额不足自动按无抵扣支付。</p><button name="submit_order" value="1" <?=(!$addresses||!$lines)?'disabled':''?>>提交订单</button></section></form>
 <?php page_end(); ?>

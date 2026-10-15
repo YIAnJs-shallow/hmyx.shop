@@ -8,7 +8,7 @@ if (!$order) { http_response_code(404); page_start('订单不存在'); page_end(
 // 支付宝沙箱支付发起：POST + CSRF（db.php 已统一校验），仅本人 pending 订单可付
 if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST' && ($_POST['action'] ?? '')==='alipay') {
     if ($order['status']!=='pending') redirect_to('pay.php?order_id='.$id, $order['status']==='paid' ? '订单已支付，请勿重复付款' : '当前订单状态不可支付');
-    $payable = (int)cents($order['total_amount']) - (int)cents($order['discount_amount']) - (int)$order['points_discount_cents'];
+    $payable = (int)cents($order['total_amount']) - (int)cents($order['discount_amount']) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents'];
     $titles = rows('SELECT product_title AS title FROM order_items WHERE order_id=?', [$id]);
     $subject = mb_substr(implode('、', array_column($titles, 'title')), 0, 60, 'UTF-8');
     // 跳转前预检：沙箱网关存在 invalid-signature 平台侧抖动，换签重试拿到可用参数再渲染表单，
@@ -42,7 +42,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST' && ($_POST['action'] ?? '')==='a
 }
 page_start('订单支付');
 ?>
-<section class="card"><p>订单号 <?=h($order['order_no'])?></p><p>商品合计 ¥ <?=h($order['total_amount'])?><?php if ((float)$order['discount_amount']>0): ?> · 优惠券已减 ¥ <?=h($order['discount_amount'])?><?php endif; ?><?php if ((int)$order['points_discount_cents']>0): ?> · 积分抵扣 <?=money((int)$order['points_discount_cents'])?>（支付时扣减 <?=h((int)$order['points_paid'])?> 积分）<?php endif; ?></p><p class="price">实付 ¥ <?=money((int)cents($order['total_amount'])-(int)cents($order['discount_amount'])-(int)$order['points_discount_cents'])?></p><p><?=h(status_name($order['status']))?></p><p><?=h($order['receiver_name'])?> · <?=h($order['receiver_phone'])?><br><?=h($order['receiver_address'])?></p>
+<section class="card"><p>订单号 <?=h($order['order_no'])?></p><p>商品合计 ¥ <?=h($order['total_amount'])?><?php if ((int)$order['member_discount_cents']>0): ?> · 会员折扣已减 ¥ <?=money((int)$order['member_discount_cents'])?><?php endif; ?><?php if ((float)$order['discount_amount']>0): ?> · 优惠券已减 ¥ <?=h($order['discount_amount'])?><?php endif; ?><?php if ((int)$order['points_discount_cents']>0): ?> · 积分抵扣 <?=money((int)$order['points_discount_cents'])?>（支付时扣减 <?=h((int)$order['points_paid'])?> 积分）<?php endif; ?></p><p class="price">实付 ¥ <?=money(max(0,(int)cents($order['total_amount'])-(int)cents($order['discount_amount'])-(int)$order['points_discount_cents']-(int)$order['member_discount_cents']))?></p><p><?=h(status_name($order['status']))?></p><p><?=h($order['receiver_name'])?> · <?=h($order['receiver_phone'])?><br><?=h($order['receiver_address'])?></p>
 <?php if ($order['status']==='pending'): ?>
 <p id="reserve-line" data-remain="<?=(int)(strtotime($order['created_at'])+10800-time())?>">库存已为你保留 <span id="reserve-countdown">HH:MM:SS</span></p>
 <p class="notice">当前未接入微信或支付宝真实支付。演示支付仅用于流程测试，不会扣款。</p>
