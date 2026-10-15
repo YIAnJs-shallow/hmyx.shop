@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__.'/../config/db.php';
 require_once __DIR__.'/points.php';
+require_once __DIR__.'/group_buy.php';
 
 function query($sql, $params = []) {
     global $conn;
@@ -186,10 +187,22 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId
     unset($line);
     return $lines;
 }
-function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0, $skuId = 0, $usePoints = 0) {
+function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0, $skuId = 0, $usePoints = 0, $groupBuyId = 0) {
     global $conn;
     $conn->begin_transaction();
     try {
+        // 拼团下单：先锁活动行（与支付判团同一把锁，串行化匹配）；拼团价覆盖一切展示价，单次限购 1 件
+        $groupBuy = null; $groupTargetId = 0;
+        if ($groupBuyId) {
+            if ($userCouponId || $usePoints) throw new DomainException('拼团订单暂不支持优惠券与积分抵扣');
+            if ((int)$qty !== 1) throw new DomainException('拼团单次限购 1 件');
+            if ($skuId || product_active_skus($productId)) throw new DomainException('多规格商品暂不支持拼团');
+            $groupBuy = one("SELECT * FROM group_buys WHERE id=? AND status='active' FOR UPDATE", [(int)$groupBuyId]);
+            if (!$groupBuy || (int)$groupBuy['product_id'] !== (int)$productId) throw new DomainException('拼团活动已结束或商品不符');
+            if (group_buy_user_slot_exists($userId, (int)$groupBuy['id'], (int)$groupBuy['duration_hours'])) throw new DomainException('您已有进行中的拼团，请等待其成团或结束后再参团');
+            $groupTargetId = group_buy_pick_group($groupBuy);
+            if (!$groupTargetId && (int)$groupBuy['max_groups'] > 0 && group_buy_opened_groups((int)$groupBuy['id']) >= (int)$groupBuy['max_groups']) throw new DomainException('该拼团活动已达开团上限');
+        }
         $buyer = one('SELECT id, points FROM users WHERE id=? FOR UPDATE', [$userId]);
         $prior = rows('SELECT id FROM orders WHERE user_id=? AND checkout_token=? ORDER BY id', [$userId, $token]);
         if ($prior) { $conn->commit(); return array_column($prior, 'id'); }
@@ -197,6 +210,11 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
         if (!$address) throw new DomainException('请选择自己的有效收货地址');
         if (!$address['receiver_name'] || !$address['receiver_phone'] || !$address['receiver_address']) throw new DomainException('请先补全收货地址');
         $lines = checkout_lines($userId, $productId, $qty, true, $skuId);
+        if ($groupBuy) {
+            // 团购价覆盖：单商品单件，subtotal 直接取团购价（整数分）
+            $lines[0]['price'] = money((int)$groupBuy['price_cents']);
+            $lines[0]['subtotal_cents'] = (int)$groupBuy['price_cents'];
+        }
         // 限购校验：按 product_id 汇总本次数量与历史有效订单（不含已取消）数量
         $limitTotals = [];
         foreach ($lines as $line) {
@@ -240,6 +258,14 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
             $orderId = (int)$conn->insert_id;
             if (isset($shares[$shopId])) query('UPDATE orders SET discount_amount=?, coupon_user_id=? WHERE id=?', [money($shares[$shopId]), (int)$userCouponId, $orderId]);
             $ids[] = $orderId;
+            if ($groupBuy) {
+                // 虚拟总团池落位：加入既有团（group_id=目标团）或开新团（团长行 group_id 回填为自身 id）
+                query('INSERT INTO group_members(group_id,user_id,order_id,role) VALUES(?,?,?,?)',
+                    [$groupTargetId, $userId, $orderId, $groupTargetId ? 'member' : 'leader']);
+                $memberId = (int)$conn->insert_id;
+                if (!$groupTargetId) { $groupTargetId = $memberId; query('UPDATE group_members SET group_id=? WHERE id=?', [$memberId, $memberId]); }
+                query('UPDATE orders SET group_buy_id=?, group_member_id=? WHERE id=?', [(int)$groupBuy['id'], $memberId, $orderId]);
+            }
             foreach ($items as $item) {
                 // SKU 模式扣减 product_skus 行（行锁），默认规格仍扣 products 行
                 if ((int)$item['sku_id'] > 0) {
@@ -311,8 +337,12 @@ function change_order($id, $actor, $action, $data = []) {
                 }
             }
             query("UPDATE orders SET status='paid',paid_at=NOW(),payment_method=? WHERE id=?", [$paymentMethod, $id]);
+            // 拼团订单：支付成功事务内成团判定（group_buy_settle 内部锁 group_buys 行防并发判团竞态）
+            if (!empty($order['group_member_id'])) group_buy_settle((int)$id);
         } elseif ($action === 'ship' && $manager && $order['status'] === 'paid') {
             if (one("SELECT id FROM refund_requests WHERE order_id=? AND status='pending'", [$id])) throw new DomainException('此订单正在申请退款，请先处理');
+            // 拼团订单未成团前禁止发货（成团结果以 orders.group_success 为准）
+            if (!empty($order['group_member_id']) && !(int)$order['group_success']) throw new DomainException('拼团尚未成功，暂不能发货');
             $company = trim($data['express_company'] ?? ''); $number = trim($data['express_no'] ?? '');
             if (!$company || mb_strlen($company)>50 || !preg_match('/^[A-Za-z0-9-]{5,100}$/D',$number)) throw new DomainException('请填写快递公司及有效运单号');
             query("UPDATE orders SET status='shipped',express_company=?,express_no=?,shipped_at=NOW() WHERE id=?", [$company,$number,$id]);
@@ -487,7 +517,7 @@ function recommend_for_user($userId, $limit = 8) {
     return $items;
 }
 function page_start($title) {
-    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="notifications.php">消息';
+    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=2"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
     if (!empty($_SESSION['user_id'])) {
         // 未读角标：一次性 COUNT 查询
         $unread = (int)one('SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND read_at IS NULL', [(int)$_SESSION['user_id']])['n'];

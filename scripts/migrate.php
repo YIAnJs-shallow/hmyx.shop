@@ -362,4 +362,33 @@ query("CREATE TABLE IF NOT EXISTS user_signins (
 add_column('orders','points_paid','int NOT NULL DEFAULT 0');
 add_column('orders','points_discount_cents','int NOT NULL DEFAULT 0');
 
+// ===== 拼团功能：活动表 + 成员表（虚拟总团池，团=团长成员行，成团结果落 orders.group_success） =====
+query("CREATE TABLE IF NOT EXISTS group_buys (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    sku_id INT NULL COMMENT '无规格商品为 NULL（拼团仅支持无规格商品）',
+    price_cents INT NOT NULL COMMENT '团购价（分）',
+    size INT NOT NULL COMMENT '成团人数（>=2，上限 10）',
+    max_groups INT NOT NULL DEFAULT 0 COMMENT '总团数上限，0=不限',
+    duration_hours INT NOT NULL DEFAULT 3 COMMENT '成团时限（小时），与订单关单窗口一致',
+    status ENUM('active','ended') NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_product (product_id),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+query("CREATE TABLE IF NOT EXISTS group_members (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    group_id INT NOT NULL COMMENT '团 id（团长成员行 id，团长行回填为自身 id）',
+    user_id INT NOT NULL,
+    order_id INT NOT NULL,
+    role ENUM('leader','member') NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入团时间；团长行时间即开团时间（成团时限起点）',
+    UNIQUE KEY uk_group_user (group_id, user_id),
+    KEY idx_group (group_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+add_column('group_members','created_at',"datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入团时间；团长行时间即开团时间'");
+add_column('orders','group_buy_id','int NULL');
+add_column('orders','group_member_id','int NULL');
+add_column('orders','group_success','tinyint NOT NULL DEFAULT 0');
+
 echo "Migration complete.\n";

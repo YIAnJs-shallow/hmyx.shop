@@ -131,6 +131,20 @@ try {
     }
 } catch (Exception $e) {}
 
+// 当前进行中的拼团活动（商户商品；用于预填与手动结束）
+$existing_group = (!$is_admin) ? group_buy_active($product_id) : null;
+
+// 手动结束拼团活动：独立小表单提交，不经商品编辑主事务
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['end_group_buy'] ?? '') === '1') {
+    if ($is_admin || !$existing_group) {
+        echo "<script>alert('没有进行中的拼团活动'); location.href='product_edit.php?id={$product_id}';</script>";
+        exit();
+    }
+    group_buy_end($product_id);
+    echo "<script>alert('拼团活动已手动结束'); location.href='product_edit.php?id={$product_id}';</script>";
+    exit();
+}
+
 // ==================== 4. 处理编辑提交（真正的 UPDATE） ====================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim($_POST['title'] ?? '');
@@ -174,6 +188,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $parts = explode('.', $price_raw);
         $sku_rows[] = ['name' => $name, 'price_cents' => (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0'), 'stock' => (int)$stock_raw, 'image_url' => $sku_image];
+    }
+
+    // 拼团字段解析（仅商户、仅无规格商品）：全空表示取消既有活动，任一填写则校验完整
+    $group_fields = [null, null, null, null];
+    if (!$is_admin) {
+        try {
+            $group_fields = parse_group_buy_fields((int)round($price * 100), $_POST, empty($sku_rows));
+        } catch (DomainException $e) {
+            $msg = $e->getMessage(); $msg_type = 'error';
+        }
     }
 
     // PHP7.3 mysqlnd 下 bind_param 混合 NULL 会破坏 'd' 类型参数，价格改用字符串绑定
@@ -300,6 +324,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($db instanceof PDO) $db->commit(); else $db->commit();
                 $transactionStarted = false;
+                // 拼团活动联动：填写字段且上架 → 更新活动；全部清空且有既有活动 → 结束活动
+                if (!$is_admin) {
+                    if ($status === 1 && $group_fields[0] !== null) {
+                        group_buy_save($product_id, $group_fields[0], $group_fields[1], $group_fields[2], $group_fields[3]);
+                    } elseif ($group_fields[0] === null && $existing_group) {
+                        group_buy_end($product_id);
+                    }
+                }
                 // 风控预警：warn 级别正常保存，原因写入审核日志备注供审核中心展示
                 if ($riskPrecheck !== null && $riskPrecheck['risk_level'] === 'warn') risk_log_warn($product_id, $riskPrecheck['reasons']);
                 $success_tip = $is_admin ? '商品修改成功！' : '商品修改成功，已重新提交管理员审核！';
@@ -447,6 +479,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <small class="text-muted d-block mb-3">特价与起止时间须同时填写；清空并保存即取消限时特价。</small>
 
+            <?php if (!$is_admin): ?>
+            <div class="mb-3 p-3" style="background:#fff8f1;border-radius:8px;">
+                <label class="form-label fw-bold small">拼团活动<?php if ($existing_group): ?>（当前进行中：团购价 ¥ <?php echo sprintf('%d.%02d', intdiv((int)$existing_group['price_cents'], 100), (int)$existing_group['price_cents'] % 100); ?> · <?php echo (int)$existing_group['size']; ?> 人成团）<?php endif; ?></label>
+                <div class="row g-2">
+                    <div class="col-md-3"><input type="number" step="0.01" min="0.01" name="group_price" class="form-control" placeholder="团购价（元），须低于原价" value="<?php echo $existing_group ? sprintf('%d.%02d', intdiv((int)$existing_group['price_cents'], 100), (int)$existing_group['price_cents'] % 100) : ''; ?>"></div>
+                    <div class="col-md-3"><input type="number" min="2" max="10" name="group_size" class="form-control" placeholder="成团人数（2-10）" value="<?php echo $existing_group ? (int)$existing_group['size'] : ''; ?>"></div>
+                    <div class="col-md-3"><input type="number" min="0" name="group_max_groups" value="<?php echo $existing_group ? (int)$existing_group['max_groups'] : 0; ?>" class="form-control" placeholder="总团数上限，0 不限"></div>
+                    <div class="col-md-3"><input type="number" min="1" max="72" name="group_duration_hours" value="<?php echo $existing_group ? (int)$existing_group['duration_hours'] : 3; ?>" class="form-control" placeholder="成团时限（小时）"></div>
+                </div>
+                <small class="text-muted d-block mt-2">拼团仅支持无规格商品；清空团购价与成团人数并保存即取消拼团。修改字段保存会以新参数重开活动。</small>
+            </div>
+            <?php endif; ?>
+
             <div class="mb-3">
                 <label class="form-label fw-bold small">商品主图</label>
                 <?php if (!empty($product['image_url']) && file_exists($product['image_url'])): ?>
@@ -472,6 +517,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </button>
             </div>
         </form>
+
+        <?php if (!$is_admin && $existing_group): ?>
+        <form action="product_edit.php?id=<?= $product_id ?>" method="POST" class="mb-3"><?php echo csrf_field(); ?><input type="hidden" name="end_group_buy" value="1"><button type="submit" class="btn btn-outline-danger btn-sm">立即结束拼团活动（当前进行中：<?php echo (int)$existing_group['size']; ?> 人成团）</button></form>
+        <?php endif; ?>
     </div>
 </div>
 

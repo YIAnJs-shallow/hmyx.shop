@@ -142,3 +142,49 @@ function alipay_query_trade($orderNo) {
     }
     return $response['trade_status'] ?? null;
 }
+
+// 构造 alipay.trade.refund 请求参数（签名路径与 alipay_query_trade 一致）：供退款函数与测试断言共用
+function alipay_refund_params($outTradeNo, $refundAmountCents, $outRequestNo) {
+    $params = [
+        'app_id' => ALIPAY_SANDBOX_APP_ID,
+        'method' => 'alipay.trade.refund',
+        'format' => 'JSON',
+        'charset' => 'utf-8',
+        'sign_type' => 'RSA2',
+        'timestamp' => date('Y-m-d H:i:s'),
+        'version' => '1.0',
+        'biz_content' => json_encode([
+            'out_trade_no' => (string)$outTradeNo,
+            'refund_amount' => money((int)$refundAmountCents),
+            'out_request_no' => (string)$outRequestNo,
+        ], JSON_UNESCAPED_UNICODE),
+    ];
+    return alipay_sign($params);
+}
+
+// 沙箱退款（alipay.trade.refund）：fund_change=Y 视为成功；失败返回 false 并记日志（不做预检重试，网关恢复后由 cron 重扫）
+function alipay_trade_refund($outTradeNo, $refundAmountCents, $outRequestNo) {
+    $params = alipay_refund_params($outTradeNo, $refundAmountCents, $outRequestNo);
+    $ch = curl_init(alipay_gateway() . '?' . http_build_query($params));
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+    ]);
+    $body = curl_exec($ch);
+    if ($body === false) {
+        $err = curl_error($ch);
+        curl_close($ch);
+        error_log('alipay_trade_refund curl: ' . $err);
+        return false;
+    }
+    curl_close($ch);
+    $data = json_decode($body, true);
+    $response = $data['alipay_trade_refund_response'] ?? null;
+    if (!is_array($response) || (isset($response['code']) && $response['code'] !== '10000') || ($response['fund_change'] ?? '') !== 'Y') {
+        error_log('alipay_trade_refund failed: ' . substr((string)$body, 0, 500));
+        return false;
+    }
+    return true;
+}

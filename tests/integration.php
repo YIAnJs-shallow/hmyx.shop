@@ -686,6 +686,93 @@ check(strpos($payPreflightFail,'支付宝沙箱网关暂时不稳定')!==false &
 check(strpos($payPreflightFail,'alipay-form')===false && one('SELECT status FROM orders WHERE id=?',[$retryOrder])['status']==='pending','pay page renders no gateway redirect form and keeps order pending on preflight failure');
 putenv('ALIPAY_GATEWAY_OVERRIDE');
 putenv('SMTP_HOST');putenv('SMTP_PORT');putenv('SMTP_USER');putenv('SMTP_PASS');putenv('MAIL_FROM');
+// ===== 拼团功能：活动管理 / 自动匹配参团 / 支付回调判团 / 超时退款 cron / 防重复 / 库存锁与回补 =====
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+// 1) 商户建拼团活动（3 人成团、5 团上限、3 小时时限）→ 详情页显示团购价与拼团标识
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('拼团测试商品','60.00',10,?,?,1,'approved')",[$category,$shop]); $pGroup=(int)$conn->insert_id;
+group_buy_save($pGroup,3000,3,5,3);
+$gb=group_buy_active($pGroup);
+check($gb!==null && (int)$gb['price_cents']===3000 && (int)$gb['size']===3 && (int)$gb['max_groups']===5 && (int)$gb['duration_hours']===3,'merchant group buy activity saved with price size cap and duration');
+function render_detail_page(array $get) {
+    global $conn;
+    $backupGet=$_GET; $_GET=$get;
+    ob_start();
+    include __DIR__.'/../detail.php';
+    $html=ob_get_clean();
+    $_GET=$backupGet;
+    return $html;
+}
+$gbDetail=render_detail_page(['id'=>$pGroup]);
+check(strpos($gbDetail,'拼团价')!==false && strpos($gbDetail,'30.00')!==false && strpos($gbDetail,'发起拼团 / 参与拼团')!==false,'detail page shows group price badge stats and join button');
+// 2) 团长开团（下单支付）：订单记团购价与团信息、库存 -1、已支付成员 1/3、未成团禁止发货
+$gOrder1=(int)create_orders($buyer,$pGroup,1,$address,'group-leader',0,0,0,(int)$gb['id'])[0];
+$gRow1=one('SELECT group_buy_id,group_member_id,group_success FROM orders WHERE id=?',[$gOrder1]);
+$gMember1=one('SELECT * FROM group_members WHERE order_id=?',[$gOrder1]);
+check(one('SELECT price FROM order_items WHERE order_id=?',[$gOrder1])['price']==='30.00' && (int)$gRow1['group_buy_id']===(int)$gb['id'] && (int)$gRow1['group_member_id']===(int)$gMember1['id'] && $gMember1['role']==='leader' && (int)$gMember1['group_id']===(int)$gMember1['id'],'group order uses group price and registers leader row');
+check((int)one('SELECT stock FROM products WHERE id=?',[$pGroup])['stock']===9,'group order reserves one item from stock');
+rejects(function(){ create_orders($buyer,$pGroup,1,$address,'group-dup',0,0,0,(int)$gb['id']); },'same user cannot hold two unresolved slots in one activity');
+change_order($gOrder1,$buyer,'pay');
+check((int)one('SELECT group_success FROM orders WHERE id=?',[$gOrder1])['group_success']===0 && (int)group_buy_stats((int)$gb['id'])[1]===1,'single paid member does not complete the group');
+$_SESSION['role']='merchant';
+rejects(function()use($gOrder1,$merchant){change_order($gOrder1,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'GRP00001']);},'shipment blocked before group completes');
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+// 3) 第二人参团（自动匹配进同一团）：2/3 仍未成团；同一用户同团唯一索引兜底
+query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'参团买家','13800000001','测试省测试市参团地址',1)",[$other]); $otherAddress=(int)$conn->insert_id;
+$gOrder2=(int)create_orders($other,$pGroup,1,$otherAddress,'group-member',0,0,0,(int)$gb['id'])[0];
+$gMember2=one('SELECT * FROM group_members WHERE order_id=?',[$gOrder2]);
+check($gMember2['role']==='member' && (int)$gMember2['group_id']===(int)$gMember1['id'],'second buyer auto-matches into the open group');
+change_order($gOrder2,$other,'pay');
+check((int)one('SELECT group_success FROM orders WHERE id=?',[$gOrder1])['group_success']===0,'two of three paid members still incomplete');
+$duplicateInsertRejected=false;
+try { query('INSERT INTO group_members(group_id,user_id,order_id,role) VALUES(?,?,?,?)',[(int)$gMember1['id'],$other,$gOrder2,'member']); } catch (mysqli_sql_exception $e) { $duplicateInsertRejected=$e->getCode()===1062; }
+check($duplicateInsertRejected,'unique index blocks duplicate member row in same group');
+// 4) 第三人参团支付 → 成团判定触发，三单 group_success=1，允许发货
+$groupThird=insert_user('qa_group_third','user');
+query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'第三参团','13800000002','测试省测试市第三地址',1)",[$groupThird]); $thirdAddress=(int)$conn->insert_id;
+$gOrder3=(int)create_orders($groupThird,$pGroup,1,$thirdAddress,'group-third',0,0,0,(int)$gb['id'])[0];
+change_order($gOrder3,$groupThird,'pay');
+check((int)one('SELECT group_success FROM orders WHERE id=?',[$gOrder1])['group_success']===1 && (int)one('SELECT group_success FROM orders WHERE id=?',[$gOrder2])['group_success']===1 && (int)one('SELECT group_success FROM orders WHERE id=?',[$gOrder3])['group_success']===1,'final payment completes the group and marks all member orders successful');
+$_SESSION['role']='merchant';
+change_order($gOrder1,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'GRP00002']);
+check(one('SELECT status FROM orders WHERE id=?',[$gOrder1])['status']==='shipped','shipment allowed after group completes');
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
+// 5) 成团超时 cron：已支付单走退款（演示支付口径）、未支付单 closed、库存回补、活动置 ended
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('拼团超时商品','40.00',5,?,?,1,'approved')",[$category,$shop]); $pGroupTO=(int)$conn->insert_id;
+group_buy_save($pGroupTO,2000,2,0,3);
+$gbTO=group_buy_active($pGroupTO);
+$toPaid=(int)create_orders($buyer,$pGroupTO,1,$address,'group-to-paid',0,0,0,(int)$gbTO['id'])[0];
+change_order($toPaid,$buyer,'pay');
+$toPending=(int)create_orders($other,$pGroupTO,1,$otherAddress,'group-to-pending',0,0,0,(int)$gbTO['id'])[0];
+check((int)one('SELECT stock FROM products WHERE id=?',[$pGroupTO])['stock']===3,'timeout-scenario orders reserve stock at checkout');
+$toLeader=one('SELECT * FROM group_members WHERE order_id=?',[$toPaid]);
+query('UPDATE group_members SET created_at=NOW()-INTERVAL 4 HOUR WHERE id=?',[(int)$toLeader['id']]);
+$expiredGroups=cron_expire_group_orders();
+check($expiredGroups===1,'cron expires exactly the timed-out group');
+check(one('SELECT status FROM orders WHERE id=?',[$toPaid])['status']==='cancelled' && one('SELECT status FROM orders WHERE id=?',[$toPending])['status']==='cancelled','timeout group paid order refunded and pending order closed');
+check((int)one('SELECT stock FROM products WHERE id=?',[$pGroupTO])['stock']===5,'timeout refunds restore reserved stock exactly once');
+check(one('SELECT status FROM group_buys WHERE id=?',[(int)$gbTO['id']])['status']==='ended','timeout processing ends the activity');
+check(cron_expire_group_orders()===0,'cron rerun finds no expired group (idempotent)');
+// 6) groups.php：未登录被拒、登录后可见自己参的团
+function render_groups_page(array $session) {
+    global $conn;
+    $backupGet=$_GET; $backupSession=$_SESSION;
+    $_SESSION=$session; $_GET=[];
+    ob_start();
+    include __DIR__.'/../groups.php';
+    $html=ob_get_clean();
+    $_GET=$backupGet; $_SESSION=$backupSession;
+    return $html;
+}
+check(strpos(render_groups_page([]),'user_login.php?next=groups.php')!==false && strpos(render_groups_page([]),'查看您的拼团')!==false,'groups page rejects guests');
+$groupsHtml=render_groups_page(['user_id'=>$buyer,'role'=>'user']);
+check(strpos($groupsHtml,'拼团测试商品')!==false && strpos($groupsHtml,'团长')!==false && strpos($groupsHtml,'已成团')!==false,'groups page lists buyer own groups with role and status');
+// 7) 沙箱退款接口：请求构造正确（不真实联网）+ 不可达网关返回 false
+$refundParams=alipay_refund_params('QA-REFUND-1',3000,'QA-REFUND-1-R1');
+check($refundParams['method']==='alipay.trade.refund' && $refundParams['sign_type']==='RSA2' && json_decode($refundParams['biz_content'],true)===['out_trade_no'=>'QA-REFUND-1','refund_amount'=>'30.00','out_request_no'=>'QA-REFUND-1-R1'],'alipay refund request construction correct');
+check(alipay_verify($refundParams,$appPub),'alipay refund request properly signed');
+putenv('ALIPAY_GATEWAY_OVERRIDE=http://127.0.0.1:1/');
+check(alipay_trade_refund('QA-REFUND-2',100,'QA-REFUND-2-R1')===false,'alipay refund returns false on unreachable gateway');
+putenv('ALIPAY_GATEWAY_OVERRIDE');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
 foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {

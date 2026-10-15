@@ -133,6 +133,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sku_rows[] = ['name' => $name, 'price_cents' => (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0'), 'stock' => (int)$stock_raw, 'image_url' => $sku_image];
     }
 
+    // 开通拼团（仅商户、仅无规格商品）：四字段解析校验，全空表示不开通
+    $group_fields = [null, null, null, null];
+    if (!$is_admin) {
+        try {
+            $group_fields = parse_group_buy_fields((int)round($price * 100), $_POST, empty($sku_rows));
+        } catch (DomainException $e) {
+            $msg = $e->getMessage(); $msg_type = 'error';
+        }
+    }
+
     // 处理图片上传
     if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
         try { $image_url = save_image_upload($_FILES['image']); }
@@ -195,6 +205,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (!empty($ok)) {
                     $db->commit();
+                    // 拼团活动：上架发布且填写了拼团字段时创建（展示仍受商品在售与审核通过约束）
+                    if (!$is_admin && $status === 1 && $group_fields[0] !== null) {
+                        group_buy_save($newProductId, $group_fields[0], $group_fields[1], $group_fields[2], $group_fields[3]);
+                    }
                     // 风控预警：warn 级别正常保存，原因写入审核日志备注供审核中心展示
                     if ($riskPrecheck !== null && $riskPrecheck['risk_level'] === 'warn') risk_log_warn($newProductId, $riskPrecheck['reasons']);
                     if ($status === 0) {
@@ -336,6 +350,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
             <small class="text-muted d-block mb-3">特价与起止时间须同时填写；活动期间展示价与结算价均用特价。</small>
+
+            <?php if (!$is_admin): ?>
+            <div class="mb-3 p-3" style="background:#fff8f1;border-radius:8px;">
+                <label class="form-label fw-bold small">开通拼团（可选）</label>
+                <div class="row g-2">
+                    <div class="col-md-3"><input type="number" step="0.01" min="0.01" name="group_price" class="form-control" placeholder="团购价（元），须低于原价"></div>
+                    <div class="col-md-3"><input type="number" min="2" max="10" name="group_size" class="form-control" placeholder="成团人数（2-10）"></div>
+                    <div class="col-md-3"><input type="number" min="0" name="group_max_groups" value="0" class="form-control" placeholder="总团数上限，0 不限"></div>
+                    <div class="col-md-3"><input type="number" min="1" max="72" name="group_duration_hours" value="3" class="form-control" placeholder="成团时限（小时）"></div>
+                </div>
+                <small class="text-muted d-block mt-2">四项填写团购价与成团人数即开通；拼团仅支持无规格商品，买家自动匹配成团，超时未成团自动退款。</small>
+            </div>
+            <?php endif; ?>
 
             <div class="mb-3">
                 <label class="form-label fw-bold small">商品主图</label>

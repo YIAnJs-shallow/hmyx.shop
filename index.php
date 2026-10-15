@@ -173,11 +173,12 @@ if ($params) $count_stmt->bind_param($types, ...$params);
 $count_stmt->execute(); $total_products = (int)$count_stmt->get_result()->fetch_assoc()['total'];
 $order_by = $sort_options[$sort];
 // 3. 构建商品列表查询 SQL
-$sql = "SELECT p.*, c.category_name, s.shop_name 
-        FROM products p 
-        LEFT JOIN categories c ON p.category_id = c.id 
-        LEFT JOIN shops s ON p.shop_id = s.id 
-        {$where} 
+$sql = "SELECT p.*, c.category_name, s.shop_name, gb.price_cents AS group_price_cents
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN shops s ON p.shop_id = s.id
+        LEFT JOIN group_buys gb ON gb.product_id = p.id AND gb.status='active'
+        {$where}
         ORDER BY {$order_by} LIMIT 12 OFFSET {$offset}";
 
 $stmt = $conn->prepare($sql);
@@ -501,8 +502,9 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
                         $p_name = $row['title'] ?? ($row['name'] ?? '未命名商品');
                         $p_img = $row['image_url'] ?? ($row['image'] ?? '');
                         $p_price = $row['price'] ?? '0.00';
-                        // 限时特价：区间内且低于原价时展示特价（划线原价）
+                        // 限时特价：区间内且低于原价时展示特价（划线原价）；拼团活动优先展示团购价
                         $p_flash = flash_price_cents($row);
+                        $p_group = isset($row['group_price_cents']) ? (int)$row['group_price_cents'] : 0;
                     ?>
                     <article class="product-card">
                         <div>
@@ -517,7 +519,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
                             <?php if (!empty($row['shop_name'])): ?>
                                 <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 4px;">🏪 <?php echo htmlspecialchars($row['shop_name']); ?></div>
                             <?php endif; ?>
-                            <div class="product-price"><?php if ($p_flash !== null): ?><span style="text-decoration:line-through;color:#94a3b8;font-size:.8rem;margin-right:4px;">￥<?php echo number_format($p_price, 2); ?></span><strong style="color:#dc2626;">￥<?php echo number_format($p_flash / 100, 2); ?></strong><small style="color:#dc2626;"> 限时特价</small><?php else: ?>￥<?php echo number_format($p_price, 2); ?><?php endif; ?></div>
+                            <div class="product-price"><?php if ($p_group > 0): ?><span style="text-decoration:line-through;color:#94a3b8;font-size:.8rem;margin-right:4px;">￥<?php echo number_format($p_price, 2); ?></span><strong style="color:#dc2626;">￥<?php echo number_format($p_group / 100, 2); ?></strong><small style="color:#dc2626;"> 拼团价</small><?php elseif ($p_flash !== null): ?><span style="text-decoration:line-through;color:#94a3b8;font-size:.8rem;margin-right:4px;">￥<?php echo number_format($p_price, 2); ?></span><strong style="color:#dc2626;">￥<?php echo number_format($p_flash / 100, 2); ?></strong><small style="color:#dc2626;"> 限时特价</small><?php else: ?>￥<?php echo number_format($p_price, 2); ?><?php endif; ?></div>
                         </div>
                         
                         <a href="detail.php?id=<?php echo $row['id']; ?>" class="btn-buy-link">
