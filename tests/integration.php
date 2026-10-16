@@ -179,7 +179,7 @@ change_order($afterSaleShipOrder,$buyer,'after_sale_ship',['return_express_compa
 $shipRequest=one('SELECT * FROM after_sale_requests WHERE order_id=?',[$afterSaleShipOrder]);
 check($shipRequest['return_express_company']==='测试快递' && $shipRequest['return_express_no']==='RET123456','buyer can submit return express after approval');
 $_SESSION['role']='merchant'; change_order($afterSaleShipOrder,$merchant,'after_sale_receive');
-check((int)one('SELECT stock FROM product_skus WHERE id=?',[$skuAfterSale])['stock']===3 && (int)one('SELECT stock FROM products WHERE id=?',[$pAfterSale])['stock']===9 && one('SELECT status FROM orders WHERE id=?',[$afterSaleShipOrder])['status']==='completed','return receipt restores SKU stock exactly once and completes order');
+check((int)one('SELECT stock FROM product_skus WHERE id=?',[$skuAfterSale])['stock']===3 && (int)one('SELECT stock FROM products WHERE id=?',[$pAfterSale])['stock']===9 && one('SELECT status FROM orders WHERE id=?',[$afterSaleShipOrder])['status']==='cancelled','return receipt restores SKU stock exactly once and closes refunded order as cancelled');
 rejects(function()use($afterSaleShipOrder,$merchant){change_order($afterSaleShipOrder,$merchant,'after_sale_receive');},'repeat return receipt rejected after status change');
 rejects(function()use($afterSaleRejected,$buyer){change_order($afterSaleRejected,$buyer,'after_sale_ship',['return_express_company'=>'测试快递','return_express_no'=>'RET000001']);},'return logistics rejected after after-sale refusal');
 // 已完成订单同样可走售后全流程（申请→批准→填退货单→确认收货）
@@ -192,6 +192,27 @@ $_SESSION['role']='user'; change_order($afterSaleDone,$buyer,'after_sale_ship',[
 $_SESSION['role']='merchant'; change_order($afterSaleDone,$merchant,'after_sale_receive');
 check(one('SELECT status FROM after_sale_requests WHERE order_id=?',[$afterSaleDone])['status']==='refunded' && (int)one('SELECT stock FROM product_skus WHERE id=?',[$skuAfterSale])['stock']===3,'completed order can go through after-sale');
 check((int)one('SELECT COUNT(*) AS n FROM refund_requests')['n']===1,'after-sale flows do not affect refund-rate statistics');
+// ===== 退款返还积分抵扣 + 退货退款不积累等级（2026-10-16 口径修复回归）=====
+$rpUser=insert_user('qa_refund_points','user');
+query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'积分退款买家','13800000004','测试省测试市积分退款地址',1)",[$rpUser]); $rpAddress=(int)$conn->insert_id;
+query("UPDATE users SET points=1000 WHERE id=?",[$rpUser]);
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('积分退款商品','100.00',5,?,?,1,'approved')",[$category,$shop]); $pRP=(int)$conn->insert_id;
+// 仅退款：支付扣 1000 分（10% 上限），商家同意退款后积分返还
+$rpOrder1=(int)create_orders($rpUser,$pRP,1,$rpAddress,'rp-refund',0,0,1)[0]; change_order($rpOrder1,$rpUser,'pay');
+check((int)one('SELECT points FROM users WHERE id=?',[$rpUser])['points']===0 && (int)one('SELECT points_paid FROM orders WHERE id=?',[$rpOrder1])['points_paid']===1000,'payment deducts points deduction balance to zero');
+change_order($rpOrder1,$rpUser,'refund',['reason'=>'不想要了']);
+$_SESSION['role']='merchant'; change_order($rpOrder1,$merchant,'refund_approve');
+check((int)one('SELECT points FROM users WHERE id=?',[$rpUser])['points']===1000 && one('SELECT id FROM points_log WHERE user_id=? AND type=\'pay\' AND ref_id=? AND change_points=1000',[$rpUser,$rpOrder1])!==null,'approved refund returns the points deduction');
+// 退货退款：shipped 订单售后完成 → 订单闭环 cancelled、不积累等级消费、积分返还
+$_SESSION=['user_id'=>$rpUser,'role'=>'user'];
+$rpOrder2=(int)create_orders($rpUser,$pRP,1,$rpAddress,'rp-aftersale',0,0,1)[0]; change_order($rpOrder2,$rpUser,'pay');
+$_SESSION['role']='merchant'; change_order($rpOrder2,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'RP000001']);
+$_SESSION=['user_id'=>$rpUser,'role'=>'user']; change_order($rpOrder2,$rpUser,'after_sale',['reason'=>'质量问题退货']);
+$_SESSION['role']='merchant'; change_order($rpOrder2,$merchant,'after_sale_approve');
+$_SESSION=['user_id'=>$rpUser,'role'=>'user']; change_order($rpOrder2,$rpUser,'after_sale_ship',['return_express_company'=>'测试快递','return_express_no'=>'RPRET001']);
+$_SESSION['role']='merchant'; change_order($rpOrder2,$merchant,'after_sale_receive');
+check(one('SELECT status FROM orders WHERE id=?',[$rpOrder2])['status']==='cancelled' && (int)one('SELECT total_spent_cents FROM users WHERE id=?',[$rpUser])['total_spent_cents']===0 && (int)one('SELECT points FROM users WHERE id=?',[$rpUser])['points']===1000,'after-sale refund closes order without level accrual and returns points');
+$_SESSION=['user_id'=>$buyer,'role'=>'user'];
 // ===== 评价升级 + 搜索联想：追评唯一性 / 商家回复仅一次 / 晒图 3 张上限 / 联想接口未登录可用 =====
 append_review($buyer,(int)$item['id'],'使用一个月后追加评价：依然很好用');
 rejects(function()use($buyer,$item){append_review($buyer,(int)$item['id'],'第二次追评');},'each first review allows only one follow-up');
@@ -757,13 +778,15 @@ query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_s
 group_buy_save($pGroupMD,20000,2,0,3);
 $gbMD=group_buy_active($pGroupMD);
 $mdOrder=(int)create_orders($buyer,$pGroupMD,1,$address,'group-md',0,0,0,(int)$gbMD['id'])[0];
-query('UPDATE orders SET discount_amount=10.00, points_discount_cents=500, member_discount_cents=1000 WHERE id=?',[$mdOrder]);
+query('UPDATE orders SET discount_amount=10.00, points_discount_cents=500, member_discount_cents=1000, points_paid=500 WHERE id=?',[$mdOrder]);
+query("UPDATE users SET points=500 WHERE id=?",[$buyer]); // pay 分支会校验积分余额，不足则清零抵扣记录
 change_order($mdOrder,$buyer,'pay');
 $mdRow=one('SELECT total_amount,discount_amount,points_discount_cents,member_discount_cents FROM orders WHERE id=?',[$mdOrder]);
 check(group_refund_cents($mdRow)===17500,'group refund cents subtract member discount along with coupon and points');
 $mdLeader=one('SELECT * FROM group_members WHERE order_id=?',[$mdOrder]);
 query('UPDATE group_members SET created_at=NOW()-INTERVAL 4 HOUR WHERE id=?',[(int)$mdLeader['id']]);
 check(cron_expire_group_orders()===1 && one('SELECT status FROM orders WHERE id=?',[$mdOrder])['status']==='cancelled','member-discount group order refunded and cancelled by timeout cron');
+check(one('SELECT id FROM points_log WHERE user_id=? AND type=\'pay\' AND ref_id=? AND change_points=500',[$buyer,$mdOrder])!==null,'group timeout refund returns the points deduction');
 // 6) groups.php：未登录被拒、登录后可见自己参的团
 function render_groups_page(array $session) {
     global $conn;

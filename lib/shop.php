@@ -380,6 +380,8 @@ function change_order($id, $actor, $action, $data = []) {
             if ($action==='refund_approve') {
                 if ($order['payment_method'] !== 'demo') throw new DomainException('真实退款须通过支付渠道核实');
                 release_stock($order);
+                // 商家同意退款：返还支付时扣减的积分抵扣（与优惠券恢复对称；grant_points 同向幂等防重）
+                if ((int)$order['points_paid'] > 0) grant_points((int)$order['user_id'], 'pay', (int)$order['points_paid'], (int)$id, '退款返还积分抵扣');
                 query("UPDATE orders SET status='cancelled' WHERE id=?",[$id]);
             }
             query('UPDATE refund_requests SET status=?,processed_at=NOW() WHERE id=?',[$action==='refund_approve'?'approved':'rejected',(int)$request['id']]);
@@ -408,13 +410,13 @@ function change_order($id, $actor, $action, $data = []) {
             if ($order['payment_method'] === 'demo') {
                 // release_stock 依 stock_reserved 标志位整单只回补一次：sku_id>0 回补 product_skus，默认规格回补 products
                 release_stock($order);
-                // 已发货订单售后完成后联动订单状态：置已完成（已是 completed 则保持完成时间不变）
-                query("UPDATE orders SET status='completed', completed_at=COALESCE(completed_at, NOW()) WHERE id=?", [$id]);
-                // 已发货订单售后完成联动置 completed 的同样积累等级（与对账 cron 的 SUM(completed) 口径一致；退款终身制不扣减，已是 completed 的订单不重复积累）
+                // 已发货订单售后完成：买家已寄回商品、库存已回补，订单闭环置 cancelled（与仅退款/拼团超时退款口径一致，退款不积累等级消费）
+                // 已是 completed 的订单保持完成态：等级与积分按"退款终身制不扣减"保留
                 if ($order['status'] === 'shipped') {
-                    $paidCents = (int)round(((float)$order['total_amount']) * 100) - (int)round(((float)$order['discount_amount']) * 100) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents'];
-                    level_accrue((int)$order['user_id'], (int)$id, max(0, $paidCents));
+                    query("UPDATE orders SET status='cancelled' WHERE id=?", [$id]);
                 }
+                // 退货退款同样返还支付时扣减的积分抵扣（grant_points 同向幂等防重）
+                if ((int)$order['points_paid'] > 0) grant_points((int)$order['user_id'], 'pay', (int)$order['points_paid'], (int)$id, '退货退款返还积分抵扣');
                 query("UPDATE after_sale_requests SET status='refunded', received_at=NOW() WHERE id=?", [(int)$request['id']]);
             } else {
                 query("UPDATE after_sale_requests SET status='received', received_at=NOW() WHERE id=?", [(int)$request['id']]);

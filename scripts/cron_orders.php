@@ -99,6 +99,8 @@ function cron_expire_group_orders() {
                 $order = one("SELECT * FROM orders WHERE id=? AND status<> 'cancelled' FOR UPDATE", [(int)$memberOrder['id']]);
                 if ($order && $order['status'] !== 'cancelled') {
                     release_stock($order);
+                    // 拼团超时退款同样返还支付时扣减的积分抵扣（grant_points 同向幂等防重）
+                    if ((int)$order['points_paid'] > 0) grant_points((int)$order['user_id'], 'pay', (int)$order['points_paid'], (int)$order['id'], '拼团退款返还积分抵扣');
                     query("UPDATE orders SET status='cancelled' WHERE id=?", [(int)$order['id']]);
                     notify((int)$order['user_id'], 'refund', '拼团超时未成团，退款已受理', '订单 '.$order['order_no'].' 所在拼团未在时限内成团，已支付款项将按原支付方式退回。', 'my_orders.php');
                 }
