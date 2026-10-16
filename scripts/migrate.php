@@ -5,6 +5,209 @@ require_once __DIR__.'/../lib/shop.php';
 if (!function_exists('add_column')) { function add_column($table,$column,$definition) {
     if (!one('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?',[$table,$column])) query("ALTER TABLE `$table` ADD COLUMN `$column` $definition");
 } }
+// ===== 核心基础表（原生建站表）：幂等建表，保证空库可从零初始化（CI / 新环境部署）=====
+// DDL 与正式库 SHOW CREATE TABLE 一致（已去除 AUTO_INCREMENT 当前值）；已存在的库执行为空操作
+query('CREATE TABLE IF NOT EXISTS `users` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `username` varchar(50) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `email` varchar(100) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `role` enum(\'user\',\'admin\',\'merchant\') NOT NULL DEFAULT \'user\',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `avatar` varchar(255) DEFAULT \'\',
+  `points` int NOT NULL DEFAULT \'0\',
+  `level_id` tinyint NOT NULL DEFAULT \'1\',
+  `total_spent_cents` bigint NOT NULL DEFAULT \'0\',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `uk_email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `categories` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `category_name` varchar(50) NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `parent_id` int DEFAULT \'0\' COMMENT \'父级分类ID，0代表顶级分类\',
+  `sort_order` int DEFAULT \'0\' COMMENT \'排序权重\',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `category_name` (`category_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `shops` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `shop_name` varchar(100) NOT NULL,
+  `contact_phone` varchar(20) NOT NULL,
+  `category` varchar(50) DEFAULT NULL,
+  `shop_desc` text,
+  `status` tinyint DEFAULT \'1\',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `business_scope` varchar(100) NOT NULL DEFAULT \'\',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `user_addresses` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `receiver_name` varchar(50) NOT NULL,
+  `receiver_phone` varchar(20) NOT NULL,
+  `receiver_address` varchar(255) NOT NULL,
+  `is_default` tinyint(1) DEFAULT \'0\',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `products` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `shop_id` int DEFAULT NULL COMMENT \'归属店铺ID，NULL为平台自营\',
+  `title` varchar(100) NOT NULL,
+  `price` decimal(10,2) NOT NULL DEFAULT \'0.00\',
+  `stock` int NOT NULL DEFAULT \'0\',
+  `category_id` int DEFAULT NULL,
+  `image_url` varchar(255) DEFAULT NULL,
+  `detail` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `status` tinyint DEFAULT \'1\' COMMENT \'1:已上架, 0:草稿/未上架\',
+  `audit_status` enum(\'pending\',\'approved\',\'rejected\') NOT NULL DEFAULT \'approved\' COMMENT \'审核状态\',
+  `flash_price_cents` int DEFAULT NULL,
+  `flash_start` datetime DEFAULT NULL,
+  `flash_end` datetime DEFAULT NULL,
+  `limit_per_user` int NOT NULL DEFAULT \'0\',
+  `brand` varchar(50) NOT NULL DEFAULT \'\' COMMENT \'品牌\',
+  `material` varchar(50) NOT NULL DEFAULT \'\' COMMENT \'材质\',
+  PRIMARY KEY (`id`),
+  KEY `category_id` (`category_id`),
+  KEY `idx_shop_id` (`shop_id`),
+  KEY `idx_audit_status` (`audit_status`),
+  CONSTRAINT `fk_products_shop` FOREIGN KEY (`shop_id`) REFERENCES `shops` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `products_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `orders` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `order_no` varchar(64) NOT NULL,
+  `user_id` int NOT NULL,
+  `total_amount` decimal(10,2) NOT NULL DEFAULT \'0.00\',
+  `discount_amount` decimal(10,2) NOT NULL DEFAULT \'0.00\',
+  `coupon_user_id` int DEFAULT NULL,
+  `status` enum(\'pending\',\'paid\',\'shipped\',\'completed\',\'cancelled\') DEFAULT \'pending\',
+  `receiver_name` varchar(50) DEFAULT NULL,
+  `receiver_phone` varchar(20) DEFAULT NULL,
+  `receiver_address` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `order_sn` varchar(64) DEFAULT NULL COMMENT \'订单号\',
+  `product_id` int DEFAULT \'0\' COMMENT \'商品ID\',
+  `products_id` int DEFAULT \'0\',
+  `total_price` decimal(10,2) NOT NULL DEFAULT \'0.00\',
+  `express_company` varchar(50) DEFAULT \'顺丰速运\' COMMENT \'快递公司\',
+  `express_no` varchar(100) DEFAULT \'\' COMMENT \'快递单号\',
+  `paid_at` datetime DEFAULT NULL COMMENT \'付款时间\',
+  `estimated_shipping_time` datetime DEFAULT NULL,
+  `shipped_at` datetime DEFAULT NULL COMMENT \'发货时间\',
+  `shop_id` int DEFAULT NULL,
+  `checkout_token` varchar(64) DEFAULT NULL,
+  `stock_reserved` tinyint NOT NULL DEFAULT \'0\',
+  `payment_method` varchar(20) DEFAULT NULL,
+  `completed_at` datetime DEFAULT NULL,
+  `points_paid` int NOT NULL DEFAULT \'0\',
+  `points_discount_cents` int NOT NULL DEFAULT \'0\',
+  `group_buy_id` int DEFAULT NULL,
+  `group_member_id` int DEFAULT NULL,
+  `group_success` tinyint NOT NULL DEFAULT \'0\',
+  `member_discount_cents` int NOT NULL DEFAULT \'0\',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `order_no` (`order_no`),
+  KEY `idx_checkout` (`user_id`,`checkout_token`),
+  KEY `idx_expiry` (`status`,`created_at`),
+  CONSTRAINT `orders_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `order_items` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `order_id` int NOT NULL,
+  `product_id` int DEFAULT NULL,
+  `price` decimal(10,2) NOT NULL,
+  `quantity` int NOT NULL DEFAULT \'1\',
+  `product_title` varchar(100) DEFAULT NULL,
+  `product_image` varchar(255) DEFAULT NULL,
+  `sku_id` int DEFAULT NULL,
+  `sku_name` varchar(100) DEFAULT NULL,
+  `sku_image` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `order_id` (`order_id`),
+  KEY `product_id` (`product_id`),
+  CONSTRAINT `order_items_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `order_items_ibfk_2` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `cart` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `product_id` int NOT NULL,
+  `quantity` int NOT NULL DEFAULT \'1\',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `sku_id` int NOT NULL DEFAULT \'0\',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_product` (`user_id`,`product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `comments` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `product_id` int NOT NULL,
+  `content` text NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `user_id` (`user_id`),
+  KEY `product_id` (`product_id`),
+  CONSTRAINT `comments_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `comments_ibfk_2` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `reviews` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `order_item_id` int NOT NULL,
+  `product_id` int NOT NULL,
+  `rating` tinyint NOT NULL,
+  `content` varchar(1000) NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `reply_content` varchar(500) DEFAULT NULL,
+  `replied_at` datetime DEFAULT NULL,
+  `parent_id` int DEFAULT NULL,
+  `tags` varchar(255) NOT NULL DEFAULT \'\',
+  PRIMARY KEY (`id`),
+  KEY `product_id` (`product_id`),
+  KEY `user_id` (`user_id`),
+  KEY `idx_reviews_order_item` (`order_item_id`),
+  CONSTRAINT `reviews_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `reviews_ibfk_2` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `reviews_ibfk_3` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+query('CREATE TABLE IF NOT EXISTS `audit_records` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `product_id` int NOT NULL COMMENT \'商品ID\',
+  `result` enum(\'approved\',\'rejected\') NOT NULL COMMENT \'审核结果\',
+  `comment` varchar(255) DEFAULT \'\' COMMENT \'审核意见\',
+  `admin_id` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT \'审核时间\',
+  `admin_user_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_product` (`product_id`),
+  CONSTRAINT `audit_records_ibfk_1` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT=\'商品审核记录表\'');
+query('CREATE TABLE IF NOT EXISTS `after_sale_requests` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `order_id` int NOT NULL,
+  `user_id` int NOT NULL,
+  `reason` varchar(500) NOT NULL,
+  `status` enum(\'pending\',\'approved\',\'rejected\',\'received\',\'refunded\') NOT NULL DEFAULT \'pending\',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `processed_at` datetime DEFAULT NULL,
+  `received_at` datetime DEFAULT NULL,
+  `return_express_company` varchar(50) DEFAULT NULL,
+  `return_express_no` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `order_id` (`order_id`),
+  KEY `idx_after_sale_status` (`status`),
+  KEY `user_id` (`user_id`),
+  CONSTRAINT `after_sale_requests_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `after_sale_requests_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci');
+
 add_column('orders','shop_id','int NULL');
 add_column('orders','checkout_token','varchar(64) NULL');
 add_column('orders','stock_reserved','tinyint NOT NULL DEFAULT 0');
