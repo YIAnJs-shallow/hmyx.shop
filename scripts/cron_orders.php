@@ -43,6 +43,12 @@ function cron_auto_receive_orders() {
     return $received;
 }
 
+// 拼团超时退款金额：与实付口径一致（小计 − 券 − 积分抵现 − 会员折扣），供 cron 与测试断言共用
+function group_refund_cents(array $order) {
+    return (int)round(((float)$order['total_amount']) * 100) - (int)round(((float)$order['discount_amount']) * 100)
+        - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents'];
+}
+
 // 拼团成团超时：扫 active 活动下创建超过 duration_hours 且未成团的团（团长行=团），逐单处理：
 // 已支付订单走退款链路（演示支付直接置退款态；沙箱支付调 alipay_trade_refund，失败记日志留待下次重扫），
 // 未支付订单直接取消回补库存；团内全部处理完成后活动置 ended。
@@ -81,7 +87,7 @@ function cron_expire_group_orders() {
             }
             if (!in_array($memberOrder['status'], ['paid', 'shipped', 'completed'], true)) continue;
             // 已支付：演示支付直接置退款态；沙箱支付走 alipay.trade.refund，失败留待下次重扫
-            $refundCents = (int)round(((float)$memberOrder['total_amount']) * 100) - (int)round(((float)$memberOrder['discount_amount']) * 100) - (int)$memberOrder['points_discount_cents'];
+            $refundCents = group_refund_cents($memberOrder);
             $refundOk = true;
             if ($memberOrder['payment_method'] === 'alipay_sandbox') {
                 require_once __DIR__.'/../lib/alipay.php';

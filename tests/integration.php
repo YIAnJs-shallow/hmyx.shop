@@ -752,6 +752,18 @@ check(one('SELECT status FROM orders WHERE id=?',[$toPaid])['status']==='cancell
 check((int)one('SELECT stock FROM products WHERE id=?',[$pGroupTO])['stock']===5,'timeout refunds restore reserved stock exactly once');
 check(one('SELECT status FROM group_buys WHERE id=?',[(int)$gbTO['id']])['status']==='ended','timeout processing ends the activity');
 check(cron_expire_group_orders()===0,'cron rerun finds no expired group (idempotent)');
+// 5b) 拼团超时退款口径：含会员折扣的订单退款额=实付（小计−券−积分−会员折扣），防多退
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('拼团会员折扣商品','200.00',5,?,?,1,'approved')",[$category,$shop]); $pGroupMD=(int)$conn->insert_id;
+group_buy_save($pGroupMD,20000,2,0,3);
+$gbMD=group_buy_active($pGroupMD);
+$mdOrder=(int)create_orders($buyer,$pGroupMD,1,$address,'group-md',0,0,0,(int)$gbMD['id'])[0];
+query('UPDATE orders SET discount_amount=10.00, points_discount_cents=500, member_discount_cents=1000 WHERE id=?',[$mdOrder]);
+change_order($mdOrder,$buyer,'pay');
+$mdRow=one('SELECT total_amount,discount_amount,points_discount_cents,member_discount_cents FROM orders WHERE id=?',[$mdOrder]);
+check(group_refund_cents($mdRow)===17500,'group refund cents subtract member discount along with coupon and points');
+$mdLeader=one('SELECT * FROM group_members WHERE order_id=?',[$mdOrder]);
+query('UPDATE group_members SET created_at=NOW()-INTERVAL 4 HOUR WHERE id=?',[(int)$mdLeader['id']]);
+check(cron_expire_group_orders()===1 && one('SELECT status FROM orders WHERE id=?',[$mdOrder])['status']==='cancelled','member-discount group order refunded and cancelled by timeout cron');
 // 6) groups.php：未登录被拒、登录后可见自己参的团
 function render_groups_page(array $session) {
     global $conn;
