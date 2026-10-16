@@ -10,8 +10,8 @@
 |---|---|---|
 | P0 | CI 流水线 + migrate 核心表幂等建表 | ✅ 2026-10-16（commit 3f89bc9） |
 | P0 | 支付与资金链路复核（回调验签/幂等/退款/对账） | ✅ 2026-10-16，发现并修复拼团退款漏减会员折扣（1ca36f2） |
-| P1 | 售后退款链路复核（refund_requests / after_sale_requests 状态机与资金口径） | ⬜ 待做 |
-| P1 | 后台 RBAC 权限矩阵自查（13 权限 × 5 角色覆盖面） | ⬜ 待做 |
+| P1 | 售后退款链路复核（refund_requests / after_sale_requests 状态机与资金口径） | ✅ 2026-10-16 用户已批准并完成（只读复核，2 项口径问题待拍板） |
+| P1 | 后台 RBAC 权限矩阵自查（13 权限 × 5 角色覆盖面） | ✅ 2026-10-16 用户已批准并完成（全项通过） |
 | P2 | 商品搜索升级（MySQL 全文索引 vs 现有 LIKE，需开源对比表） | ⬜ 需用户拍板 |
 | P2 | 未跟踪文件处置：egg-carton-13.png（入库或删除，删除需用户确认） | ⬜ 待用户定 |
 | P2 | pay_notify 增加 total_amount 与库内应付金额比对（最佳实践增强） | ⬜ 记录未做 |
@@ -25,6 +25,9 @@
 
 ## 阻塞项 / 待用户决策
 
+- **售后复核发现 2 项口径问题待拍板（2026-10-16）**：
+  1. 积分抵现不退还：`refund_approve` / `after_sale_receive` 退款时优惠券恢复但 `points_paid` 积分不返还（[lib/shop.php:343](../lib/shop.php#L343) 注释口径针对取消/超时，商家同意退款同样不退，权益不对称）
+  2. 退款订单积累等级：`after_sale_receive` 把 shipped 订单置 completed 并 `level_accrue`，退款金额计入等级消费（文档化决策，但语义上属"退款反积累"）
 - egg-carton-13.png 用途不明，暂不动（删除需用户确认）
 - 规范文件改版（AGENTS.md→指针 + CLAUDE.md + PROJECT-LEAD.md）已由用户完成并生效
 - 远端推送（git push）属绝对禁止项，所有提交停留在本地
