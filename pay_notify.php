@@ -10,10 +10,22 @@ if (alipay_verify($_POST)) {
     $tradeStatus = (string)($_POST['trade_status'] ?? '');
     $order = $outTradeNo !== '' ? one('SELECT * FROM orders WHERE order_no=?', [$outTradeNo]) : null;
     if ($order && ($tradeStatus === 'TRADE_SUCCESS' || $tradeStatus === 'TRADE_FINISHED')) {
-        $reply = 'success'; // 幂等：已 paid 订单不重复执行，仍应答 success 让支付宝停止重发
-        if ($order['status'] === 'pending') {
-            try { change_order((int)$order['id'], (int)$order['user_id'], 'pay', ['payment_method' => 'alipay_sandbox']); }
-            catch (DomainException $e) { $reply = 'fail'; }
+        // 金额比对（口径同 pay.php：小计−券−积分抵现−会员折扣）；回调缺 total_amount 或格式非法均视为不符
+        $payable = (int)cents($order['total_amount']) - (int)cents($order['discount_amount']) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents'];
+        $callbackAmount = $_POST['total_amount'] ?? null;
+        $amountOk = false;
+        try { $amountOk = $callbackAmount !== null && (int)cents($callbackAmount) === $payable; }
+        catch (DomainException $e) { $amountOk = false; }
+        if (!$amountOk) {
+            // 面向支付宝应答 fail 触发重发；日志带订单号与两侧金额便于排障，不暴露表结构
+            error_log('pay_notify amount mismatch order_no=' . $outTradeNo . ' user_id=' . $order['user_id'] . ' callback=' . var_export($callbackAmount, true) . ' payable_cents=' . $payable);
+            $reply = 'fail';
+        } else {
+            $reply = 'success'; // 幂等：已 paid 订单不重复执行，仍应答 success 让支付宝停止重发
+            if ($order['status'] === 'pending') {
+                try { change_order((int)$order['id'], (int)$order['user_id'], 'pay', ['payment_method' => 'alipay_sandbox']); }
+                catch (DomainException $e) { $reply = 'fail'; }
+            }
         }
     }
 }

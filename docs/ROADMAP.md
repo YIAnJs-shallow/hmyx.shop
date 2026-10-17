@@ -14,10 +14,11 @@
 | P1 | 后台 RBAC 权限矩阵自查（13 权限 × 5 角色覆盖面） | ✅ 2026-10-16 用户已批准并完成（全项通过） |
 | P2 | 商品搜索升级（MySQL 全文索引 vs 现有 LIKE，需开源对比表） | 🔍 对比表已出（2026-10-16），待用户拍板 |
 | P2 | 未跟踪文件处置：egg-carton-13.png（入库或删除，删除需用户确认） | ⬜ 待用户定 |
-| P2 | pay_notify 增加 total_amount 与库内应付金额比对（最佳实践增强） | ⬜ 记录未做 |
+| P2 | pay_notify 增加 total_amount 与库内应付金额比对（最佳实践增强） | ✅ 2026-10-17 用户已批准并完成 |
 
 ## 已完成（近期）
 
+- `（本次）` pay_notify 金额比对增强（用户已批准）：回调 total_amount 与库内应付比对（口径同 pay.php），不符应答 fail 并记日志；新增 ALIPAY_VERIFY_KEY_OVERRIDE 测试注入口径（同 GATEWAY_OVERRIDE 惯例，不触 secrets）；断言 263→265 全绿
 - `cecd153` 规范文件改版检查点提交（AGENTS.md 指针化 + CLAUDE.md + PROJECT-LEAD.md）
 - `（本次）` 售后口径修复：① 退款三处（仅退款/退货退款/拼团超时）事务内返还积分抵扣，复用 grant_points 同向幂等；② 退货退款不再积累等级消费——shipped 订单售后完成置 cancelled（与仅退款/拼团口径一致），已 completed 订单保持完成态（终身制不扣减）。断言 259→263 全绿
 - `7df431f` P1 复核完成标记 + 2 项口径问题记录

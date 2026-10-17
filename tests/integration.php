@@ -684,6 +684,20 @@ check(strpos($returnForged,'验签失败')!==false && one('SELECT status FROM or
 $_SESSION=['user_id'=>$buyer,'role'=>'user'];
 $notifyForged = render_alipay_page(__DIR__.'/../pay_notify.php', ['user_id'=>$buyer,'role'=>'user'], [], ['out_trade_no'=>one('SELECT order_no FROM orders WHERE id=?',[$alipayOrder])['order_no'],'trade_status'=>'TRADE_SUCCESS','sign'=>'forged-sign','sign_type'=>'RSA2']);
 check(trim($notifyForged)==='fail' && one('SELECT status FROM orders WHERE id=?',[$alipayOrder])['status']==='pending','pay_notify with forged sign replies fail and keeps order pending');
+// 4b) pay_notify.php：验签通过但回调金额与库内应付不符 → fail 且订单保持 pending（注入应用公钥自验，同 CI 口径）
+$verifyKeyB64 = trim(str_replace(["-----BEGIN PUBLIC KEY-----", "-----END PUBLIC KEY-----", "\n", "\r"], '', $appPub));
+putenv('ALIPAY_VERIFY_KEY_OVERRIDE=' . $verifyKeyB64);
+$mismatchOrderRow = one('SELECT * FROM orders WHERE id=?',[$alipayOrder]);
+$mismatchParams = alipay_sign(['out_trade_no'=>$mismatchOrderRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>'0.01']);
+$notifyMismatch = render_alipay_page(__DIR__.'/../pay_notify.php', ['user_id'=>$buyer,'role'=>'user'], [], $mismatchParams);
+check(trim($notifyMismatch)==='fail' && one('SELECT status FROM orders WHERE id=?',[$alipayOrder])['status']==='pending','pay_notify with signed amount mismatch replies fail and keeps order pending');
+// 4c) pay_notify.php：金额与库内应付一致 → 应答 success 且订单置 paid
+$amountOkOrder = (int)create_orders($buyer,$p1,1,$address,'alipay-amount-test')[0];
+$amountOkRow = one('SELECT * FROM orders WHERE id=?',[$amountOkOrder]);
+$amountOkParams = alipay_sign(['out_trade_no'=>$amountOkRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>money((int)cents($amountOkRow['total_amount']) - (int)cents($amountOkRow['discount_amount']) - (int)$amountOkRow['points_discount_cents'] - (int)$amountOkRow['member_discount_cents'])]);
+$notifyAmountOk = render_alipay_page(__DIR__.'/../pay_notify.php', ['user_id'=>$buyer,'role'=>'user'], [], $amountOkParams);
+check(trim($notifyAmountOk)==='success' && one('SELECT status FROM orders WHERE id=?',[$amountOkOrder])['status']==='paid','pay_notify with matching amount replies success and marks order paid');
+putenv('ALIPAY_VERIFY_KEY_OVERRIDE');
 // 5) 支付成功分支复用：alipay_sandbox 渠道在演示支付关闭时仍可走通，且幂等防重
 putenv('SHOP_DEMO_PAYMENT=0');
 change_order($alipayOrder,$buyer,'pay',['payment_method'=>'alipay_sandbox']);

@@ -49,11 +49,12 @@ function alipay_sign(array $params) {
     return $params;
 }
 
-// 验签：$publicKey 可传 Base64 或 PEM（默认用支付宝公钥常量）；缺参/验签失败一律 false
+// 验签：$publicKey 可传 Base64 或 PEM（默认用支付宝公钥常量；环境变量 ALIPAY_VERIFY_KEY_OVERRIDE 仅用于集成测试注入应用公钥自验）；缺参/验签失败一律 false
 function alipay_verify(array $params, $publicKey = null) {
     if (!isset($params['sign']) || !is_string($params['sign']) || $params['sign'] === '') return false;
     $content = alipay_sign_content($params);
-    $pem = alipay_public_key_pem($publicKey !== null ? $publicKey : ALIPAY_ALIPAY_PUBLIC_KEY);
+    $defaultKey = getenv('ALIPAY_VERIFY_KEY_OVERRIDE') ?: ALIPAY_ALIPAY_PUBLIC_KEY;
+    $pem = alipay_public_key_pem($publicKey !== null ? $publicKey : $defaultKey);
     $pub = openssl_pkey_get_public($pem);
     if ($pub === false) return false;
     $ok = openssl_verify($content, base64_decode($params['sign'], true), $pub, OPENSSL_ALGO_SHA256);
