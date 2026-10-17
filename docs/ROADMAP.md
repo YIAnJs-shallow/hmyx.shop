@@ -16,7 +16,7 @@
 | P2 | 未跟踪文件处置：egg-carton-13.png | ✅ 2026-10-17 用户已自行删除 |
 | P2 | pay_notify 增加 total_amount 与库内应付金额比对（最佳实践增强） | ✅ 2026-10-17 用户已批准并完成 |
 | P1 | **方向 A·运营深度：后台搜索词分析看板**（search_logs 已积累数据，后台无分析页） | ✅ 2026-10-17 完成，正式库 DDL 已获批准并执行（results 列已验证存在） |
-| P2 | 异地备份 | ⏸ 用户已授权推送私有仓库，待提供仓库地址 |
+| P2 | 异地备份 | ✅ 2026-10-17 闭环：私有仓库 github.com/YIAnJs-shallow/hmyx.shop，用户执行首次推送，本地与 origin/main 同步；CI 于 push 到 main 自动运行 |
 
 ### 开工方案：后台搜索词分析看板（2026-10-17，默认自主执行）
 
@@ -56,8 +56,15 @@
 - 规范文件改版（AGENTS.md→指针 + CLAUDE.md + PROJECT-LEAD.md）已由用户完成并生效
 - 远端推送（git push）属绝对禁止项，所有提交停留在本地
 
+## 推送协作规则（2026-10-17 用户确认）
+
+- 远端仓库：github.com/YIAnJs-shallow/hmyx.shop（main），首次推送已完成，本地与 origin/main 同步。
+- **push 由用户（或经用户指示的灵犀）执行；Claude 绝对禁止 push 不变**。每完成一个模块提交后，在汇报末尾提醒一行"已有 N 个本地提交未推送"。
+- CI 在 push 到 main 时自动运行，若 Actions 红灯，把失败日志要点列入下次汇报。
+
 ## 决策记录
 
+- **备份与推送分工（2026-10-17）**：远端 origin=github.com/YIAnJs-shallow/hmyx.shop（私有）；**push 一律由用户本人执行**，Claude 每完成一个模块在汇报中提醒"该 git push 了"；CI 于 push 到 main 自动触发
 - **不迁移框架**：维持原生 PHP + lib 收敛，理由=迁移成本远大于收益，且项目规范禁止为小功能拖入框架级依赖
 - **CI 用 shivammathur/setup-php@v2**（MIT，PHP 生态事实标准），不自写安装逻辑；测试密钥现场生成一次性 RSA，不入库
 - **退款口径全站统一**：小计 − 券 − 积分抵现 − 会员折扣（shop.php / pay_return / cron_orders 三处一致）
