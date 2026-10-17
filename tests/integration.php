@@ -971,6 +971,31 @@ $guestCenterHtml=render_user_center_page([]);
 check(strpos($guestCenterHtml,'会员等级')===false,'user center hides member level section for guests');
 $memberCenterHtml=render_user_center_page(['user_id'=>$levelUser,'role'=>'user']);
 check(strpos($memberCenterHtml,'会员等级：银卡')!==false && strpos($memberCenterHtml,'累计实付')!==false,'user center shows level badge and lifetime spending');
+// ===== 结算页最优券推荐：GET 默认选最大面额券，POST 用户选择优先（含"不使用"），无券用户无提示 =====
+function render_checkout_page(array $session, array $get, array $post = []) {
+    $backupGet=$_GET; $backupPost=$_POST; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+    $_SESSION=$session; $_GET=$get; $_POST=$post; $_SERVER['REQUEST_METHOD']=($post?'POST':'GET');
+    ob_start();
+    include __DIR__.'/../checkout.php';
+    $html=ob_get_clean();
+    $_GET=$backupGet; $_POST=$backupPost; $_SESSION=$backupSession;
+    if ($backupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$backupMethod;
+    return $html;
+}
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('推荐测试券A：减3',300,0,10)"); $recCouponA=(int)$conn->insert_id;
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('推荐测试券B：减8',800,0,10)"); $recCouponB=(int)$conn->insert_id;
+coupon_claim($buyer,$recCouponA); coupon_claim($buyer,$recCouponB);
+$checkoutGetHtml=render_checkout_page(['user_id'=>$buyer,'role'=>'user'],['product_id'=>$p1,'quantity'=>1]);
+preg_match_all('#<option value="(\d+)"( selected)?>'.preg_quote('推荐测试券','/').'[^（]*（立减 ¥([0-9.]+)#u',$checkoutGetHtml,$optMatches,PREG_SET_ORDER);
+$bestDiscountCents=0; foreach ($optMatches as $m) $bestDiscountCents=max($bestDiscountCents,(int)round(((float)$m[3])*100));
+$selectedOpt=null; foreach ($optMatches as $m) if (!empty($m[2])) $selectedOpt=$m;
+check($selectedOpt!==null && (int)round(((float)$selectedOpt[3])*100)===$bestDiscountCents && $bestDiscountCents===800 && strpos($selectedOpt[0],'推荐测试券B')!==false, 'checkout GET preselects the highest-discount coupon by default');
+check(strpos($checkoutGetHtml,'已为你选中最优惠的优惠券')!==false, 'checkout shows best-coupon hint when a coupon is preselected');
+$checkoutPostHtml=render_checkout_page(['user_id'=>$buyer,'role'=>'user'],['product_id'=>$p1,'quantity'=>1],['product_id'=>$p1,'quantity'=>1,'user_coupon_id'=>0,'checkout_token'=>'']);
+check(strpos($checkoutPostHtml,' selected')===false && strpos($checkoutPostHtml,'已为你选中最优惠的优惠券')!==false, 'checkout POST respects explicit no-coupon choice without preselecting');
+$noCouponUser=insert_user('rec-nocoupon-'.bin2hex(random_bytes(4)),'user');
+$noCouponHtml=render_checkout_page(['user_id'=>$noCouponUser,'role'=>'user'],['product_id'=>$p1,'quantity'=>1]);
+check(strpos($noCouponHtml,'已为你选中最优惠的优惠券')===false && strpos($noCouponHtml,'暂无可用优惠券')!==false, 'checkout hides hint and shows coupon-free hint for users without coupons');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
 foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {

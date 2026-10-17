@@ -37,6 +37,9 @@ $availableCoupons=($lines && !$groupBuyId)?coupons_for_user($userId,$couponBaseT
 $selectedCouponId=0;
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     foreach ($availableCoupons as $c) if ((int)$c['id']===(int)($_POST['user_coupon_id'] ?? 0)) $selectedCouponId=(int)$c['id'];
+} elseif ($availableCoupons) {
+    // 最优券推荐：GET 首次打开默认选中面额最大的可用券（coupons_for_user 已按面额降序，封顶后仍最优），用户可改选"不使用"
+    $selectedCouponId=(int)$availableCoupons[0]['id'];
 }
 $selectedCoupon=null;
 foreach ($availableCoupons as $c) if ((int)$c['id']===$selectedCouponId) $selectedCoupon=$c;
@@ -58,7 +61,7 @@ if ($error) echo '<p class="notice error" role="alert">'.h($error).'</p>';
 <?php foreach($addresses as $i=>$a): ?><label><input type="radio" name="address_id" value="<?=(int)$a['id']?>" <?=$i===0?'checked':''?> required><?=h($a['receiver_name'])?> · <?=h($a['receiver_phone'])?><br><?=h($a['receiver_address'])?></label><?php endforeach; if (!$addresses) echo '<p>请先添加收货地址，再返回此页面刷新。</p>'; ?></section>
 <section class="card"><h2>商品明细</h2><?php foreach($lines as $line): ?><p><?=h($line['title'])?><?= $line['sku_name'] ? '（'.h($line['sku_name']).'）' : '' ?> × <?=(int)$line['quantity']?> <strong>¥ <?=money($line['subtotal_cents'])?></strong></p><?php endforeach; ?>
 <?php if ($groupBuyId && $lines): ?><p class="notice">当前为拼团订单：<?=((int)$groupBuy['size'])?> 人成团，团购价单件 ¥ <?=money((int)$groupBuy['price_cents'])?>；未成团前商家不发货，超时未成团将自动退款。拼团订单暂不支持优惠券与积分抵扣。</p><?php endif; ?>
-<?php if ($availableCoupons): ?><hr class="divider"><label>使用优惠券：<select name="user_coupon_id"><option value="0">不使用</option><?php foreach($availableCoupons as $c): ?><option value="<?=(int)$c['id']?>" <?=(int)$c['id']===$selectedCouponId?'selected':''?>><?=h($c['title'])?>（立减 ¥<?=money((int)$c['discount_cents'])?><?=((int)$c['min_spend_cents']>0?'，满 ¥'.money((int)$c['min_spend_cents']):'')?>）</option><?php endforeach; ?></select></label>
+<?php if ($availableCoupons): ?><hr class="divider"><label>使用优惠券：<select name="user_coupon_id"><option value="0">不使用</option><?php foreach($availableCoupons as $c): ?><option value="<?=(int)$c['id']?>" <?=(int)$c['id']===$selectedCouponId?'selected':''?>><?=h($c['title'])?>（立减 ¥<?=money((int)$c['discount_cents'])?><?=((int)$c['min_spend_cents']>0?'，满 ¥'.money((int)$c['min_spend_cents']):'')?>）</option><?php endforeach; ?></select></label><p class="muted">已为你选中最优惠的优惠券，如不需要可改选"不使用"。</p>
 <?php elseif ($lines): ?><p class="muted">暂无可用优惠券，<a href="my_coupons.php">去领券</a></p><?php endif; ?>
 <?php if ($availablePoints>0 && $payable>0): ?><hr class="divider"><label><input type="checkbox" name="use_points" value="1" <?=(int)($_POST['use_points'] ?? 0)===1?'checked':''?>> 使用积分抵扣（可用积分 <strong><?=(int)$availablePoints?></strong>，本次最多可抵 <strong>¥ <?=money($pointsDeductible)?></strong>，上限为应付金额的 10%，1 元 = 100 积分）</label><?php endif; ?>
 <hr class="divider"><p>商品合计 <strong>¥ <?=money($grandTotal)?></strong></p><?php if ($memberDiscountCents>0): ?><p>会员折扣 <strong>- ¥ <?=money($memberDiscountCents)?></strong></p><?php endif; ?><p>优惠券优惠 <strong>- ¥ <?=money($couponDiscountCents)?></strong></p><p>实付 <strong class="price">¥ <?=money($payable)?></strong></p><p class="muted">当前商品免运费；不同店铺分别下单、支付和发货。未付款订单 3 小时后关闭。积分抵扣在支付成功时才扣减，余额不足自动按无抵扣支付。</p><button name="submit_order" value="1" <?=(!$addresses||!$lines)?'disabled':''?>>提交订单</button></section></form>
