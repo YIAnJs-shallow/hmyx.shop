@@ -996,6 +996,85 @@ check(strpos($checkoutPostHtml,' selected')===false && strpos($checkoutPostHtml,
 $noCouponUser=insert_user('rec-nocoupon-'.bin2hex(random_bytes(4)),'user');
 $noCouponHtml=render_checkout_page(['user_id'=>$noCouponUser,'role'=>'user'],['product_id'=>$p1,'quantity'=>1]);
 check(strpos($noCouponHtml,'已为你选中最优惠的优惠券')===false && strpos($noCouponHtml,'暂无可用优惠券')!==false, 'checkout hides hint and shows coupon-free hint for users without coupons');
+// ===== 优惠券玩法扩展：适用范围（scope）+ 领取后有效期（valid_days）+ 详情页领券 =====
+function render_my_coupons_page(array $session) {
+    $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+    $_SESSION=$session; $_SERVER['REQUEST_METHOD']='GET';
+    ob_start();
+    include __DIR__.'/../my_coupons.php';
+    $html=ob_get_clean();
+    $_SESSION=$backupSession;
+    if ($backupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$backupMethod;
+    return $html;
+}
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('范围测试商品A','20.00',5,?,?,1,'approved')",[$category,$shop]); $pScopeA=(int)$conn->insert_id;
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('范围测试商品B','20.00',5,?,?,1,'approved')",[$category,$shop]); $pScopeB=(int)$conn->insert_id;
+// --- 适用范围：指定商品券用于该商品订单生效、用于其他商品订单被拒（服务端权威校验） ---
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count,scope,product_id) VALUES('指定商品券A',500,0,10,'product',?)",[$pScopeA]); $scopeCouponA=(int)$conn->insert_id;
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count,scope,product_id) VALUES('指定商品券B',500,0,10,'product',?)",[$pScopeB]); $scopeCouponB=(int)$conn->insert_id;
+coupon_claim($buyer,$scopeCouponA);
+$scopeUcId=(int)one('SELECT id FROM user_coupons WHERE coupon_id=? AND user_id=?',[$scopeCouponA,$buyer])['id'];
+$scopeOrder=(int)create_orders($buyer,$pScopeA,1,$address,'scope-ok',$scopeUcId)[0];
+check(one('SELECT discount_amount FROM orders WHERE id=?',[$scopeOrder])['discount_amount']==='5.00' && one('SELECT status FROM user_coupons WHERE id=?',[$scopeUcId])['status']==='used','scope product coupon applies to order containing the product and is consumed');
+$rejected=false;
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count,scope,product_id) VALUES('指定商品券A2',500,0,10,'product',?)",[$pScopeA]); $scopeCouponA2=(int)$conn->insert_id;
+coupon_claim($buyer,$scopeCouponA2);
+$scopeUcId2=(int)one('SELECT id FROM user_coupons WHERE coupon_id=? AND user_id=?',[$scopeCouponA2,$buyer])['id'];
+try { create_orders($buyer,$pScopeB,1,$address,'scope-reject',$scopeUcId2); } catch (DomainException $e) { $rejected=strpos($e->getMessage(),'仅适用于指定商品')!==false; }
+check($rejected,'scope product coupon rejected server-side for order without the product');
+// --- 结算页下拉按范围过滤（展示层），权威校验已在 consume 层验证 ---
+coupon_claim($other,$scopeCouponA); coupon_claim($other,$scopeCouponB);
+$checkoutScopeA=render_checkout_page(['user_id'=>$other,'role'=>'user'],['product_id'=>$pScopeA,'quantity'=>1]);
+check(strpos($checkoutScopeA,'指定商品券A')!==false && strpos($checkoutScopeA,'指定商品券B')===false,'checkout dropdown shows product-scoped coupon only for matching product');
+$checkoutScopeB=render_checkout_page(['user_id'=>$other,'role'=>'user'],['product_id'=>$pScopeB,'quantity'=>1]);
+check(strpos($checkoutScopeB,'指定商品券A')===false,'checkout dropdown hides product-scoped coupon for other product');
+// --- 详情页领券区块：全场券+指定本商品券展示，其他商品指定券不展示，未登录登录链接带回跳 ---
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('详情页全场券',200,0,10)"); $couponAllDetail=(int)$conn->insert_id;
+$backupSessCoupon=$_SESSION;
+$_SESSION=[];
+$guestDetail=render_detail_page(['id'=>$pScopeA]);
+check(strpos($guestDetail,'详情页全场券')!==false && strpos($guestDetail,'指定商品券A')!==false && strpos($guestDetail,'指定商品券B')===false,'product detail shows all-scope and matching coupons only');
+check(strpos($guestDetail,'user_login.php?next=')!==false && strpos($guestDetail,'登录后领取')!==false,'guest detail coupon block links to login with return url');
+$claimUser=insert_user('detail-claim-'.bin2hex(random_bytes(4)),'user');
+$_SESSION=['user_id'=>$claimUser,'role'=>'user'];
+$claimDetail=render_detail_page(['id'=>$pScopeA]);
+check(preg_match('#<form class="inline" method="post"[^>]*>.*?claim_coupon_id#s',$claimDetail)===1,'logged-in detail renders claim button');
+check(strpos(coupon_claim($claimUser,$scopeCouponA),'领取成功')===0,'detail claim succeeds via coupon_claim');
+check(coupon_claim($claimUser,$scopeCouponA)==='您已领取过该优惠券','duplicate claim blocked with idempotent message');
+$claimedAgain=render_detail_page(['id'=>$pScopeA]);
+check(strpos($claimedAgain,'指定商品券A')===false || strpos($claimedAgain,'value="'.(int)$scopeCouponA.'"')===false,'claimed coupon no longer offered on detail page');
+$_SESSION=$backupSessCoupon;
+// --- 领取后有效期：valid_days=1 领取后过期不可用但保留记录；NULL 永久 ---
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count,valid_days) VALUES('限时领取券',300,0,10,1)"); $validDaysCoupon=(int)$conn->insert_id;
+coupon_claim($buyer,$validDaysCoupon);
+$vdUcId=(int)one('SELECT id FROM user_coupons WHERE coupon_id=? AND user_id=?',[$validDaysCoupon,$buyer])['id'];
+query('UPDATE user_coupons SET claimed_at=NOW()-INTERVAL 2 DAY WHERE id=?',[$vdUcId]);
+check(!in_array($vdUcId,array_column(coupons_for_user($buyer),'id'),true),'valid_days expired coupon excluded from usable coupon list');
+$vdRejected=false;
+try { create_orders($buyer,$pScopeA,1,$address,'vd-reject',$vdUcId); } catch (DomainException $e) { $vdRejected=strpos($e->getMessage(),'已过期')!==false; }
+check($vdRejected,'valid_days expired coupon rejected at consume before pricing');
+$myCouponsHtml=render_my_coupons_page(['user_id'=>$buyer,'role'=>'user']);
+check(strpos($myCouponsHtml,'【已过期】')!==false && one('SELECT status FROM user_coupons WHERE id=?',[$vdUcId])['status']==='unused','my coupons shows expired badge while record status intact');
+coupon_claim($buyer,$couponAllDetail);
+query('UPDATE user_coupons SET claimed_at=NOW()-INTERVAL 40 DAY WHERE coupon_id=? AND user_id=?',[$couponAllDetail,$buyer]);
+check(in_array((int)one('SELECT id FROM user_coupons WHERE coupon_id=? AND user_id=?',[$couponAllDetail,$buyer])['id'],array_column(coupons_for_user($buyer),'id'),true),'coupon without valid_days stays usable regardless of claimed age');
+// --- 后台新字段：白名单校验与持久化、页面渲染 ---
+rejects(function () { admin_create_coupon('范围校验券',500,0,10,0,'','product',999999,''); }, 'admin coupon create rejects nonexistent scope product');
+rejects(function () { admin_create_coupon('天数校验券',500,0,10,0,'','all',0,'0'); }, 'admin coupon create rejects invalid valid_days');
+rejects(function () { admin_create_coupon('枚举校验券',500,0,10,0,'','bogus',0,''); }, 'admin coupon create rejects invalid scope enum');
+$adminScopeId=admin_create_coupon('后台范围券',500,0,10,0,'','product',$pScopeA,7);
+$adminScopeRow=one('SELECT scope,product_id,valid_days FROM coupons WHERE id=?',[$adminScopeId]);
+check($adminScopeRow['scope']==='product' && (int)$adminScopeRow['product_id']===(int)$pScopeA && (int)$adminScopeRow['valid_days']===7,'admin coupon create persists scope product and valid days');
+$adminAllId=admin_create_coupon('后台全场天数券',500,0,10,0,'','all',0,'3');
+$adminAllRow=one('SELECT scope,product_id,valid_days FROM coupons WHERE id=?',[$adminAllId]);
+check($adminAllRow['scope']==='all' && $adminAllRow['product_id']===null && (int)$adminAllRow['valid_days']===3,'admin coupon create persists all scope with null product');
+$_SERVER['REMOTE_ADDR']='127.0.0.1';
+$backupRemoteAdmin=$backupRemote ?? null;
+$_SESSION['admin']=['id'=>$superId]; refresh_admin_session();
+ob_start(); include __DIR__.'/../admin/coupons.php'; $adminCouponPage=ob_get_clean();
+check(strpos($adminCouponPage,'适用商品')!==false && strpos($adminCouponPage,'领取后有效天数')!==false && strpos($adminCouponPage,'指定：范围测试商品A')!==false,'admin coupon page renders new fields and scope column');
+unset($_SESSION['admin']);
+if ($backupRemoteAdmin!==null) $_SERVER['REMOTE_ADDR']=$backupRemoteAdmin; else unset($_SERVER['REMOTE_ADDR']);
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
 foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {

@@ -248,7 +248,7 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
         }
         $grandMemberDiscount = array_sum($memberShares);
         if ($userCouponId) {
-            $discountTotal = coupon_consume_locked($userId, $userCouponId, $grandTotal - $grandMemberDiscount);
+            $discountTotal = coupon_consume_locked($userId, $userCouponId, $grandTotal - $grandMemberDiscount, array_map(function ($l) { return (int)$l['id']; }, $lines));
             foreach ($groups as $shopId => $items) $orderTotals[$shopId] = array_sum(array_column($items, 'subtotal_cents'));
             $shares = coupon_split_discount($discountTotal, $orderTotals);
         }

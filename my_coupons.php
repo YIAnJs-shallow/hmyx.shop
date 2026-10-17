@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['claim_coupon_id'])) {
         $message=$e instanceof DomainException?$e->getMessage():'领取失败，请稍后重试';
     }
 }
-$mine=rows('SELECT uc.id, uc.status, uc.claimed_at, c.title, c.discount_cents, c.min_spend_cents, c.expire_at
+$mine=rows('SELECT uc.id, uc.status, uc.claimed_at, c.title, c.discount_cents, c.min_spend_cents, c.expire_at, c.valid_days
             FROM user_coupons uc JOIN coupons c ON c.id=uc.coupon_id
             WHERE uc.user_id=? ORDER BY uc.status ASC, uc.claimed_at DESC',[$userId]);
 $public=rows('SELECT c.* FROM coupons c
@@ -29,7 +29,7 @@ if ($message) echo '<p class="notice error" role="alert">'.h($message).'</p>';
 <?php foreach ($mine as $c): ?>
 <p><?=h($c['title'])?> · 立减 ¥<?=money((int)$c['discount_cents'])?><?=((int)$c['min_spend_cents']>0?'，满 ¥'.money((int)$c['min_spend_cents']).' 可用':'，无门槛')?>
 <?=($c['expire_at']?'，有效期至 '.h($c['expire_at']):'')?>
-<strong><?= $c['status']==='unused'?'【未使用】':'【已使用】'?></strong></p>
+<strong><?= $c['status']==='used'?'【已使用】':(coupon_user_expired($c)?'【已过期】':'【未使用】')?></strong></p>
 <?php endforeach; ?>
 </section>
 <?php if ($public): ?>

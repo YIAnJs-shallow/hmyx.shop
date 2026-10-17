@@ -15,19 +15,35 @@ if (!function_exists('query')) {
     function one($sql, $params = []) { return query($sql, $params)->get_result()->fetch_assoc(); }
 }
 
-/** 用户可用的未使用优惠券（可加最低消费过滤） */
-function coupons_for_user($userId, $grandTotalCents = null) {
-    $sql = 'SELECT uc.id, c.title, c.discount_cents, c.min_spend_cents, c.expire_at
+/** 用户可用的未使用优惠券（可加最低消费过滤；$orderProductIds 传数组时按券适用范围过滤，null 保持既有行为） */
+function coupons_for_user($userId, $grandTotalCents = null, $orderProductIds = null) {
+    $sql = 'SELECT uc.id, c.title, c.discount_cents, c.min_spend_cents, c.expire_at, c.scope, c.product_id, c.valid_days
             FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id
             WHERE uc.user_id = ? AND uc.status = "unused" AND c.active = 1
-              AND (c.expire_at IS NULL OR c.expire_at > NOW())';
+              AND (c.expire_at IS NULL OR c.expire_at > NOW())
+              AND (c.valid_days IS NULL OR uc.claimed_at + INTERVAL c.valid_days DAY > NOW())';
     $params = [(int)$userId];
     if ($grandTotalCents !== null) {
         $sql .= ' AND c.min_spend_cents <= ?';
         $params[] = (int)$grandTotalCents;
     }
+    // 适用范围过滤：scope=product 时本次结算商品必须包含券指定商品（供下拉展示与预览；权威校验在 coupon_consume_locked）
+    if ($orderProductIds !== null) {
+        $ids = array_values(array_unique(array_map('intval', (array)$orderProductIds)));
+        $sql .= $ids
+            ? ' AND (c.scope = "all" OR (c.scope = "product" AND c.product_id IN ('.implode(',', $ids).')))'
+            : ' AND c.scope = "all"';
+    }
     $sql .= ' ORDER BY c.discount_cents DESC, uc.id ASC';
     return rows($sql, $params);
+}
+
+/** 领取后有效期判定：valid_days 非空时按 claimed_at + valid_days 时点比较（status 枚举不动，过期仅表现为不可用与展示"已过期"） */
+function coupon_user_expired(array $uc) {
+    if ($uc['valid_days'] === null) return false;
+    $days = (int)$uc['valid_days'];
+    if ($days <= 0) return true;
+    return strtotime((string)$uc['claimed_at']) + $days * 86400 <= time();
 }
 
 /**
@@ -91,14 +107,19 @@ function coupon_grant_newuser($userId, $inOuterTransaction = false) {
  * 下单时核销优惠券（在 create_orders 的事务内调用，不自行开关事务）
  * 返回优惠金额（分）；无效则抛出异常。
  */
-function coupon_consume_locked($userId, $userCouponId, $grandTotalCents) {
-    $uc = one('SELECT uc.*, c.discount_cents, c.min_spend_cents, c.active, c.expire_at
+function coupon_consume_locked($userId, $userCouponId, $grandTotalCents, $orderProductIds = null) {
+    $uc = one('SELECT uc.*, c.discount_cents, c.min_spend_cents, c.active, c.expire_at, c.scope, c.product_id, c.valid_days
                FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id
                WHERE uc.id=? AND uc.user_id=? FOR UPDATE', [(int)$userCouponId, (int)$userId]);
     if (!$uc) throw new DomainException('优惠券不存在');
     if ($uc['status'] !== 'unused') throw new DomainException('优惠券已使用，请重新选择');
     if (!(int)$uc['active']) throw new DomainException('优惠券已下架');
     if ($uc['expire_at'] && strtotime($uc['expire_at']) <= time()) throw new DomainException('优惠券已过期');
+    if (coupon_user_expired($uc)) throw new DomainException('优惠券已过期');
+    // 适用范围权威校验：scope=product 时本次订单商品必须包含指定商品（先校验后计价，服务端兜底防篡改）
+    if (($uc['scope'] ?? 'all') === 'product' && !in_array((int)$uc['product_id'], array_map('intval', (array)$orderProductIds), true)) {
+        throw new DomainException('该优惠券仅适用于指定商品');
+    }
     if ((int)$grandTotalCents < (int)$uc['min_spend_cents']) throw new DomainException('未达到该优惠券的最低使用金额');
     query("UPDATE user_coupons SET status='used', used_at=NOW() WHERE id=? AND status='unused'", [(int)$uc['id']]);
     return coupon_preview($uc, $grandTotalCents);
@@ -114,7 +135,7 @@ function coupon_restore_for_order($orderId) {
 }
 
 /** 后台创建优惠券（校验后 INSERT，返回新券 id）；非法输入抛 DomainException，审计由调用方记录 */
-function admin_create_coupon($title, $discountCents, $minSpendCents, $totalCount, $isNewuser, $expireAt) {
+function admin_create_coupon($title, $discountCents, $minSpendCents, $totalCount, $isNewuser, $expireAt, $scope = 'all', $productId = 0, $validDays = null) {
     $title = trim((string)$title);
     $discountCents = (int)$discountCents;
     $minSpendCents = (int)$minSpendCents;
@@ -130,8 +151,24 @@ function admin_create_coupon($title, $discountCents, $minSpendCents, $totalCount
         if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $expireAt) || strtotime($expireAt) === false) throw new DomainException('有效期格式须为 Y-m-d H:i:s');
         if (strtotime($expireAt) <= time()) throw new DomainException('有效期须晚于当前时间');
     }
-    query('INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count,is_newuser,expire_at) VALUES(?,?,?,?,?,?)',
-        [$title, $discountCents, $minSpendCents, $totalCount, $isNewuser, $expireAt]);
+    // 适用范围与领取后有效天数（服务端白名单：scope 枚举校验、指定商品须存在、有效天数 1-3650）
+    if (!in_array($scope, ['all', 'product'], true)) throw new DomainException('适用范围无效');
+    if ($scope === 'product') {
+        $productId = (int)$productId;
+        if (!$productId || !one('SELECT id FROM products WHERE id=?', [$productId])) throw new DomainException('适用商品无效');
+    } else {
+        $productId = null;
+    }
+    $validDays = trim((string)$validDays);
+    if ($validDays === '') {
+        $validDays = null;
+    } elseif (!preg_match('/^\d{1,4}$/D', $validDays) || (int)$validDays < 1 || (int)$validDays > 3650) {
+        throw new DomainException('领取后有效天数须为 1 至 3650 的整数');
+    } else {
+        $validDays = (int)$validDays;
+    }
+    query('INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count,is_newuser,expire_at,scope,product_id,valid_days) VALUES(?,?,?,?,?,?,?,?,?)',
+        [$title, $discountCents, $minSpendCents, $totalCount, $isNewuser, $expireAt, $scope, $productId, $validDays]);
     return (int)$GLOBALS['conn']->insert_id;
 }
 

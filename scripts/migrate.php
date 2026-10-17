@@ -391,6 +391,10 @@ query("CREATE TABLE IF NOT EXISTS user_coupons (
     FOREIGN KEY (coupon_id) REFERENCES coupons(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// 优惠券玩法扩展（幂等加列）：scope 适用范围（all=全场 / product=指定商品）、product_id 指定商品、valid_days 领取后有效天数（NULL=永久，沿用 expire_at）
+add_column('coupons','scope',"enum('all','product') NOT NULL DEFAULT 'all'");
+add_column('coupons','product_id','int NULL');
+add_column('coupons','valid_days','int NULL');
 if (!one('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME="orders" AND COLUMN_NAME="discount_amount"')) {
     query('ALTER TABLE orders ADD COLUMN discount_amount decimal(10,2) NOT NULL DEFAULT 0 AFTER total_amount');
 }

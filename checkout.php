@@ -33,7 +33,7 @@ $grandTotal=0; foreach ($lines as $line) $grandTotal+=$line['subtotal_cents'];
 $memberPercent=level_discount_percent($userId);
 $memberDiscountCents=$memberPercent<100?(int)round($grandTotal*(100-$memberPercent)/100):0;
 $couponBaseTotal=$grandTotal-$memberDiscountCents;
-$availableCoupons=($lines && !$groupBuyId)?coupons_for_user($userId,$couponBaseTotal):[];
+$availableCoupons=($lines && !$groupBuyId)?coupons_for_user($userId,$couponBaseTotal,array_map(function ($l) { return (int)$l['id']; }, $lines)):[];
 $selectedCouponId=0;
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     foreach ($availableCoupons as $c) if ((int)$c['id']===(int)($_POST['user_coupon_id'] ?? 0)) $selectedCouponId=(int)$c['id'];
