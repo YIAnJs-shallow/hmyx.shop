@@ -542,6 +542,21 @@ ob_start(); include __DIR__.'/../admin/search_logs.php'; $adminSearchHtml = ob_g
 check(strpos($adminSearchHtml, '搜索词分析') !== false && strpos($adminSearchHtml, '分析测试无果词') !== false && strpos($adminSearchHtml, '无结果词（选品缺口）') !== false, 'admin search analytics page aggregates keywords and lists zero-result gap');
 unset($_SESSION['admin']);
 if ($backupRemote !== null) $_SERVER['REMOTE_ADDR'] = $backupRemote; else unset($_SERVER['REMOTE_ADDR']);
+// ===== 运营数据看板：admin_stats_overview 聚合口径独立复算 + 页面渲染（dashboard.view 鉴权） =====
+$stats = admin_stats_overview();
+$paidStatsRows = rows("SELECT total_amount, discount_amount, points_discount_cents, member_discount_cents FROM orders WHERE status IN ('paid','shipped','completed') AND created_at >= NOW() - INTERVAL 30 DAY");
+$expectPaidCount = count($paidStatsRows);
+$expectGmvCents = 0;
+foreach ($paidStatsRows as $r) { $expectGmvCents += (int)round(((float)$r['total_amount'] - (float)$r['discount_amount']) * 100) - (int)$r['points_discount_cents'] - (int)$r['member_discount_cents']; }
+check($stats['last30_paid_orders'] === $expectPaidCount && $stats['last30_gmv_cents'] === $expectGmvCents, 'stats overview gmv matches independent recount of paid orders in cents');
+check(array_sum($stats['status_dist']) > 0 && isset($stats['status_dist']['paid']) && !empty($stats['payment_dist']), 'stats overview aggregates status and payment distributions');
+check($stats['refund_rate_30d'] === null || $stats['refund_rate_30d'] >= 0, 'stats refund rate null-safe when no paid orders');
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+$_SESSION['admin'] = ['id' => $superId]; refresh_admin_session();
+ob_start(); include __DIR__.'/../admin/stats.php'; $adminStatsHtml = ob_get_clean();
+check(strpos($adminStatsHtml, '运营数据看板') !== false && strpos($adminStatsHtml, '销量 TOP10') !== false && strpos($adminStatsHtml, '支付方式分布') !== false, 'admin stats page renders overview cards and distribution tables');
+unset($_SESSION['admin']);
+if ($backupRemote !== null) $_SERVER['REMOTE_ADDR'] = $backupRemote; else unset($_SERVER['REMOTE_ADDR']);
 // ===== 后台优惠券管理：coupon.manage 权限矩阵、创建券、上下架切换、列表渲染 =====
 $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 query("INSERT INTO admin_users(username,password,role_id) SELECT 'qa_marketer',?,id FROM admin_roles WHERE role_code='normal_admin'",[password_hash(bin2hex(random_bytes(20)),PASSWORD_DEFAULT)]);

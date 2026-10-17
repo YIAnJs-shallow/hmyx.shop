@@ -580,6 +580,56 @@ function admin_move_recommendation($id, $dir) {
     query('UPDATE home_recommendations SET sort=? WHERE id=?', [(int)$row['sort'], (int)$neighbor['id']]);
     return true;
 }
+// ===== 运营数据看板：近 7/30 天核心指标纯读聚合（口径：实付分 = total_amount − discount_amount − points_discount_cents − member_discount_cents，与退款口径决策一致） =====
+// 返回各维度数组：窗口内订单数/已支付单数/GMV 分、状态分布、支付方式分布、销量 TOP10、退款率
+function admin_stats_overview() {
+    $paidStates = "('paid','shipped','completed')";
+    $out = [];
+    foreach ([7 => 'last7', 30 => 'last30'] as $days => $key) {
+        $row = one("SELECT COUNT(*) AS orders,
+                           SUM(status IN $paidStates) AS paid_orders,
+                           COALESCE(SUM(CASE WHEN status IN $paidStates
+                                             THEN ROUND((total_amount - discount_amount) * 100) - points_discount_cents - member_discount_cents
+                                             ELSE 0 END), 0) AS gmv_cents
+                    FROM orders
+                    WHERE created_at >= NOW() - INTERVAL $days DAY");
+        $out[$key . '_orders'] = (int)$row['orders'];
+        $out[$key . '_paid_orders'] = (int)$row['paid_orders'];
+        $out[$key . '_gmv_cents'] = (int)$row['gmv_cents'];
+    }
+    // 近 30 天订单状态分布
+    $out['status_dist'] = [];
+    foreach (rows("SELECT status, COUNT(*) AS cnt FROM orders
+                   WHERE created_at >= NOW() - INTERVAL 30 DAY
+                   GROUP BY status ORDER BY cnt DESC") as $r) {
+        $out['status_dist'][$r['status']] = (int)$r['cnt'];
+    }
+    // 近 30 天支付方式分布（已支付口径）
+    $out['payment_dist'] = [];
+    foreach (rows("SELECT payment_method, COUNT(*) AS cnt FROM orders
+                   WHERE created_at >= NOW() - INTERVAL 30 DAY AND status IN $paidStates AND payment_method IS NOT NULL
+                   GROUP BY payment_method ORDER BY cnt DESC") as $r) {
+        $out['payment_dist'][$r['payment_method']] = (int)$r['cnt'];
+    }
+    // 近 30 天销量 TOP10 商品（已支付口径，order_items 聚合，商品可能已删则用快照标题）
+    $out['top_products'] = rows("SELECT oi.product_id, COALESCE(oi.product_title, p.title, '（已删除商品）') AS title,
+                                        SUM(oi.quantity) AS sold
+                                 FROM order_items oi
+                                 JOIN orders o ON o.id = oi.order_id
+                                 LEFT JOIN products p ON p.id = oi.product_id
+                                 WHERE o.created_at >= NOW() - INTERVAL 30 DAY AND o.status IN $paidStates
+                                 GROUP BY oi.product_id, oi.product_title, p.title
+                                 ORDER BY sold DESC, oi.product_id ASC
+                                 LIMIT 10");
+    // 退款率：近 30 天审批通过的退款单 / 近 30 天已支付单（分母为 0 时返回 null 而非除零）
+    $refunds = (int)one("SELECT COUNT(*) AS c FROM refund_requests
+                         WHERE created_at >= NOW() - INTERVAL 30 DAY AND status='approved'")['c'];
+    $out['refund_approved_30d'] = $refunds;
+    $out['refund_rate_30d'] = $out['last30_paid_orders'] > 0
+        ? round($refunds / $out['last30_paid_orders'] * 100, 1)
+        : null;
+    return $out;
+}
 function page_start($title) {
     echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=2"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
     if (!empty($_SESSION['user_id'])) {
