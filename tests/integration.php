@@ -24,7 +24,7 @@ function rejects($fn,$message) { try { $fn(); } catch (DomainException $e) { che
 function insert_user($name,$role) { global $conn; query('INSERT INTO users(username,password,role) VALUES(?,?,?)',[$name,password_hash('TestShop2026!',PASSWORD_DEFAULT),$role]); return (int)$conn->insert_id; }
 require_once __DIR__.'/../lib/admin_auth.php';
 check(count(rows('SELECT id FROM admin_roles'))===5,'RBAC roles seeded idempotently');
-check(count(rows('SELECT id FROM admin_permissions'))===13,'RBAC permissions seeded idempotently');
+check(count(rows('SELECT id FROM admin_permissions'))===14,'RBAC permissions seeded idempotently');
 query("INSERT INTO admin_users(username,password,role_id,is_super) SELECT 'qa_super',?,id,1 FROM admin_roles WHERE role_code='super'",[password_hash(bin2hex(random_bytes(20)),PASSWORD_DEFAULT)]);
 $superId=(int)$conn->insert_id;
 query("INSERT INTO admin_users(username,password,role_id) SELECT 'qa_operator',?,id FROM admin_roles WHERE role_code='order_manager'",[password_hash(bin2hex(random_bytes(20)),PASSWORD_DEFAULT)]);
@@ -540,6 +540,26 @@ $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 $_SESSION['admin'] = ['id' => $superId]; refresh_admin_session();
 ob_start(); include __DIR__.'/../admin/search_logs.php'; $adminSearchHtml = ob_get_clean();
 check(strpos($adminSearchHtml, '搜索词分析') !== false && strpos($adminSearchHtml, '分析测试无果词') !== false && strpos($adminSearchHtml, '无结果词（选品缺口）') !== false, 'admin search analytics page aggregates keywords and lists zero-result gap');
+unset($_SESSION['admin']);
+if ($backupRemote !== null) $_SERVER['REMOTE_ADDR'] = $backupRemote; else unset($_SERVER['REMOTE_ADDR']);
+// ===== 后台优惠券管理：coupon.manage 权限矩阵、创建券、上下架切换、列表渲染 =====
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+query("INSERT INTO admin_users(username,password,role_id) SELECT 'qa_marketer',?,id FROM admin_roles WHERE role_code='normal_admin'",[password_hash(bin2hex(random_bytes(20)),PASSWORD_DEFAULT)]);
+$marketerId = (int)$conn->insert_id;
+$_SESSION['admin'] = ['id' => $marketerId]; refresh_admin_session();
+check(admin_has_permission('coupon.manage') && !admin_has_permission('role.manage'),'normal_admin granted coupon.manage but not role.manage');
+$_SESSION['admin'] = ['id' => $operatorId]; refresh_admin_session();
+check(!admin_has_permission('coupon.manage'),'order_manager denied coupon.manage');
+// 创建券与上下架：校验逻辑在 lib/coupon.php admin_create_coupon（仿 create_review 模式），页面仅调用
+require_once __DIR__ . '/../lib/coupon.php';
+$adminCouponId = admin_create_coupon('后台创建测试券', 500, 3000, 10, 1, '');
+$couponRow = one('SELECT * FROM coupons WHERE id=?', [$adminCouponId]);
+check($couponRow !== null && (int)$couponRow['discount_cents'] === 500 && (int)$couponRow['min_spend_cents'] === 3000 && (int)$couponRow['total_count'] === 10 && (int)$couponRow['is_newuser'] === 1 && $couponRow['expire_at'] === null, 'admin coupon create persists validated fields');
+rejects(function () { admin_create_coupon('短', 500, 3000, 10, 0, ''); }, 'coupon create rejects invalid title');
+rejects(function () { admin_create_coupon('过期时间测试券', 500, 3000, 10, 0, '2020-01-01 00:00:00'); }, 'coupon create rejects past expire time');
+$_SESSION['admin'] = ['id' => $superId]; refresh_admin_session();
+ob_start(); include __DIR__ . '/../admin/coupons.php'; $adminCouponHtml = ob_get_clean();
+check(strpos($adminCouponHtml, '后台创建测试券') !== false && strpos($adminCouponHtml, '下架') !== false, 'admin coupon list renders created coupon and state actions');
 unset($_SESSION['admin']);
 if ($backupRemote !== null) $_SERVER['REMOTE_ADDR'] = $backupRemote; else unset($_SERVER['REMOTE_ADDR']);
 // ===== 商品风控自动预检（lib/risk_check.php：违禁词/价格/重复图片 + 预警入审核日志） =====

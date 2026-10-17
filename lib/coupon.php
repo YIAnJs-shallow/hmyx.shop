@@ -113,6 +113,28 @@ function coupon_restore_for_order($orderId) {
     query("UPDATE user_coupons SET status='unused', used_at=NULL WHERE id=? AND status='used'", [(int)$ucId]);
 }
 
+/** 后台创建优惠券（校验后 INSERT，返回新券 id）；非法输入抛 DomainException，审计由调用方记录 */
+function admin_create_coupon($title, $discountCents, $minSpendCents, $totalCount, $isNewuser, $expireAt) {
+    $title = trim((string)$title);
+    $discountCents = (int)$discountCents;
+    $minSpendCents = (int)$minSpendCents;
+    $totalCount = (int)$totalCount;
+    $isNewuser = ((int)$isNewuser === 1) ? 1 : 0;
+    $expireAt = trim((string)$expireAt);
+    if (mb_strlen($title) < 2 || mb_strlen($title) > 100) throw new DomainException('券标题需为 2 至 100 个字符');
+    if ($discountCents <= 0 || $discountCents > 99999999) throw new DomainException('面额须为 1 至 99999999 分');
+    if ($minSpendCents < 0 || $minSpendCents > 99999999) throw new DomainException('最低消费门槛无效');
+    if ($totalCount <= 0 || $totalCount > 1000000) throw new DomainException('发放总量须为 1 至 1000000 张');
+    if ($expireAt === '') { $expireAt = null; }
+    else {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $expireAt) || strtotime($expireAt) === false) throw new DomainException('有效期格式须为 Y-m-d H:i:s');
+        if (strtotime($expireAt) <= time()) throw new DomainException('有效期须晚于当前时间');
+    }
+    query('INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count,is_newuser,expire_at) VALUES(?,?,?,?,?,?)',
+        [$title, $discountCents, $minSpendCents, $totalCount, $isNewuser, $expireAt]);
+    return (int)$GLOBALS['conn']->insert_id;
+}
+
 /** 按各店订单金额比例把整单优惠分摊到各订单（分为单位，余数给第一单） */
 function coupon_split_discount($discountCents, array $orderTotals) {
     $grand = array_sum($orderTotals);

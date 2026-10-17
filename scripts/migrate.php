@@ -264,7 +264,8 @@ query("INSERT IGNORE INTO admin_permissions (permission_code,module,description)
     ('role.view','权限','查看角色列表'),
     ('role.manage','权限','角色与授权管理（仅超管）'),
     ('admin.manage','管理员','管理员账号管理（仅超管）'),
-    ('audit.view','审计','查看审计日志')");
+    ('audit.view','审计','查看审计日志'),
+    ('coupon.manage','营销','优惠券创建与上下架')");
 
 // 3. 角色-权限关联表
 query("CREATE TABLE IF NOT EXISTS admin_role_permissions (
@@ -282,7 +283,7 @@ query("INSERT IGNORE INTO admin_role_permissions (role_id, permission_id)
         ('normal_admin','dashboard.view'),('normal_admin','product.view'),('normal_admin','product.audit'),
         ('normal_admin','product.manage'),('normal_admin','order.view'),('normal_admin','order.ship'),
         ('normal_admin','order.refund'),('normal_admin','user.view'),('normal_admin','user.manage'),
-        ('normal_admin','role.view'),('normal_admin','audit.view'),
+        ('normal_admin','role.view'),('normal_admin','audit.view'),('normal_admin','coupon.manage'),
         ('product_auditor','dashboard.view'),('product_auditor','product.view'),('product_auditor','product.audit'),
         ('order_manager','dashboard.view'),('order_manager','order.view'),('order_manager','order.ship'),('order_manager','order.refund'),
         ('user_manager','dashboard.view'),('user_manager','user.view'),('user_manager','user.manage')
