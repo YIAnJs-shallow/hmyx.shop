@@ -44,8 +44,9 @@ jobs:
           PRIVATE_DIR="$(dirname "$(dirname "$PWD")")/private/my_project"
           mkdir -p "$PRIVATE_DIR"
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/key.pem
-          PRIV="$(openssl pkey -in /tmp/key.pem -outform DER | base64 -w0)"
-          PUB="$(openssl pkey -in /tmp/key.pem -pubout -outform DER | base64 -w0)"
+          # 直接取 PEM 的 base64 体（不做 DER 往返：DER 转换会破坏 PKCS#8 结构，导致 openssl_pkey_get_private 报 wrong tag）
+          PRIV="$(openssl pkey -in /tmp/key.pem | grep -v 'BEGIN\|END' | tr -d '\n\r')"
+          PUB="$(openssl pkey -in /tmp/key.pem -pubout | grep -v 'BEGIN\|END' | tr -d '\n\r')"
           cat > "$PRIVATE_DIR/secrets.php" <<EOF
           <?php
           define('ALIPAY_SANDBOX_APP_ID', 'ci-test-app');
