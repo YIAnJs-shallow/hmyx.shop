@@ -20,6 +20,7 @@
 | P1 | **方向 A 第三项：首页推荐位管理**（用户 2026-10-17 拍板方向 A） | ✅ 2026-10-17 完成（测试库 282 断言全绿；正式库建表 DDL 已获批准并执行（表已验证存在）） |
 | P1 | **方向 B：运营数据看板**（用户 2026-10-17 拍板按推荐 B 执行） | ✅ 2026-10-17 完成（b815a3a，286 断言全绿） |
 | P1 | **方向 C 第一项：结算页最优券推荐**（2026-10-17 自主推进；领券中心经核查 my_coupons.php 已含"可领取"区，不重复造页） | ✅ 2026-10-17 完成（290 断言全绿） |
+| P1 | **方向 C 第二项：优惠券玩法扩展**（2026-10-17 用户下发定死方案：券适用范围/领取后有效期/详情页领券/后台新字段） | ✅ 2026-10-17 完成（2c33913，310 断言全绿；正式库 DDL 待用户确认执行） |
 | P2 | 异地备份 | ✅ 2026-10-17 闭环：私有仓库 github.com/YIAnJs-shallow/hmyx.shop，用户执行首次推送，本地与 origin/main 同步；CI 于 push 到 main 自动运行 |
 | P2 | CI 闭环 | ✅ 2026-10-17 转绿：`4da34d8` 密钥生成去 DER 往返（修复 openssl wrong tag）、`71dffc7` 密钥目录 basename 对齐 project_private_config_dir()（修复 secrets.php 写错位置未加载）；远端 Actions 已绿 |
 
@@ -61,6 +62,13 @@
 - **负面清单**：不改 lib/coupon.php 任何逻辑、不加新页面、不加权限码、无 DDL、无依赖、不动 CSS/JS。
 - **边界**：资金金额计算逻辑零改动，仅默认下拉选中项变化（用户可改选"不使用"），属展示层；断言 286→290（GET 默认最优、提示渲染、POST 显式不使用不被覆盖、无券用户无提示）。
 - **完成情况**：✅ 2026-10-17 完成，290 断言全绿。调试中一次失误：断言误将 option value 比对为券 id（实为 user_coupons.id），已修正为按券名与面额断言。
+
+### 完成汇报：优惠券玩法扩展（方向 C 第二项，2026-10-17，用户下发定死方案）
+
+- **做了什么**：① migrate.php 幂等加列 coupons.scope / coupons.product_id / coupons.valid_days（测试套件连跑两次 migrate 已验证幂等）；② lib/coupon.php：coupons_for_user 增加范围过滤（可选参数，null 保持既有行为）与 valid_days 过滤、新增 coupon_user_expired（时点比较，status 枚举不动）、coupon_consume_locked 增加可选 $orderProductIds 参数并在金额计算前做范围+有效期权威校验、admin_create_coupon 扩展白名单校验（scope 枚举/指定商品须存在/有效天数 1-3650）；③ create_orders 与 checkout.php 传入订单商品清单；④ detail.php 领券区块（全场+指定本商品券、登录一键领取复用 coupon_claim、未登录 user_login.php?next= 带回跳）；⑤ my_coupons.php 过期券显示【已过期】（记录保留）；⑥ admin/coupons.php 表单加"适用商品"下拉（默认全场）与"领取后有效天数"，列表加两列。
+- **验证**：php -l 七文件全过；php tests/integration.php 310 断言全绿（290→310，+20）；未触正式库。
+- **执行中失误（均已当场修正）**：一次 Edit 引入乱码文本（min_spend_cents列出）已修复；一次 helper 重名（render_detail_page 已有既有版本，改用既有版本）；一次测试反例误用已核销券记录（改为独立第二张指定券）；一次断言漏先领券。
+- **边界**：正式库 DDL（3 列幂等加列）待用户确认后执行 scripts/migrate.php。
 
 ## 已完成（近期）
 
