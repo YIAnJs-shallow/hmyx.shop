@@ -562,6 +562,24 @@ ob_start(); include __DIR__ . '/../admin/coupons.php'; $adminCouponHtml = ob_get
 check(strpos($adminCouponHtml, '后台创建测试券') !== false && strpos($adminCouponHtml, '下架') !== false, 'admin coupon list renders created coupon and state actions');
 unset($_SESSION['admin']);
 if ($backupRemote !== null) $_SERVER['REMOTE_ADDR'] = $backupRemote; else unset($_SERVER['REMOTE_ADDR']);
+// ===== 首页推荐位：后台配置/防重/排序交换/前台渲染与隐藏 =====
+$visibleIds = array_column(rows("SELECT p.id FROM products p WHERE ".$visWhere." ORDER BY p.id LIMIT 3"), 'id');
+$recId1 = admin_set_recommendation('today', (int)$visibleIds[0]);
+$recId2 = admin_set_recommendation('today', (int)$visibleIds[1]);
+$recRow1 = one('SELECT * FROM home_recommendations WHERE id=?', [$recId1]);
+check($recRow1 !== null && $recRow1['slot'] === 'today' && (int)$recRow1['product_id'] === (int)$visibleIds[0] && (int)$recRow1['sort'] === 1 && (int)one('SELECT sort FROM home_recommendations WHERE id=?', [$recId2])['sort'] === 2, 'admin set recommendation persists slot product and incremental sort');
+rejects(function () use ($visibleIds) { admin_set_recommendation('today', (int)$visibleIds[0]); }, 'duplicate slot product rejected');
+rejects(function () use ($visibleIds) { admin_set_recommendation('invalid_slot', (int)$visibleIds[0]); }, 'invalid slot code rejected');
+rejects(function () { admin_move_recommendation(999999, 'up'); }, 'moving nonexistent recommendation rejected');
+admin_move_recommendation($recId1, 'down');
+check((int)one('SELECT sort FROM home_recommendations WHERE id=?', [$recId1])['sort'] === 2 && (int)one('SELECT sort FROM home_recommendations WHERE id=?', [$recId2])['sort'] === 1, 'admin move swaps sort with neighbor');
+rejects(function () use ($recId2) { admin_move_recommendation($recId2, 'up'); }, 'moving beyond top rejected');
+$slotsHome = render_home([]);
+$slotsSearch = render_home(['keyword' => '分析测试命中词']);
+check(strpos($slotsHome, '今日推荐') !== false && strpos($slotsHome, '✨') !== false && strpos($slotsSearch, '今日推荐') === false, 'home slots render on plain homepage but hidden under keyword search');
+admin_remove_recommendation($recId1);
+admin_remove_recommendation($recId2);
+check(one('SELECT id FROM home_recommendations WHERE id IN (?,?)', [$recId1, $recId2]) === null, 'admin remove deletes recommendation rows');
 // ===== 商品风控自动预检（lib/risk_check.php：违禁词/价格/重复图片 + 预警入审核日志） =====
 require_once __DIR__.'/../lib/risk_check.php';
 $riskCountBefore=(int)one('SELECT COUNT(*) AS n FROM products')['n'];

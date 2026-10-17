@@ -2,7 +2,7 @@
 
 > 负责人：Claude Code（授权见 PROJECT-LEAD.md）
 > 规范来源：`C:\Users\Lenovo\ai_operation_hobby.md`（唯一权威，不可修改）
-> 断言基线：274 条（2026-10-17，tests/integration.php）
+> 断言基线：282 条（2026-10-17，tests/integration.php）
 
 ## 当前优先级（P0 → P2）
 
@@ -17,6 +17,7 @@
 | P2 | pay_notify 增加 total_amount 与库内应付金额比对（最佳实践增强） | ✅ 2026-10-17 用户已批准并完成 |
 | P1 | **方向 A·运营深度：后台搜索词分析看板**（search_logs 已积累数据，后台无分析页） | ✅ 2026-10-17 完成，正式库 DDL 已获批准并执行（results 列已验证存在） |
 | P1 | **方向 A 第二项：后台优惠券管理**（复核发现 admin 无券管理页，券只能靠种子进库） | ✅ 2026-10-17 完成：admin/coupons.php + coupon.manage 权限（用户批准，矩阵 13→14），断言 268→274 |
+| P1 | **方向 A 第三项：首页推荐位管理**（用户 2026-10-17 拍板方向 A） | ✅ 2026-10-17 完成（测试库 282 断言全绿；**正式库建表 DDL 待用户确认后执行 migrate**） |
 | P2 | 异地备份 | ✅ 2026-10-17 闭环：私有仓库 github.com/YIAnJs-shallow/hmyx.shop，用户执行首次推送，本地与 origin/main 同步；CI 于 push 到 main 自动运行 |
 | P2 | CI 闭环 | ✅ 2026-10-17 转绿：`4da34d8` 密钥生成去 DER 往返（修复 openssl wrong tag）、`71dffc7` 密钥目录 basename 对齐 project_private_config_dir()（修复 secrets.php 写错位置未加载）；远端 Actions 已绿 |
 
@@ -34,6 +35,13 @@
 - **负面清单**：不动领券/核销/回补逻辑、不动前台任何页面、不加删除功能（有价证券物宁缺勿删）、不引入依赖。
 - **边界**：无 DDL、无新依赖；权限矩阵 13→14 经用户批准（2026-10-17）。
 - **完成情况**：✅ 已完成并提交 5948cef，274 断言全绿；正式库 migrate 已执行并验证授权生效。执行中失误一次：调试脚本误将测试券写入正式库，已当场清理（0 领取、删 1 行、无残留，审计日志按 append-only 保留），已向用户如实报告。
+
+### 开工方案：首页推荐位管理（2026-10-17，用户拍板方向 A；默认自主执行，DDL 上正式库前确认）
+
+- **目标**：后台为三个固定楼位（today 今日推荐 / new 新品速递 / clearance 清仓特卖）配置在售商品，前台首页在无搜索/筛选条件时按楼位渲染卡片（每楼位最多 8 个，sort 升序）。
+- **改动**：① migrate.php 幂等建表 `home_recommendations`（id / slot varchar(20) / product_id / sort int / created_at，UNIQUE(slot,product_id)，KEY(slot,sort)，FK→products ON DELETE CASCADE）；② lib/shop.php 新增 `home_recommend_slots()`（楼位白名单与标题）、`home_slot_products($slot,$limit)`（可见口径 JOIN）、`admin_set_recommendation` / `admin_remove_recommendation` / `admin_move_recommendation`（上移下移=与相邻行交换 sort）；③ 新页 admin/recommendations.php，鉴权复用 `product.manage`（不新增权限码）；④ index.php 在无 keyword/分类/筛选时渲染三楼位 section（复用现有卡片 class，不改 CSS）；⑤ tests 新增 4 条断言（274→278）。
+- **负面清单**：不动热销榜/猜你喜欢逻辑、不动 CSS/JS（无需 ?v 递增）、不新增权限码、不做定时上下架、不引入依赖。
+- **边界**：建表 DDL 上正式库前须向用户展示并确认（测试库先行验证）。
 
 ## 已完成（近期）
 

@@ -538,6 +538,48 @@ function recommend_for_user($userId, $limit = 8) {
     }
     return $items;
 }
+// ===== 首页推荐位：楼位白名单固定三席，后台配置、前台按 sort 升序渲染 =====
+function home_recommend_slots() {
+    return ['today' => '今日推荐', 'new' => '新品速递', 'clearance' => '清仓特卖'];
+}
+function home_slot_products($slot, $limit = 8) {
+    if (!isset(home_recommend_slots()[$slot])) return [];
+    return rows("SELECT p.id, p.title, p.image_url, p.price
+        FROM home_recommendations hr
+        JOIN products p ON p.id = hr.product_id
+        WHERE hr.slot = ? AND p.status = 1 AND p.audit_status = 'approved'
+          AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops s WHERE s.id = p.shop_id AND s.status = 1))
+        ORDER BY hr.sort ASC, hr.id ASC
+        LIMIT " . (int)$limit, [$slot]);
+}
+function admin_set_recommendation($slot, $productId) {
+    if (!isset(home_recommend_slots()[$slot])) throw new DomainException('无效的推荐楼位');
+    $product = one("SELECT id FROM products p WHERE p.id=? AND p.status=1 AND p.audit_status='approved' AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops s WHERE s.id=p.shop_id AND s.status=1))", [(int)$productId]);
+    if (!$product) throw new DomainException('仅可推荐在售且审核通过的商品');
+    $exists = one('SELECT id FROM home_recommendations WHERE slot=? AND product_id=?', [$slot, (int)$productId]);
+    if ($exists) throw new DomainException('该商品已在此楼位');
+    $maxSort = one('SELECT COALESCE(MAX(sort), 0) AS m FROM home_recommendations WHERE slot=?', [$slot]);
+    query('INSERT INTO home_recommendations(slot,product_id,sort) VALUES(?,?,?)', [$slot, (int)$productId, (int)$maxSort['m'] + 1]);
+    return (int)$GLOBALS['conn']->insert_id;
+}
+function admin_remove_recommendation($id) {
+    $stmt = query('DELETE FROM home_recommendations WHERE id=?', [(int)$id]);
+    if ($stmt->affected_rows !== 1) throw new DomainException('该推荐不存在或已移除');
+    return true;
+}
+// 上移/下移：与相邻行交换 sort（同楼位内），已是边界时抛出提示
+function admin_move_recommendation($id, $dir) {
+    if (!in_array($dir, ['up', 'down'], true)) throw new DomainException('无效的移动方向');
+    $row = one('SELECT * FROM home_recommendations WHERE id=? FOR UPDATE', [(int)$id]);
+    if (!$row) throw new DomainException('该推荐不存在');
+    $cmp = $dir === 'up' ? '<' : '>';
+    $order = $dir === 'up' ? 'DESC' : 'ASC';
+    $neighbor = one("SELECT * FROM home_recommendations WHERE slot=? AND (sort $cmp ? OR (sort = ? AND id $cmp ?)) ORDER BY sort $order, id $order LIMIT 1", [$row['slot'], (int)$row['sort'], (int)$row['sort'], (int)$row['id']]);
+    if (!$neighbor) throw new DomainException($dir === 'up' ? '已在楼位顶部' : '已在楼位底部');
+    query('UPDATE home_recommendations SET sort=? WHERE id=?', [(int)$neighbor['sort'], (int)$row['id']]);
+    query('UPDATE home_recommendations SET sort=? WHERE id=?', [(int)$row['sort'], (int)$neighbor['id']]);
+    return true;
+}
 function page_start($title) {
     echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=2"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
     if (!empty($_SESSION['user_id'])) {

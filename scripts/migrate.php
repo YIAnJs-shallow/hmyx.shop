@@ -472,6 +472,18 @@ query('CREATE TABLE IF NOT EXISTS search_logs (
 // 搜索命中数（后台搜索词分析用）：NULL=历史行未统计；0=该次搜索无结果（选品缺口信号）
 add_column('search_logs', 'results', "int NULL COMMENT '该次搜索命中的在售商品数（NULL=历史行未统计）' AFTER keyword");
 
+// ===== 首页推荐位：楼位白名单固定三席（today/new/clearance），商品删除时级联清理 =====
+query('CREATE TABLE IF NOT EXISTS home_recommendations (
+    id int AUTO_INCREMENT PRIMARY KEY,
+    slot varchar(20) NOT NULL,
+    product_id int NOT NULL,
+    sort int NOT NULL DEFAULT 0,
+    created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_slot_product (slot, product_id),
+    KEY idx_slot_sort (slot, sort),
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
 // ===== 消息中心：站内通知（未读角标与消息列表共用 KEY(user_id, read_at)） =====
 query("CREATE TABLE IF NOT EXISTS user_notifications (
     id bigint AUTO_INCREMENT PRIMARY KEY,

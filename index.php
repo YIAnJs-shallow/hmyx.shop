@@ -207,6 +207,10 @@ $my_searches = $is_logged_in && !empty($_SESSION['user_id'])
 // 5. 首页推荐板块数据：热销榜 + 猜你喜欢
 $best_sellers = best_sellers(10);
 $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
+// 6. 运营推荐楼位：后台配置的三席（today/new/clearance），仅首页无搜索/筛选条件时渲染
+$show_home_slots = $keyword === '' && $category_id <= 0 && $brand === '' && $material === '' && $price_min === null && $price_max === null && !$in_stock;
+$home_slot_data = [];
+if ($show_home_slots) foreach (home_recommend_slots() as $slot_code => $slot_title) $home_slot_data[$slot_code] = home_slot_products($slot_code);
 
 // 筛选链接生成：每个链接只切换自身维度，其余维度原样携带（空值/默认值剔除）
 $filter_query = function (array $override = []) use ($keyword, $category_id, $brand, $material, $price_min, $price_max, $sort, $in_stock) {
@@ -418,6 +422,28 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
             <a href="welcome.php" style="background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;font-weight:800;padding:11px 28px;border-radius:999px;text-decoration:none;box-shadow:0 10px 24px -8px rgba(245,158,11,0.7);white-space:nowrap;">查看详情</a>
         </div>
         <?php endif; ?>
+
+        <?php if (!empty($home_slot_data)): foreach (home_recommend_slots() as $slot_code => $slot_title): if (empty($home_slot_data[$slot_code])) continue; ?>
+        <!-- 运营推荐楼位：后台配置，sort 升序 -->
+        <section class="card">
+            <h3>✨ <?= h($slot_title) ?></h3>
+            <div class="grid">
+                <?php foreach ($home_slot_data[$slot_code] as $item): ?>
+                <article class="card">
+                    <a href="detail.php?id=<?php echo (int)$item['id']; ?>">
+                        <?php if (!empty($item['image_url']) && file_exists($item['image_url'])): ?>
+                            <img class="thumb" style="width:100%;height:150px;" src="<?php echo h($item['image_url']); ?>" alt="<?php echo h($item['title']); ?>">
+                        <?php else: ?>
+                            <span class="thumb" style="display:inline-flex;width:100%;height:150px;align-items:center;justify-content:center;font-size:2.5rem;">📦</span>
+                        <?php endif; ?>
+                    </a>
+                    <h3 style="margin-top:10px;"><a href="detail.php?id=<?php echo (int)$item['id']; ?>"><?php echo h($item['title']); ?></a></h3>
+                    <div class="price">￥<?php echo h(number_format((float)$item['price'], 2)); ?></div>
+                </article>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php endforeach; endif; ?>
 
         <?php if (!empty($best_sellers)): ?>
         <!-- 热销榜：按有效订单累计销量排序 -->
