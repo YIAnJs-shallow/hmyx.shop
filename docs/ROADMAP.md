@@ -2,7 +2,7 @@
 
 > 负责人：Claude Code（授权见 PROJECT-LEAD.md）
 > 规范来源：`C:\Users\Lenovo\ai_operation_hobby.md`（唯一权威，不可修改）
-> 断言基线：259 条（2026-10-16，tests/integration.php）
+> 断言基线：274 条（2026-10-17，tests/integration.php）
 
 ## 当前优先级（P0 → P2）
 
@@ -18,6 +18,7 @@
 | P1 | **方向 A·运营深度：后台搜索词分析看板**（search_logs 已积累数据，后台无分析页） | ✅ 2026-10-17 完成，正式库 DDL 已获批准并执行（results 列已验证存在） |
 | P1 | **方向 A 第二项：后台优惠券管理**（复核发现 admin 无券管理页，券只能靠种子进库） | ✅ 2026-10-17 完成：admin/coupons.php + coupon.manage 权限（用户批准，矩阵 13→14），断言 268→274 |
 | P2 | 异地备份 | ✅ 2026-10-17 闭环：私有仓库 github.com/YIAnJs-shallow/hmyx.shop，用户执行首次推送，本地与 origin/main 同步；CI 于 push 到 main 自动运行 |
+| P2 | CI 闭环 | ✅ 2026-10-17 转绿：`4da34d8` 密钥生成去 DER 往返（修复 openssl wrong tag）、`71dffc7` 密钥目录 basename 对齐 project_private_config_dir()（修复 secrets.php 写错位置未加载）；远端 Actions 已绿 |
 
 ### 开工方案：后台搜索词分析看板（2026-10-17，默认自主执行）
 
@@ -25,6 +26,14 @@
 - **改动**：① migrate.php `add_column('search_logs','results','int NULL ...')`（幂等，历史行 NULL=未统计）；② index.php 写搜索日志时同步记录关键词独立命中数（口径=status=1+approved+有效店铺+title/detail LIKE，addcslashes 转义）；③ 新页 admin/search_logs.php，鉴权复用 `dashboard.view`（不新增权限码）；④ tests 新增 3 条断言（265→268）。
 - **负面清单**：不动现有搜索主查询/联想/热门搜索逻辑、不新增权限码、不加缓存表、不引入图表库、不动 migrate 其他表。
 - **边界**：results 列 DDL 上正式库前须向用户展示并确认（测试库先行）。
+
+### 开工方案：后台优惠券管理（2026-10-17，补记；用户批准新增 coupon.manage 权限）
+
+- **目标**：后台可创建优惠券（标题/面额分/门槛分/总量/有效期/新人券标记）、上下架切换、查看领取与核销统计。
+- **改动**：① migrate.php 幂等 INSERT 权限 `coupon.manage`（营销模块）+ 授权 normal_admin；② admin/coupons.php 列表与创建/上下架（金额全分口径，POST 走 303 重定向）；③ lib/coupon.php 新增 `admin_create_coupon`（校验下沉，仿 create_review 模式），审计由页面记录；④ tests 新增 6 条断言（268→274：矩阵授予/拒绝、创建持久化、非法标题与过期时间拒绝、列表渲染）。
+- **负面清单**：不动领券/核销/回补逻辑、不动前台任何页面、不加删除功能（有价证券物宁缺勿删）、不引入依赖。
+- **边界**：无 DDL、无新依赖；权限矩阵 13→14 经用户批准（2026-10-17）。
+- **完成情况**：✅ 已完成并提交 5948cef，274 断言全绿；正式库 migrate 已执行并验证授权生效。执行中失误一次：调试脚本误将测试券写入正式库，已当场清理（0 领取、删 1 行、无残留，审计日志按 append-only 保留），已向用户如实报告。
 
 ## 已完成（近期）
 
@@ -53,9 +62,7 @@
 
 ## 阻塞项 / 待用户决策
 
-- egg-carton-13.png 用途不明，暂不动（删除需用户确认）
-- 规范文件改版（AGENTS.md→指针 + CLAUDE.md + PROJECT-LEAD.md）已由用户完成并生效
-- 远端推送（git push）属绝对禁止项，所有提交停留在本地
+- 无阻塞项；push 由用户执行（见下方推送协作规则），CI 待每次 push 后自动校验
 
 ## 推送协作规则（2026-10-17 用户确认）
 
@@ -72,6 +79,5 @@
 
 ## 下一步
 
-1. 售后退款链路复核（只读排查，发现问题先报告再改）
-2. RBAC 权限矩阵自查
-3. 视用户意向推进搜索升级（先出 GitHub 对比表）
+1. 等用户从下一阶段方向提案中拍板（见会话汇报：首页推荐位管理 / 运营数据看板 / 优惠券玩法扩展）
+2. 拍板后按规范先出开工方案（涉及依赖的先走开源对比表）
