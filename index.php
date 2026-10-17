@@ -42,9 +42,11 @@ if ($cat_result && $cat_result->num_rows > 0) {
 
 // 2. 获取搜索和筛选参数
 $keyword = isset($_GET['keyword']) ? trim($_GET['keyword']) : '';
-// GET 搜索时写入搜索日志（未登录 user_id 记 NULL），供联想词与热门搜索统计
+// GET 搜索时写入搜索日志（未登录 user_id 记 NULL），供联想词与热门搜索统计；同步记录关键词独立命中数（后台搜索词分析用）
 if ($keyword !== '' && mb_strlen($keyword) >= 2 && mb_strlen($keyword) <= 100) {
-    query('INSERT INTO search_logs(user_id,keyword) VALUES(?,?)', [!empty($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, $keyword]);
+    $kw_like = "%" . addcslashes($keyword, "%_\\") . "%";
+    $hitCount = (int)one("SELECT COUNT(*) c FROM products p WHERE p.status = 1 AND p.audit_status = 'approved' AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops s WHERE s.id = p.shop_id AND s.status = 1)) AND (p.title LIKE ? OR p.detail LIKE ?)", [$kw_like, $kw_like])['c'];
+    query('INSERT INTO search_logs(user_id,keyword,results) VALUES(?,?,?)', [!empty($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, $keyword, $hitCount]);
 }
 $category_id = isset($_GET['category_id']) ? intval($_GET['category_id']) : 0;
 

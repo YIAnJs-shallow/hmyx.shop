@@ -525,6 +525,23 @@ $pageHtml = render_home(['sort' => 'price_desc', 'price_min' => '1', 'price_max'
 check(preg_match('#<a href="([^"]*)">下一页</a>#', $pageHtml, $pageMatch) === 1, 'pagination next link rendered when results exceed one page');
 $nextHref = html_entity_decode($pageMatch[1]);
 check(strpos($nextHref, 'sort=price_desc') !== false && strpos($nextHref, 'price_min=1') !== false && strpos($nextHref, 'price_max=999') !== false && strpos($nextHref, 'in_stock=1') !== false && strpos($nextHref, 'page=2') !== false, 'pagination link carries all filter params');
+// ===== 搜索词分析：前台记录命中数（results 列），后台看板聚合展示（dashboard.view 鉴权） =====
+query('DELETE FROM search_logs WHERE keyword IN ("分析测试命中词","分析测试无果词")');
+render_home(['keyword'=>'分析测试命中词']);
+render_home(['keyword'=>'分析测试无果词']);
+$hitLog = one('SELECT results FROM search_logs WHERE keyword=? ORDER BY id DESC LIMIT 1',['分析测试命中词']);
+$missLog = one('SELECT results FROM search_logs WHERE keyword=? ORDER BY id DESC LIMIT 1',['分析测试无果词']);
+check($hitLog !== null && (int)$hitLog['results'] === 0 && $missLog !== null && (int)$missLog['results'] === 0, 'search log records zero-result hit count for keywords matching no visible products');
+$realKw = mb_substr(one('SELECT title FROM products p WHERE '.$visWhere.' ORDER BY p.id DESC LIMIT 1')['title'], 0, 2);
+render_home(['keyword'=>$realKw]);
+check((int)one('SELECT results FROM search_logs WHERE keyword=? ORDER BY id DESC LIMIT 1',[$realKw])['results'] > 0, 'search log records positive hit count for keyword matching visible products');
+$backupRemote = $_SERVER['REMOTE_ADDR'] ?? null;
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+$_SESSION['admin'] = ['id' => $superId]; refresh_admin_session();
+ob_start(); include __DIR__.'/../admin/search_logs.php'; $adminSearchHtml = ob_get_clean();
+check(strpos($adminSearchHtml, '搜索词分析') !== false && strpos($adminSearchHtml, '分析测试无果词') !== false && strpos($adminSearchHtml, '无结果词（选品缺口）') !== false, 'admin search analytics page aggregates keywords and lists zero-result gap');
+unset($_SESSION['admin']);
+if ($backupRemote !== null) $_SERVER['REMOTE_ADDR'] = $backupRemote; else unset($_SERVER['REMOTE_ADDR']);
 // ===== 商品风控自动预检（lib/risk_check.php：违禁词/价格/重复图片 + 预警入审核日志） =====
 require_once __DIR__.'/../lib/risk_check.php';
 $riskCountBefore=(int)one('SELECT COUNT(*) AS n FROM products')['n'];

@@ -468,6 +468,8 @@ query('CREATE TABLE IF NOT EXISTS search_logs (
     KEY idx_search_logs_keyword (keyword),
     KEY idx_search_logs_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+// 搜索命中数（后台搜索词分析用）：NULL=历史行未统计；0=该次搜索无结果（选品缺口信号）
+add_column('search_logs', 'results', "int NULL COMMENT '该次搜索命中的在售商品数（NULL=历史行未统计）' AFTER keyword");
 
 // ===== 消息中心：站内通知（未读角标与消息列表共用 KEY(user_id, read_at)） =====
 query("CREATE TABLE IF NOT EXISTS user_notifications (
