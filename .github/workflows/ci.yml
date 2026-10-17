@@ -41,7 +41,8 @@ jobs:
           mysql -h 127.0.0.1 -uroot -proot -e 'SELECT 1'
       - name: 生成测试专用密钥并写入私有配置目录
         run: |
-          PRIVATE_DIR="$(dirname "$(dirname "$PWD")")/private/my_project"
+          # 与 config/db.php 的 project_private_config_dir() 对齐：basename 取当前目录名（本地为 my_project，CI 为仓库名）
+          PRIVATE_DIR="$(dirname "$(dirname "$PWD")")/private/$(basename "$PWD")"
           mkdir -p "$PRIVATE_DIR"
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/key.pem
           # 直接取 PEM 的 base64 体（不做 DER 往返：DER 转换会破坏 PKCS#8 结构，导致 openssl_pkey_get_private 报 wrong tag）
