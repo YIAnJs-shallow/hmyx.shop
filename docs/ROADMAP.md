@@ -17,7 +17,7 @@
 | P2 | pay_notify 增加 total_amount 与库内应付金额比对（最佳实践增强） | ✅ 2026-10-17 用户已批准并完成 |
 | P1 | **方向 A·运营深度：后台搜索词分析看板**（search_logs 已积累数据，后台无分析页） | ✅ 2026-10-17 完成，正式库 DDL 已获批准并执行（results 列已验证存在） |
 | P1 | **方向 A 第二项：后台优惠券管理**（复核发现 admin 无券管理页，券只能靠种子进库） | ✅ 2026-10-17 完成：admin/coupons.php + coupon.manage 权限（用户批准，矩阵 13→14），断言 268→274 |
-| P1 | **方向 A 第三项：首页推荐位管理**（用户 2026-10-17 拍板方向 A） | ✅ 2026-10-17 完成（测试库 282 断言全绿；**正式库建表 DDL 待用户确认后执行 migrate**） |
+| P1 | **方向 A 第三项：首页推荐位管理**（用户 2026-10-17 拍板方向 A） | ✅ 2026-10-17 完成（测试库 282 断言全绿；正式库建表 DDL 已获批准并执行（表已验证存在）） |
 | P2 | 异地备份 | ✅ 2026-10-17 闭环：私有仓库 github.com/YIAnJs-shallow/hmyx.shop，用户执行首次推送，本地与 origin/main 同步；CI 于 push 到 main 自动运行 |
 | P2 | CI 闭环 | ✅ 2026-10-17 转绿：`4da34d8` 密钥生成去 DER 往返（修复 openssl wrong tag）、`71dffc7` 密钥目录 basename 对齐 project_private_config_dir()（修复 secrets.php 写错位置未加载）；远端 Actions 已绿 |
 
