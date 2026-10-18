@@ -23,6 +23,8 @@
 | P1 | **方向 C 第二项：优惠券玩法扩展**（2026-10-17 用户下发定死方案：券适用范围/领取后有效期/详情页领券/后台新字段） | ✅ 2026-10-17 完成（2c33913，310 断言全绿；正式库 DDL 待用户确认执行） |
 | P2 | 异地备份 | ✅ 2026-10-17 闭环：私有仓库 github.com/YIAnJs-shallow/hmyx.shop，用户执行首次推送，本地与 origin/main 同步；CI 于 push 到 main 自动运行 |
 | P2 | CI 闭环 | ✅ 2026-10-17 转绿：`4da34d8` 密钥生成去 DER 往返（修复 openssl wrong tag）、`71dffc7` 密钥目录 basename 对齐 project_private_config_dir()（修复 secrets.php 写错位置未加载）；远端 Actions 已绿 |
+| P1 | **任务一：图片搜索（拍照搜同款）**（2026-10-18 用户下发定死方案，只做执行） | ✅ 2026-10-18 完成（05223ad，320 断言全绿；正式 ARK Key 待用户填入 private/secrets.php） |
+| P1 | **任务二：预售定金（定金+尾款两段支付）**（2026-10-18 用户下发定死方案，只做执行） | ✅ 2026-10-18 完成（347 断言全绿；正式库 DDL 待用户确认执行 migrate） |
 
 ### 开工方案：后台搜索词分析看板（2026-10-17，默认自主执行）
 
@@ -62,6 +64,18 @@
 - **负面清单**：不改 lib/coupon.php 任何逻辑、不加新页面、不加权限码、无 DDL、无依赖、不动 CSS/JS。
 - **边界**：资金金额计算逻辑零改动，仅默认下拉选中项变化（用户可改选"不使用"），属展示层；断言 286→290（GET 默认最优、提示渲染、POST 显式不使用不被覆盖、无券用户无提示）。
 - **完成情况**：✅ 2026-10-17 完成，290 断言全绿。调试中一次失误：断言误将 option value 比对为券 id（实为 user_coupons.id），已修正为按券名与面额断言。
+
+### 完成汇报：图片搜索（任务一，2026-10-18，用户下发定死方案）
+
+- **做了什么**：① 新建 lib/image_search.php：调方舟 OpenAI 兼容接口（ARK_API_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions，模型 doubao-seed-2-0-lite-260428），密钥 ARK_API_KEY 读 Web 根目录外 private/my_project/secrets.php（未配置/调用失败优雅降级返回 null）；响应防御解析 image_search_sanitize（提取 JSON 数组、仅留中文/字母/数字/空格、去重、每词截 12 字、最多 8 词）；image_search_results 逐词 LIKE 检索（可见口径/匹配列/排序与 index.php 一致）；② 新页 search_image.php：上传校验复用 save_image_upload 口径（≤5MB、仅 jpg/png/webp、getimagesize 验证），图片读为 base64 后临时文件用后即删不落盘，结果页复用现有卡片渲染 + 关键词跳转完整搜索；③ index.php 搜索框旁加"📷 拍照搜同款"入口；④ config/secrets.example.php 加 ARK_API_KEY 注释占位，private/secrets.php 追加空值占位常量（未读取该文件内容，仅验证可解析）；⑤ 测试注入口 IMAGE_SEARCH_OVERRIDE（同 ALIPAY_GATEWAY_OVERRIDE 惯例）。
+- **验证**：php -l 五文件全过；320 断言全绿（310→320，+10：override 清洗/8 词截断/非法响应降级/无密钥降级/关键词检索命中与空结果/页面渲染与类型大小拒绝/首页入口）。
+- **遗留**：真实 ARK Key 由用户填入 private/secrets.php 的 ARK_API_KEY（当前空值=功能自动降级为"暂不可用"）。
+
+### 完成汇报：预售定金（任务二，2026-10-18，用户下发定死方案）
+
+- **做了什么**：① migrate.php 幂等加列 products.presale/deposit_cents/presale_end_at、orders.pay_stage(enum full/deposit/balance)/paid_cents；② lib/shop.php：parse_presale_fields（服务端权威校验定金>0 且<售价、截止晚于当前，未勾选保存即清空）、order_payable_cents（普通单口径不变；定金阶段=定金×数量，尾款=total−已付）、create_orders 加 $presale 通道（锁内校验预售商品/无规格/截止/定金配置，禁券/积分/拼团/购物车路径，免会员折扣，pay_stage='deposit' 入库）、change_order pay 拆分（定金支付后保持 pending 记 paid_cents；补尾款后 pay_stage='balance' 置 paid 走正常流程）、cancel 拒绝已付定金单、expire_orders 排除已付定金单；③ cron_orders.php：3 小时关单同样排除已付定金单，新增 cron_close_presale_balance_timeout（已付定金超 7 天未付尾款自动关单，沙箱走 alipay.trade.refund 失败留待重扫，演示支付直接关单）；④ pay.php/pay_notify.php/pay_return.php 统一改用 order_payable_cents（非预售单金额不变）并展示预售阶段信息（3 小时倒计时仅普通单渲染）；⑤ my_orders 待付尾款徽章+尾款金额/截止+补尾款按钮；detail.php 预售标记/定金/截止+隐藏加购；checkout.php 预售自动识别（禁券/积分/会员折扣，应付=定金×数量，展示两段说明）；cart.php 加购拒绝预售商品；product_edit.php（管理员与商户共用）加预售开关/定金/截止三字段（顺带修复 admin 分支 bind_param 16 类型对 15 参数的原有错位）。
+- **验证**：php -l 十二文件全过；347 断言全绿（320→347，+27：后台字段校验 6、下单拒绝 6、定金订单与阶段应付 2、定金支付 1、3h 窗口豁免 1、补尾款+正常收发货 2、不可自取消 1、7 天超时关单退定金 3、未付定金仍走 3h 1、沙箱定金回调 1、详情/订单/结算页面落点 3）。
+- **遗留**：正式库 DDL（5 列幂等加列）待用户确认后执行 scripts/migrate.php；预售暂限无规格商品（服务端拒绝多规格预售，与拼团同口径）。
 
 ### 完成汇报：优惠券玩法扩展（方向 C 第二项，2026-10-17，用户下发定死方案）
 

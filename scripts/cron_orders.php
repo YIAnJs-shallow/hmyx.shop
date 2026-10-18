@@ -10,11 +10,12 @@ require_once __DIR__.'/../lib/shop.php';
 function cron_close_timeout_orders() {
     global $conn;
     $closed = 0;
-    foreach (rows("SELECT id FROM orders WHERE status='pending' AND created_at < NOW() - INTERVAL 3 HOUR") as $candidate) {
+    // 已付定金待付尾款的预售订单不在 3 小时关单范围（由预售尾款超时任务单独处理）
+    foreach (rows("SELECT id FROM orders WHERE status='pending' AND created_at < NOW() - INTERVAL 3 HOUR AND NOT (pay_stage='deposit' AND paid_cents > 0)") as $candidate) {
         $conn->begin_transaction();
         try {
             // 事务内锁定订单行并复核状态与超时条件，防止与支付/取消并发产生重复回补
-            $order = one("SELECT * FROM orders WHERE id=? AND status='pending' AND created_at < NOW() - INTERVAL 3 HOUR FOR UPDATE", [(int)$candidate['id']]);
+            $order = one("SELECT * FROM orders WHERE id=? AND status='pending' AND created_at < NOW() - INTERVAL 3 HOUR AND NOT (pay_stage='deposit' AND paid_cents > 0) FOR UPDATE", [(int)$candidate['id']]);
             if (!$order) { $conn->commit(); continue; }
             release_stock($order);
             query("UPDATE orders SET status='cancelled' WHERE id=?", [(int)$order['id']]);
@@ -123,6 +124,35 @@ function cron_expire_group_orders() {
 // 4) 会员等级对账：completed 订单实付 SUM 与 users.total_spent_cents 比对，
 //    漂移则事务内修正快照并重算等级（level_recalc），error_log 记录漂移用户与差额。
 //    实付口径与 level_accrue 完全一致：total_amount − 优惠券 − 积分抵现 − 会员折扣。
+// ===== 预售尾款超时：已付定金超 7 天未付尾款的订单自动关单并全额退定金（沙箱支付走 alipay.trade.refund，失败留待重扫） =====
+function cron_close_presale_balance_timeout() {
+    global $conn;
+    $closed = 0;
+    foreach (rows("SELECT id FROM orders WHERE status='pending' AND pay_stage='deposit' AND paid_cents > 0 AND paid_at < NOW() - INTERVAL 7 DAY") as $candidate) {
+        $conn->begin_transaction();
+        $refundOk = true;
+        try {
+            // 事务内锁定订单行并复核超时条件（7 天以定金支付时间 paid_at 起算），防与补尾款/取消并发重复处理
+            $order = one("SELECT * FROM orders WHERE id=? AND status='pending' AND pay_stage='deposit' AND paid_cents > 0 AND paid_at < NOW() - INTERVAL 7 DAY FOR UPDATE", [(int)$candidate['id']]);
+            if (!$order) { $conn->commit(); continue; }
+            $refundCents = (int)round(((float)$order['paid_cents']) * 100);
+            if ($order['payment_method'] === 'alipay_sandbox') {
+                require_once __DIR__.'/../lib/alipay.php';
+                $refundOk = alipay_trade_refund($order['order_no'], $refundCents, $order['order_no'].'-P'.$order['id']);
+            }
+            if (!$refundOk) { $conn->commit(); continue; } // 退款失败留待下次重扫重试
+            release_stock($order);
+            query("UPDATE orders SET status='cancelled' WHERE id=?", [(int)$order['id']]);
+            notify((int)$order['user_id'], 'refund', '预售尾款超时，定金已退回', '订单 '.$order['order_no'].' 超过 7 天未支付尾款，已自动关闭并将定金按原支付方式退回。', 'my_orders.php');
+            $conn->commit();
+            $closed++;
+        } catch (Throwable $e) {
+            $conn->rollback();
+            error_log('cron close presale balance timeout order '.$candidate['id'].' failed: '.$e->getMessage());
+        }
+    }
+    return $closed;
+}
 function cron_reconcile_levels() {
     global $conn;
     $fixed = 0;
@@ -154,6 +184,7 @@ if (isset($argv[0]) && realpath($argv[0]) === __FILE__) {
     $closed = cron_close_timeout_orders();
     $received = cron_auto_receive_orders();
     $expiredGroups = cron_expire_group_orders();
+    $presaleClosed = cron_close_presale_balance_timeout();
     $reconciled = cron_reconcile_levels();
-    echo "关单 {$closed} 单，自动收货 {$received} 单，拼团超时处理 {$expiredGroups} 团，等级对账修正 {$reconciled} 人\n";
+    echo "关单 {$closed} 单，自动收货 {$received} 单，拼团超时处理 {$expiredGroups} 团，预售尾款超时关单 {$presaleClosed} 单，等级对账修正 {$reconciled} 人\n";
 }

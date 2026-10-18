@@ -211,6 +211,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg = $e->getMessage(); $msg_type = 'error';
     }
 
+    // 预售字段解析与校验（定金>0 且 < 售价、截止晚于当前；未勾选保存即清空预售配置）
+    $presale_on = 0; $presale_deposit_cents = null; $presale_end_at = null;
+    try {
+        list($presale_on, $presale_deposit_cents, $presale_end_at) = parse_presale_fields((int)round($price * 100), $_POST);
+    } catch (DomainException $e) {
+        $msg = $e->getMessage(); $msg_type = 'error';
+    }
+
     // 风控预检（商户提交审核时）：生效主图取新上传（临时文件可直接读内容）或沿用旧图；block 拒绝保存，warn 保存后写预警备注
     $riskEffectiveImage = $product['image_url'] ?? '';
     if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) $riskEffectiveImage = $_FILES['image']['tmp_name'];
@@ -276,8 +284,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // 审核策略：管理员编辑无需重审；商家编辑后回到待审核状态
                 $audit_status = $is_admin ? 'approved' : 'pending';
                 $sql = $is_admin
-                    ? "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ?, brand = ?, material = ? WHERE id = ?"
-                    : "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ?, brand = ?, material = ? WHERE id = ? AND shop_id = ?";
+                    ? "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ?, brand = ?, material = ?, presale = ?, deposit_cents = ?, presale_end_at = ? WHERE id = ?"
+                    : "UPDATE products SET title = ?, category_id = ?, price = ?, stock = ?, detail = ?, image_url = ?, status = ?, audit_status = ?, flash_price_cents = ?, flash_start = ?, flash_end = ?, limit_per_user = ?, brand = ?, material = ?, presale = ?, deposit_cents = ?, presale_end_at = ? WHERE id = ? AND shop_id = ?";
                 if ($db instanceof PDO) {
                     $params = [$title, $category_id_val, $price, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material, $product_id];
                     if (!$is_admin) $params[] = $shop_id;
@@ -287,9 +295,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare($sql);
                     if (!$stmt) throw new Exception('SQL 预处理失败');
                     if ($is_admin) {
-                        $stmt->bind_param("sisissisisissisi", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material, $product_id);
+                        $stmt->bind_param("sisissisississiisi", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material, $presale_on, $presale_deposit_cents, $presale_end_at, $product_id);
                     } else {
-                        $stmt->bind_param("sisissisisissisii", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material, $product_id, $shop_id);
+                        $stmt->bind_param("sisissisississiisii", $title, $category_id_val, $price_str, $stock, $detail, $image_url, $status, $audit_status, $flash_cents, $flash_start, $flash_end, $limit_per_user, $brand, $material, $presale_on, $presale_deposit_cents, $presale_end_at, $product_id, $shop_id);
                     }
                     $stmt->execute();
                     $stmt->close();
@@ -478,6 +486,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
             <small class="text-muted d-block mb-3">特价与起止时间须同时填写；清空并保存即取消限时特价。</small>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">预售开关</label>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" name="presale" value="1" id="presale-on" <?= ((int)($product['presale'] ?? 0)===1) ? 'checked' : '' ?>><label class="form-check-label small" for="presale-on">开启预售（定金+尾款）</label></div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">预售定金（元）</label>
+                    <input type="number" step="0.01" min="0.01" name="deposit_price" class="form-control" placeholder="须低于售价" value="<?= ($product['deposit_cents'] ?? null) !== null ? sprintf('%d.%02d', intdiv((int)$product['deposit_cents'], 100), (int)$product['deposit_cents'] % 100) : '' ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small">预售截止时间</label>
+                    <input type="datetime-local" name="presale_end_at" class="form-control" value="<?= !empty($product['presale_end_at']) ? str_replace(' ', 'T', substr($product['presale_end_at'], 0, 16)) : '' ?>">
+                </div>
+            </div>
+            <small class="text-muted d-block mb-3">开启预售时定金与截止时间必填：定金须大于零且低于售价，截止须晚于当前；取消勾选并保存即关闭预售。</small>
 
             <?php if (!$is_admin): ?>
             <div class="mb-3 p-3" style="background:#fff8f1;border-radius:8px;">

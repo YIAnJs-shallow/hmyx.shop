@@ -1118,6 +1118,88 @@ $bigHtml=render_search_image_page($sessionImg,['csrf_token'=>'qa-csrf'],['image'
 check(strpos($bigHtml,'图片不能超过 5MB')!==false,'image search rejects oversized upload');
 @unlink($qaImgPath); @unlink($qaTxtPath);
 check(strpos(file_get_contents(__DIR__.'/../index.php'),'search_image.php')!==false,'homepage search bar links to image search entry');
+// ===== 预售定金：两段支付全链路（下单金额/回调置待付尾款/补尾款/券积分拼团购物车全拒/截止/3h与7d窗口/后台校验/页面落点） =====
+// 1) 后台字段校验（parse_presale_fields，服务端权威）
+rejects(function(){parse_presale_fields(5000,['presale'=>'1','deposit_price'=>'0','presale_end_at'=>'2027-01-01 00:00:00']);},'presale deposit must be positive');
+rejects(function(){parse_presale_fields(5000,['presale'=>'1','deposit_price'=>'50.01','presale_end_at'=>'2027-01-01 00:00:00']);},'presale deposit must be below price');
+rejects(function(){parse_presale_fields(5000,['presale'=>'1','deposit_price'=>'5.00','presale_end_at'=>'']);},'presale requires deposit end time');
+rejects(function(){parse_presale_fields(5000,['presale'=>'1','deposit_price'=>'5.00','presale_end_at'=>'2020-01-01 00:00:00']);},'presale end time must be in the future');
+$futureEnd=date('Y-m-d H:i:s',time()+86400);
+check(parse_presale_fields(5000,['presale'=>'1','deposit_price'=>'5.00','presale_end_at'=>$futureEnd])===[1,500,$futureEnd],'valid presale fields parse to enabled deposit and end');
+check(parse_presale_fields(5000,[])===[0,null,null],'unchecked presale clears all presale fields');
+// 2) 预售下单服务端强制校验：券/积分/拼团/购物车/非预售/过期全被拒
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status,presale,deposit_cents,presale_end_at) VALUES('预售测试商品','50.00',10,?,?,1,'approved',1,500,?)",[$category,$shop,$futureEnd]); $pPresale=(int)$conn->insert_id;
+query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('预售拒绝测试券',100,0,10)"); $psCouponId=(int)$conn->insert_id;
+coupon_claim($buyer,$psCouponId);
+$psUc=(int)one('SELECT id FROM user_coupons WHERE coupon_id=? AND user_id=?',[$psCouponId,$buyer])['id'];
+rejects(function()use($buyer,$pPresale,$address,$psUc){create_orders($buyer,$pPresale,1,$address,'presale-coupon',$psUc);},'presale order rejects coupons');
+rejects(function()use($buyer,$pPresale,$address){create_orders($buyer,$pPresale,1,$address,'presale-points',0,0,1);},'presale order rejects points deduction');
+rejects(function()use($buyer,$pPresale,$address){create_orders($buyer,$pPresale,1,$address,'presale-group',0,0,0,999999);},'presale order rejects group buy');
+query('INSERT INTO cart(user_id,product_id,quantity) VALUES(?,?,1)',[$buyer,$pPresale]);
+rejects(function()use($buyer,$address){create_orders($buyer,0,1,$address,'presale-cart');},'cart checkout path rejected for presale product');
+query('DELETE FROM cart WHERE user_id=? AND product_id=?',[$buyer,$pPresale]);
+rejects(function()use($buyer,$p1,$address){create_orders($buyer,$p1,1,$address,'presale-false',0,0,0,0,1);},'presale flag rejected for non-presale product');
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status,presale,deposit_cents,presale_end_at) VALUES('预售过期商品','30.00',5,?,1,'approved',1,300,'2020-01-01 00:00:00')",[$category]); $pPresaleExpired=(int)$conn->insert_id;
+rejects(function()use($buyer,$pPresaleExpired,$address){create_orders($buyer,$pPresaleExpired,1,$address,'presale-expired',0,0,0,0,1);},'expired presale cannot take deposit orders');
+// 3) 定金订单：total=全价、pay_stage=deposit、无任何折扣，应付=定金×数量
+$depOrder=(int)create_orders($buyer,$pPresale,1,$address,'presale-deposit',0,0,0,0,1)[0];
+$depRow=one('SELECT total_amount,pay_stage,paid_cents,status,member_discount_cents,points_paid FROM orders WHERE id=?',[$depOrder]);
+check($depRow['total_amount']==='50.00' && $depRow['pay_stage']==='deposit' && (float)$depRow['paid_cents']===0.0 && $depRow['status']==='pending' && (int)$depRow['member_discount_cents']===0 && (int)$depRow['points_paid']===0,'presale order records full total with deposit stage and zero discounts');
+check(order_payable_cents(one('SELECT * FROM orders WHERE id=?',[$depOrder]))===500,'deposit-stage payable equals deposit cents times quantity');
+// 4) 定金支付成功：不进待发货（保持 pending 待付尾款），记录已付定金
+change_order($depOrder,$buyer,'pay');
+$depPaidRow=one('SELECT status,pay_stage,paid_cents,paid_at FROM orders WHERE id=?',[$depOrder]);
+check($depPaidRow['status']==='pending' && $depPaidRow['pay_stage']==='deposit' && $depPaidRow['paid_cents']==='5.00' && $depPaidRow['paid_at']!==null,'deposit payment keeps order pending with paid deposit recorded');
+// 5) 已付定金单不受 3 小时关单窗口影响
+query('UPDATE orders SET created_at=NOW()-INTERVAL 4 HOUR WHERE id=?',[$depOrder]);
+expire_orders($buyer);
+check(one('SELECT status FROM orders WHERE id=?',[$depOrder])['status']==='pending','deposit-paid order survives the 3-hour close window');
+// 6) 补尾款：pay_stage=balance、status=paid、paid_cents=total，之后走正常发货收货
+change_order($depOrder,$buyer,'pay');
+$balRow=one('SELECT status,pay_stage,paid_cents FROM orders WHERE id=?',[$depOrder]);
+check($balRow['status']==='paid' && $balRow['pay_stage']==='balance' && $balRow['paid_cents']==='50.00','balance payment completes presale order into normal flow');
+$_SESSION['role']='merchant'; change_order($depOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'PRE00001']); $_SESSION['role']='user';
+change_order($depOrder,$buyer,'receive');
+check(one('SELECT status FROM orders WHERE id=?',[$depOrder])['status']==='completed','paid-in-full presale order flows through ship and receive normally');
+// 7) 已付定金单不可自行取消
+$depOrder2=(int)create_orders($buyer,$pPresale,1,$address,'presale-cancel',0,0,0,0,1)[0];
+change_order($depOrder2,$buyer,'pay');
+rejects(function()use($depOrder2,$buyer){change_order($depOrder2,$buyer,'cancel');},'deposit-paid presale order cannot be self-cancelled');
+// 8) 尾款超时 cron：超 7 天关单退定金（演示支付直接退）、幂等重扫
+query('UPDATE orders SET paid_at=NOW()-INTERVAL 8 DAY WHERE id=?',[$depOrder2]);
+$presaleStockBefore=(int)one('SELECT stock FROM products WHERE id=?',[$pPresale])['stock'];
+check(cron_close_presale_balance_timeout()===1,'presale balance timeout cron closes exactly the overdue order');
+check(one('SELECT status FROM orders WHERE id=?',[$depOrder2])['status']==='cancelled' && (int)one('SELECT stock FROM products WHERE id=?',[$pPresale])['stock']===$presaleStockBefore+1,'presale timeout close refunds deposit and restores stock once');
+check(cron_close_presale_balance_timeout()===0,'presale balance timeout cron rerun finds nothing to do');
+// 9) 未付定金单仍走 3 小时关单窗口
+$depPending=(int)create_orders($buyer,$pPresale,1,$address,'presale-pending3h',0,0,0,0,1)[0];
+query('UPDATE orders SET created_at=NOW()-INTERVAL 4 HOUR WHERE id=?',[$depPending]);
+check(cron_close_timeout_orders()===1,'unpaid deposit order still closed by the 3-hour timeout cron');
+// 10) 沙箱回调按阶段金额校验：定金金额应答 success 且置待付尾款
+putenv('ALIPAY_VERIFY_KEY_OVERRIDE='.$verifyKeyB64);
+$depNotify=(int)create_orders($buyer,$pPresale,1,$address,'presale-notify',0,0,0,0,1)[0];
+$depNotifyRow=one('SELECT * FROM orders WHERE id=?',[$depNotify]);
+$notifyParams=alipay_sign(['out_trade_no'=>$depNotifyRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>'5.00']);
+$notifyResp=render_alipay_page(__DIR__.'/../pay_notify.php',['user_id'=>$buyer,'role'=>'user'],[],$notifyParams);
+check(trim($notifyResp)==='success' && one('SELECT status FROM orders WHERE id=?',[$depNotify])['status']==='pending' && one('SELECT paid_cents FROM orders WHERE id=?',[$depNotify])['paid_cents']==='5.00','pay_notify deposit callback accepts stage amount and sets awaiting-balance state');
+putenv('ALIPAY_VERIFY_KEY_OVERRIDE');
+// 11) 页面落点：详情页预售标记/定金/截止与去购物车禁用、我的订单待付尾款、结算页定金预览与券积分隐藏
+function render_my_orders_page(array $session) {
+    $backupGet=$_GET; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+    $_SESSION=$session; $_GET=[];
+    ob_start();
+    include __DIR__.'/../my_orders.php';
+    $html=ob_get_clean();
+    $_GET=$backupGet; $_SESSION=$backupSession;
+    if ($backupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$backupMethod;
+    return $html;
+}
+$presaleDetailHtml=render_detail_page(['id'=>$pPresale]);
+check(strpos($presaleDetailHtml,'预售')!==false && strpos($presaleDetailHtml,'定金 ¥ 5.00')!==false && strpos($presaleDetailHtml,'立即购买（支付定金）')!==false && strpos($presaleDetailHtml,'加入购物车')===false,'detail page shows presale badge deposit and deposit-buy button while hiding cart add');
+$myOrdersHtml=render_my_orders_page(['user_id'=>$buyer,'role'=>'user']);
+check(strpos($myOrdersHtml,'待付尾款')!==false && strpos($myOrdersHtml,'补尾款')!==false,'my orders shows awaiting-balance badge and top-up button');
+$presaleCheckoutHtml=render_checkout_page(['user_id'=>$buyer,'role'=>'user'],['product_id'=>$pPresale,'quantity'=>1]);
+check(strpos($presaleCheckoutHtml,'当前为预售商品')!==false && strpos($presaleCheckoutHtml,'¥ 5.00')!==false && strpos($presaleCheckoutHtml,'使用优惠券')===false && strpos($presaleCheckoutHtml,'使用积分抵扣')===false,'checkout preview shows presale deposit and hides coupon and points options');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
 foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {

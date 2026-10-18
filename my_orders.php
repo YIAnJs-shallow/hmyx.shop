@@ -15,7 +15,7 @@ if(!$orders) echo '<div class="card empty">暂无订单，<a href="index.php">�
 foreach($orders as $order): $id=(int)$order['id'];
 $items=rows('SELECT i.*,COALESCE(i.product_title,p.title,\'历史商品\') AS title,COALESCE(i.sku_image,i.product_image,p.image_url) AS image_url,r.id AS review_id,(f.id IS NOT NULL) AS has_followup,(o.completed_at IS NOT NULL AND o.completed_at >= NOW() - INTERVAL 30 DAY) AS can_followup FROM order_items i JOIN orders o ON o.id=i.order_id LEFT JOIN products p ON p.id=i.product_id LEFT JOIN reviews r ON r.order_item_id=i.id AND r.parent_id IS NULL LEFT JOIN reviews f ON f.parent_id=r.id WHERE i.order_id=?',[$id]);
 ?>
-<section class="card"><div class="row"><div class="grow"><strong><?=h($order['shop_name'] ?? '平台 / 历史订单')?></strong><p class="muted"><?=h($order['order_no'])?> · <?=h($order['created_at'])?></p></div><span class="badge"><?=h(status_name($order['status']))?></span></div>
+<section class="card"><div class="row"><div class="grow"><strong><?=h($order['shop_name'] ?? '平台 / 历史订单')?></strong><p class="muted"><?=h($order['order_no'])?> · <?=h($order['created_at'])?></p></div><span class="badge"><?=h((($order['status']==='pending' && (($order['pay_stage'] ?? 'full')==='deposit' && (float)$order['paid_cents']>0)) ? '待付尾款' : status_name($order['status'])))?></span></div>
 <?php foreach($items as $item): ?><div class="row"><?php if($item['image_url']): ?><img class="thumb" src="<?=h($item['image_url'])?>" alt="<?=h($item['title'])?>"><?php endif; ?><div class="grow"><a href="detail.php?id=<?=(int)$item['product_id']?>"><?=h($item['title'])?></a><?= $item['sku_name'] ? '<p>规格：'.h($item['sku_name']).'</p>' : '' ?><p>¥ <?=h($item['price'])?> × <?=(int)$item['quantity']?></p></div>
 <?php if($order['status']==='completed' && $item['product_id'] && !$item['review_id']): ?><a class="button" href="review.php?item_id=<?=(int)$item['id']?>">评价商品</a>
 <?php elseif($item['review_id'] && !(int)$item['has_followup'] && (int)$item['can_followup']): ?><a class="button" href="review.php?item_id=<?=(int)$item['id']?>&amp;append=1">追加评价</a><span>已评价</span>
@@ -23,7 +23,10 @@ $items=rows('SELECT i.*,COALESCE(i.product_title,p.title,\'历史商品\') AS ti
 <?php elseif($item['review_id']): ?><span>已评价</span><?php endif; ?></div><?php endforeach; ?>
 <?php if(!$items): ?><p class="muted">历史订单未保存商品明细。</p><?php endif; ?>
 <p><?=h($order['receiver_name'])?> · <?=h($order['receiver_phone'])?> · <?=h($order['receiver_address'])?></p><hr class="divider"><div class="row"><strong class="price grow">¥ <?=h($order['total_amount'])?></strong><div class="actions">
-<?php if($order['status']==='pending'): ?><p class="muted"><?php $remain=(int)ceil((strtotime($order['created_at'])+10800-time())/3600); echo $remain>0 ? '约 '.$remain.' 小时后自动关闭' : '保留已超时，订单即将自动关闭'; ?></p><a class="button" href="pay.php?order_id=<?=$id?>">去付款</a><?=action_button($id,'cancel','取消订单')?><?php endif; ?>
+<?php if($order['status']==='pending'): $presaleAwaitBalance = ((($order['pay_stage'] ?? 'full')==='deposit') && (float)$order['paid_cents'] > 0); if($presaleAwaitBalance): ?>
+<p class="muted">预售订单已付定金，尾款 ¥ <?=h(money((int)cents($order['total_amount'])-(int)round(((float)$order['paid_cents'])*100)))?>，须于 <?=h(date('Y-m-d H:i', strtotime($order['paid_at'])+7*86400))?> 前补齐。</p><a class="button" href="pay.php?order_id=<?=$id?>">补尾款</a>
+<?php else: ?><p class="muted"><?php $remain=(int)ceil((strtotime($order['created_at'])+10800-time())/3600); echo $remain>0 ? '约 '.$remain.' 小时后自动关闭' : '保留已超时，订单即将自动关闭'; ?></p><a class="button" href="pay.php?order_id=<?=$id?>">去付款</a><?=action_button($id,'cancel','取消订单')?>
+<?php endif; endif; ?>
 <?php if(in_array($order['status'],['shipped','completed'],true)): ?><a href="express_detail.php?order_id=<?=$id?>">查看物流</a><?php endif; ?>
 <?php if($order['status']==='shipped') echo action_button($id,'receive','确认已收货'); ?>
 <a href="order_messages.php?order_id=<?=$id?>">订单留言<?php if(!empty($unreadMessages[$id])): ?>（<?=(int)$unreadMessages[$id]?> 条新留言）<?php endif; ?></a>

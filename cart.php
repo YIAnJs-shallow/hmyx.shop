@@ -11,6 +11,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             $id=(int)($_POST['product_id'] ?? 0); $qty=quantity($_POST['quantity'] ?? 1); $skuId=(int)($_POST['sku_id'] ?? 0);
             $p=one("SELECT * FROM products WHERE id=? AND status=1 AND audit_status='approved'",[$id]);
             if (!$p) throw new DomainException('商品已下架或不存在');
+            if ((int)($p['presale'] ?? 0) === 1) throw new DomainException('预售商品请从详情页立即购买支付定金');
             $skus=product_active_skus($id);
             if ($skus) {
                 $found=null;

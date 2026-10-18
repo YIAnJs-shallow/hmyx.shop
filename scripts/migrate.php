@@ -642,4 +642,12 @@ query("CREATE TABLE IF NOT EXISTS level_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 add_column('orders','member_discount_cents','int NOT NULL DEFAULT 0');
 
+// ===== 预售定金：商品定金配置 + 订单两段支付（pay_stage：full=普通全款，deposit=定金阶段，balance=尾款已付转正常流程） =====
+// total_amount 恒为商品全价（商家待结算口径不变）；paid_cents 记累计已付（定金）；尾款 = total_amount − paid_cents
+add_column('products','presale','tinyint NOT NULL DEFAULT 0');
+add_column('products','deposit_cents','int NULL');
+add_column('products','presale_end_at','datetime NULL');
+add_column('orders','pay_stage',"enum('full','deposit','balance') NOT NULL DEFAULT 'full'");
+add_column('orders','paid_cents','decimal(10,2) NOT NULL DEFAULT 0');
+
 echo "Migration complete.\n";

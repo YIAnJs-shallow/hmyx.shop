@@ -10,8 +10,8 @@ if (alipay_verify($_POST)) {
     $tradeStatus = (string)($_POST['trade_status'] ?? '');
     $order = $outTradeNo !== '' ? one('SELECT * FROM orders WHERE order_no=?', [$outTradeNo]) : null;
     if ($order && ($tradeStatus === 'TRADE_SUCCESS' || $tradeStatus === 'TRADE_FINISHED')) {
-        // 金额比对（口径同 pay.php：小计−券−积分抵现−会员折扣）；回调缺 total_amount 或格式非法均视为不符
-        $payable = (int)cents($order['total_amount']) - (int)cents($order['discount_amount']) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents'];
+        // 金额比对（口径同 pay.php）：普通单小计−券−积分抵现−会员折扣；预售单按阶段（定金 / 尾款=total−已付）
+        $payable = order_payable_cents($order);
         $callbackAmount = $_POST['total_amount'] ?? null;
         $amountOk = false;
         try { $amountOk = $callbackAmount !== null && (int)cents($callbackAmount) === $payable; }

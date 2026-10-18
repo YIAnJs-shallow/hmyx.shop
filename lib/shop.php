@@ -123,6 +123,34 @@ function parse_flash_fields($originalPriceCents, array $post) {
     }
     return [$flash, $start, $end, (int)$limitRaw];
 }
+// ===== 预售定金：字段解析（服务端权威校验：定金>0 且 < 售价；截止时间必填且晚于当前）与阶段应付金额 =====
+// 未勾选预售时返回 [0, null, null]（保存即清空预售配置）
+function parse_presale_fields($priceCents, array $post) {
+    if (empty($post['presale'])) return [0, null, null];
+    $raw = trim((string)($post['deposit_price'] ?? ''));
+    $endRaw = trim((string)($post['presale_end_at'] ?? ''));
+    if ($raw === '' || !preg_match('/^\d{1,8}(?:\.\d{1,2})?$/D', $raw) || (float)$raw <= 0) throw new DomainException('预售定金须为大于零的金额（最多两位小数）');
+    $parts = explode('.', $raw);
+    $depositCents = (int)$parts[0] * 100 + (int)str_pad($parts[1] ?? '', 2, '0');
+    if ($depositCents >= (int)$priceCents) throw new DomainException('预售定金必须低于商品售价');
+    $end = str_replace('T', ' ', $endRaw);
+    if (strlen($end) === 16) $end .= ':00';
+    if ($end === '' || !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $end) || strtotime($end) === false) throw new DomainException('预售须填写定金支付截止时间，格式为 Y-m-d H:i:s');
+    if (strtotime($end) <= time()) throw new DomainException('预售截止时间必须晚于当前时间');
+    return [1, $depositCents, $end];
+}
+// 订单当前阶段应付金额（分）：普通单沿用 小计−券−积分−会员折扣 口径；预售定金阶段取商品定金×数量，尾款阶段取 total−已付
+function order_payable_cents(array $order) {
+    $total = (int)cents((string)$order['total_amount']);
+    $paid = (int)round(((float)($order['paid_cents'] ?? 0)) * 100);
+    if (($order['pay_stage'] ?? 'full') === 'deposit') {
+        if ($paid > 0) return max(0, $total - $paid);
+        // 定金阶段：金额取商品定金 × 数量（订单不留存定金快照，以商品列当前值为准）
+        $row = one('SELECT p.deposit_cents, i.quantity FROM order_items i JOIN products p ON p.id=i.product_id WHERE i.order_id=? LIMIT 1', [(int)$order['id']]);
+        return $row ? (int)$row['deposit_cents'] * (int)$row['quantity'] : 0;
+    }
+    return max(0, $total - (int)cents((string)$order['discount_amount']) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents']);
+}
 function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId = 0) {
     $suffix = $lock ? ' FOR UPDATE' : '';
     $lines = [];
@@ -188,10 +216,16 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId
     unset($line);
     return $lines;
 }
-function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0, $skuId = 0, $usePoints = 0, $groupBuyId = 0) {
+function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0, $skuId = 0, $usePoints = 0, $groupBuyId = 0, $presale = 0) {
     global $conn;
     $conn->begin_transaction();
     try {
+        // 预售定金下单：仅详情页立即购买（productId>0），禁券/积分/拼团/购物车路径，服务端强制校验
+        if ($presale) {
+            if ($userCouponId || $usePoints) throw new DomainException('预售订单不支持优惠券与积分抵扣');
+            if ($groupBuyId) throw new DomainException('预售商品不支持拼团');
+            if (!$productId) throw new DomainException('预售商品仅支持详情页立即购买');
+        }
         // 拼团下单：先锁活动行（与支付判团同一把锁，串行化匹配）；拼团价覆盖一切展示价，单次限购 1 件
         $groupBuy = null; $groupTargetId = 0;
         if ($groupBuyId) {
@@ -211,6 +245,21 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
         if (!$address) throw new DomainException('请选择自己的有效收货地址');
         if (!$address['receiver_name'] || !$address['receiver_phone'] || !$address['receiver_address']) throw new DomainException('请先补全收货地址');
         $lines = checkout_lines($userId, $productId, $qty, true, $skuId);
+        // 预售权威校验（锁内）：必须是预售商品且走预售通道；非预售通道遇到预售商品一律拒绝（购物车结算兜底）
+        if ($presale) {
+            $line0 = $lines[0];
+            if ((int)($line0['presale'] ?? 0) !== 1) throw new DomainException('该商品不是预售商品，请按普通流程下单');
+            if (product_active_skus((int)$line0['id'])) throw new DomainException('多规格商品暂不支持预售');
+            if (empty($line0['presale_end_at']) || strtotime($line0['presale_end_at']) <= time()) throw new DomainException('预售已截止，无法支付定金下单');
+            $depCents = (int)($line0['deposit_cents'] ?? 0);
+            if ($depCents <= 0 || $depCents >= cents($line0['price'])) throw new DomainException('预售定金配置无效');
+        } elseif (!$productId) {
+            foreach ($lines as $line) {
+                if ((int)($line['presale'] ?? 0) === 1) throw new DomainException('预售商品请从详情页立即购买支付定金');
+            }
+        } elseif ((int)($lines[0]['presale'] ?? 0) === 1) {
+            throw new DomainException('预售商品请从详情页立即购买支付定金');
+        }
         if ($groupBuy) {
             // 团购价覆盖：单商品单件，subtotal 直接取团购价（整数分）
             $lines[0]['price'] = money((int)$groupBuy['price_cents']);
@@ -241,7 +290,7 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
         // 券门槛与积分上限均以折后金额为基数；100%（普通会员）时金额与既有行为完全一致
         $discountPercent = level_discount_percent($userId);
         $memberShares = [];
-        if ($discountPercent < 100) {
+        if ($discountPercent < 100 && !$presale) {
             foreach ($groups as $shopId => $items) {
                 $memberShares[$shopId] = (int)round(array_sum(array_column($items, 'subtotal_cents')) * (100 - $discountPercent) / 100);
             }
@@ -266,8 +315,8 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
                 if ($pointsDiscount > 0) { $pointsPaid = $pointsDiscount; $availablePoints -= $pointsDiscount; }
             }
             $number = 'HM'.date('YmdHis').bin2hex(random_bytes(6));
-            query("INSERT INTO orders(order_no,user_id,total_amount,status,receiver_name,receiver_phone,receiver_address,shop_id,checkout_token,stock_reserved,points_paid,points_discount_cents,member_discount_cents) VALUES(?,?,?,'pending',?,?,?,?,?,1,?,?,?)",
-                [$number,$userId,money($total),$address['receiver_name'],$address['receiver_phone'],$address['receiver_address'],$shopId ?: null,$token,$pointsPaid,$pointsDiscount,$memberDiscount]);
+            query("INSERT INTO orders(order_no,user_id,total_amount,status,pay_stage,receiver_name,receiver_phone,receiver_address,shop_id,checkout_token,stock_reserved,points_paid,points_discount_cents,member_discount_cents) VALUES(?,?,?,'pending',?,?,?,?,?,?,1,?,?,?)",
+                [$number,$userId,money($total),$presale ? 'deposit' : 'full',$address['receiver_name'],$address['receiver_phone'],$address['receiver_address'],$shopId ?: null,$token,$pointsPaid,$pointsDiscount,$memberDiscount]);
             $orderId = (int)$conn->insert_id;
             if (isset($shares[$shopId])) query('UPDATE orders SET discount_amount=?, coupon_user_id=? WHERE id=?', [money($shares[$shopId]), (int)$userCouponId, $orderId]);
             $ids[] = $orderId;
@@ -306,15 +355,16 @@ function release_stock($order) {
     }
     query('UPDATE orders SET stock_reserved=0 WHERE id=?', [(int)$order['id']]);
 }
-function expire_orders($userId = null) {
+function expire_orders($uid = null) {
     global $conn;
-    $sql = "SELECT id FROM orders WHERE status='pending' AND created_at < NOW() - INTERVAL 3 HOUR";
+    // 已付定金待付尾款的预售订单（pay_stage=deposit 且 paid_cents>0）不受 3 小时窗口约束，由预售尾款超时任务单独处理
+    $sql = "SELECT id FROM orders WHERE status='pending' AND created_at < NOW() - INTERVAL 3 HOUR AND NOT (pay_stage='deposit' AND paid_cents > 0)";
     $params = [];
-    if ($userId !== null) { $sql .= ' AND user_id=?'; $params[] = $userId; }
+    if ($uid !== null) { $sql .= ' AND user_id=?'; $params[] = $uid; }
     foreach (rows($sql, $params) as $candidate) {
         $conn->begin_transaction();
         try {
-            $order = one("SELECT * FROM orders WHERE id=? AND status='pending' AND created_at < NOW() - INTERVAL 3 HOUR FOR UPDATE", [(int)$candidate['id']]);
+            $order = one("SELECT * FROM orders WHERE id=? AND status='pending' AND created_at < NOW() - INTERVAL 3 HOUR AND NOT (pay_stage='deposit' AND paid_cents > 0) FOR UPDATE", [(int)$candidate['id']]);
             if ($order) { release_stock($order); query("UPDATE orders SET status='cancelled' WHERE id=?", [(int)$order['id']]); }
             $conn->commit();
         } catch (Throwable $e) { $conn->rollback(); throw $e; }
@@ -331,6 +381,10 @@ function change_order($id, $actor, $action, $data = []) {
         $backend = $actor === 0 && defined('ADMIN_ORDER_CONTEXT') && ADMIN_ORDER_CONTEXT && function_exists('is_admin_logged_in') && is_admin_logged_in() && empty($_SESSION['admin']['must_change_password']) && isset($adminPermissions[$action]) && admin_has_permission($adminPermissions[$action]);
         $manager = $backend || can_manage_order($order, $actor);
         if ($action === 'cancel' && $owner && $order['status'] === 'pending') {
+            // 已付定金的预售订单不可自行取消（涉及定金退款），超时未付尾款由定时任务关单退定金
+            if (($order['pay_stage'] ?? 'full') === 'deposit' && (float)$order['paid_cents'] > 0) {
+                throw new DomainException('已支付定金的预售订单不可自行取消，超时未付尾款将自动关单退定金');
+            }
             release_stock($order);
             query("UPDATE orders SET status='cancelled' WHERE id=?", [$id]);
         } elseif ($action === 'pay' && $owner && $order['status'] === 'pending') {
@@ -339,19 +393,36 @@ function change_order($id, $actor, $action, $data = []) {
             if (!in_array($paymentMethod, ['demo', 'alipay_sandbox'], true)) throw new DomainException('未知支付渠道');
             if ($paymentMethod === 'demo' && getenv('SHOP_DEMO_PAYMENT') !== '1') throw new DomainException('支付演示未开启，尚未接入真实支付');
             if (!(int)$order['stock_reserved']) throw new DomainException('旧订单未预留库存，请取消后重新下单');
-            if (strtotime($order['created_at']) <= time()-10800) throw new DomainException('订单已超时，请返回订单中心');
-            // 积分抵现原子扣减：余额充足则按下单记录扣（grant_points 幂等 + 余额校验），不足则放弃抵扣按原价支付（取消/超时关单不涉及积分，不退）
-            if ((int)$order['points_paid'] > 0) {
-                $payer = one('SELECT points FROM users WHERE id=? FOR UPDATE', [(int)$order['user_id']]);
-                if ($payer && (int)$payer['points'] >= (int)$order['points_paid']) {
-                    grant_points((int)$order['user_id'], 'pay', -(int)$order['points_paid'], (int)$id, '订单支付积分抵扣');
+            $presaleStage = ($order['pay_stage'] ?? 'full') === 'deposit';
+            // 未付定金的单复用现有 3 小时关单窗口；预售已付定金（待付尾款）不受 3 小时窗口限制
+            if (!$presaleStage && strtotime($order['created_at']) <= time()-10800) throw new DomainException('订单已超时，请返回订单中心');
+            if ($presaleStage) {
+                $paidCents = (int)round(((float)$order['paid_cents']) * 100);
+                $payableCents = order_payable_cents($order);
+                if ($payableCents <= 0) throw new DomainException('预售应付金额无效');
+                if ($paidCents === 0) {
+                    // 定金支付：须在 presale_end_at 截止前；成功后订单保持 pending，展示"待付尾款"
+                    $pend = one('SELECT presale_end_at FROM products p JOIN order_items i ON i.product_id=p.id WHERE i.order_id=?', [(int)$id]);
+                    if (!$pend || empty($pend['presale_end_at']) || strtotime($pend['presale_end_at']) <= time()) throw new DomainException('预售已截止，无法支付定金');
+                    query('UPDATE orders SET paid_cents=?,paid_at=NOW(),payment_method=? WHERE id=?', [money($payableCents), $paymentMethod, (int)$id]);
                 } else {
-                    query('UPDATE orders SET points_paid=0, points_discount_cents=0 WHERE id=?', [$id]);
+                    // 尾款支付：付 total_amount − paid_cents，成功后 pay_stage='balance'，走正常发货/收货流程
+                    query("UPDATE orders SET status='paid',paid_at=NOW(),payment_method=?,paid_cents=?,pay_stage='balance' WHERE id=?", [$paymentMethod, money($paidCents + $payableCents), (int)$id]);
                 }
+            } else {
+                // 积分抵现原子扣减：余额充足则按下单记录扣（grant_points 幂等 + 余额校验），不足则放弃抵扣按原价支付（取消/超时关单不涉及积分，不退）
+                if ((int)$order['points_paid'] > 0) {
+                    $payer = one('SELECT points FROM users WHERE id=? FOR UPDATE', [(int)$order['user_id']]);
+                    if ($payer && (int)$payer['points'] >= (int)$order['points_paid']) {
+                        grant_points((int)$order['user_id'], 'pay', -(int)$order['points_paid'], (int)$id, '订单支付积分抵扣');
+                    } else {
+                        query('UPDATE orders SET points_paid=0, points_discount_cents=0 WHERE id=?', [$id]);
+                    }
+                }
+                query("UPDATE orders SET status='paid',paid_at=NOW(),payment_method=? WHERE id=?", [$paymentMethod, $id]);
+                // 拼团订单：支付成功事务内成团判定（group_buy_settle 内部锁 group_buys 行防并发判团竞态）
+                if (!empty($order['group_member_id'])) group_buy_settle((int)$id);
             }
-            query("UPDATE orders SET status='paid',paid_at=NOW(),payment_method=? WHERE id=?", [$paymentMethod, $id]);
-            // 拼团订单：支付成功事务内成团判定（group_buy_settle 内部锁 group_buys 行防并发判团竞态）
-            if (!empty($order['group_member_id'])) group_buy_settle((int)$id);
         } elseif ($action === 'ship' && $manager && $order['status'] === 'paid') {
             if (one("SELECT id FROM refund_requests WHERE order_id=? AND status='pending'", [$id])) throw new DomainException('此订单正在申请退款，请先处理');
             // 拼团订单未成团前禁止发货（成团结果以 orders.group_success 为准）

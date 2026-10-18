@@ -28,7 +28,7 @@ $display = $order ?? ($userId ? one('SELECT * FROM orders WHERE order_no=? AND u
 page_start('支付结果');
 echo '<section class="card">';
 if ($display) {
-    $payable = (int)cents($display['total_amount']) - (int)cents($display['discount_amount']) - (int)$display['points_discount_cents'] - (int)$display['member_discount_cents'];
+    $payable = order_payable_cents($display);
     echo '<p>订单号 '.h($display['order_no']).'</p><p class="price">实付 ¥ '.money($payable).'</p>';
 } else {
     echo '<p>订单号 '.h((string)($_GET['out_trade_no'] ?? '未知')).'</p>';
