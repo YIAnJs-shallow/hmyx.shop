@@ -1075,6 +1075,49 @@ ob_start(); include __DIR__.'/../admin/coupons.php'; $adminCouponPage=ob_get_cle
 check(strpos($adminCouponPage,'适用商品')!==false && strpos($adminCouponPage,'领取后有效天数')!==false && strpos($adminCouponPage,'指定：范围测试商品A')!==false,'admin coupon page renders new fields and scope column');
 unset($_SESSION['admin']);
 if ($backupRemoteAdmin!==null) $_SERVER['REMOTE_ADDR']=$backupRemoteAdmin; else unset($_SERVER['REMOTE_ADDR']);
+// ===== 拍照搜同款（lib/image_search.php：override 注入 / 防御清洗 / 无密钥降级 / 关键词检索 / 页面上传与拒绝） =====
+require_once __DIR__.'/../lib/image_search.php';
+// 1) override 注入模型响应：清洗出关键词（非法字符过滤、去重、去空、非字符串丢弃、超长截 12 字）
+putenv('IMAGE_SEARCH_OVERRIDE=["连衣裙", "雪纺长裙", "  ", "【夏季】款", "连衣裙", "一二三四五六七八九十一二三四五六七八九", 123, "真丝"]');
+check(image_search_keywords('data:image/png;base64,qa')===['连衣裙','雪纺长裙','夏季款','一二三四五六七八九十一二','真丝'],'image search override sanitizes keywords with illegal-char filter dedup and 12-char cap');
+// 2) 超限词数截断到 8
+putenv('IMAGE_SEARCH_OVERRIDE='.json_encode(['词一','词二','词三','词四','词五','词六','词七','词八','词九','词十']));
+check(count(image_search_keywords('data:image/png;base64,qa'))===8,'image search truncates to at most 8 keywords');
+// 3) 非法响应降级为空数组
+putenv('IMAGE_SEARCH_OVERRIDE=抱歉，我无法识别这张图片');
+check(image_search_keywords('data:image/png;base64,qa')===[],'non-JSON model response degrades to empty keyword list');
+putenv('IMAGE_SEARCH_OVERRIDE');
+// 4) 无密钥优雅降级为 null
+check(image_search_keywords('data:image/png;base64,qa','')===null,'missing api key degrades gracefully to null');
+// 5) 关键词检索复用现有可见口径：命中在售商品、无结果词返回空
+$matched=image_search_results(['平台']);
+check(isset($matched['平台']) && in_array((int)$p1,array_map('intval',array_column($matched['平台'],'id')),true),'image search results match visible products by keyword');
+check(image_search_results(['绝无匹配词xyzq'])===['绝无匹配词xyzq'=>[]],'image search returns empty list for unmatched keyword');
+// 6) search_image.php：合法上传 + override → 渲染关键词与结果；非法类型/超大小拒绝
+function render_search_image_page(array $session, array $post, array $files) {
+    $backupPost=$_POST; $backupFiles=$_FILES; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+    $_POST=$post; $_FILES=$files; $_SESSION=$session; $_SERVER['REQUEST_METHOD']='POST';
+    ob_start();
+    include __DIR__.'/../search_image.php';
+    $html=ob_get_clean();
+    $_POST=$backupPost; $_FILES=$backupFiles; $_SESSION=$backupSession;
+    if ($backupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$backupMethod;
+    return $html;
+}
+$qaPng=base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+$qaImgPath=tempnam(sys_get_temp_dir(),'qa_').'.png'; file_put_contents($qaImgPath,$qaPng);
+putenv('IMAGE_SEARCH_OVERRIDE=["平台"]');
+$sessionImg=['user_id'=>$buyer,'role'=>'user','csrf_token'=>'qa-csrf'];
+$imgHtml=render_search_image_page($sessionImg,['csrf_token'=>'qa-csrf'],['image'=>['name'=>'shot.png','type'=>'image/png','tmp_name'=>$qaImgPath,'error'=>0,'size'=>strlen($qaPng)]]);
+check(strpos($imgHtml,'拍照搜同款')!==false && strpos($imgHtml,'平台测试商品')!==false && strpos($imgHtml,'index.php?keyword='.urlencode('平台'))!==false,'image search page renders matched keyword chip and product results');
+putenv('IMAGE_SEARCH_OVERRIDE');
+$qaTxtPath=tempnam(sys_get_temp_dir(),'qa_').'.txt'; file_put_contents($qaTxtPath,'not an image');
+$txtHtml=render_search_image_page($sessionImg,['csrf_token'=>'qa-csrf'],['image'=>['name'=>'a.txt','type'=>'text/plain','tmp_name'=>$qaTxtPath,'error'=>0,'size'=>12]]);
+check(strpos($txtHtml,'仅支持 JPG、PNG 或 WEBP 图片')!==false,'image search rejects non-image upload type');
+$bigHtml=render_search_image_page($sessionImg,['csrf_token'=>'qa-csrf'],['image'=>['name'=>'big.png','type'=>'image/png','tmp_name'=>$qaTxtPath,'error'=>0,'size'=>6*1024*1024]]);
+check(strpos($bigHtml,'图片不能超过 5MB')!==false,'image search rejects oversized upload');
+@unlink($qaImgPath); @unlink($qaTxtPath);
+check(strpos(file_get_contents(__DIR__.'/../index.php'),'search_image.php')!==false,'homepage search bar links to image search entry');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
 session_save_path(sys_get_temp_dir());
 foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {

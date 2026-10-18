@@ -31,3 +31,8 @@ define('ALIPAY_SANDBOX_APP_ID', '');          // 沙箱应用 APPID
 define('ALIPAY_GATEWAY', '');                 // 沙箱网关地址
 define('ALIPAY_APP_PRIVATE_KEY', '');         // 应用私钥（PKCS8，Base64 单行）
 define('ALIPAY_ALIPAY_PUBLIC_KEY', '');       // 支付宝公钥（Base64 单行，用于验签）
+
+// ===== 火山方舟（拍照搜同款） =====
+// 来源：火山引擎控制台 → 方舟（Ark）→ API Key 管理；Key 以 ark- 开头
+// 用于 search_image.php：调视觉模型生成商品搜索关键词；留空/未定义时图片搜索功能自动降级为"暂不可用"，不影响正常搜索
+define('ARK_API_KEY', '');
