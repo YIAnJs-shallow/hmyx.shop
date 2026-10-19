@@ -204,6 +204,12 @@ $my_searches = $is_logged_in && !empty($_SESSION['user_id'])
     ? rows('SELECT keyword, MAX(id) AS last_id FROM search_logs WHERE user_id=? GROUP BY keyword ORDER BY last_id DESC LIMIT 10', [(int)$_SESSION['user_id']])
     : [];
 
+// 导航栏头像（京东式下拉菜单）：取 users.avatar，空值回退默认图标（与 user_center 顶卡口径一致，列由 migrate 幂等管理）
+$nav_avatar = '';
+if ($is_logged_in && !empty($_SESSION['user_id'])) {
+    $nav_avatar = (string)(one('SELECT avatar FROM users WHERE id=?', [(int)$_SESSION['user_id']])['avatar'] ?? '');
+}
+
 // 5. 首页推荐板块数据：热销榜 + 猜你喜欢
 $best_sellers = best_sellers(10);
 $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
@@ -240,6 +246,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
     <link rel="stylesheet" href="css/shop.css?v=3">
     <link rel="stylesheet" href="css/style.css?v=7">
+    <link rel="stylesheet" href="css/user_menu.css?v=1">
 </head>
 <body class="page-home">
         <header>
@@ -275,10 +282,21 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
                     <?php endif; ?>
                 </li>
 
-                <!-- 个人中心 / 登录 入口 -->
+                <!-- 个人中心 / 登录 入口（京东式头像下拉菜单：悬停/聚焦弹出，点击头像或用户名进入个人中心） -->
                 <li>
                     <?php if ($is_logged_in): ?>
-                        <a href="user_center.php" class="nav-cta">👤 个人中心</a>
+                        <div class="user-menu">
+                            <a class="user-trigger" href="user_center.php" aria-haspopup="true">
+                                <span class="user-avatar"><?php if ($nav_avatar !== ''): ?><img src="<?php echo htmlspecialchars($nav_avatar); ?>" alt="头像"><?php else: ?>👤<?php endif; ?></span>
+                                <span class="user-name"><?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?></span>
+                            </a>
+                            <div class="user-dropdown">
+                                <a href="member.php">🎫 我的会员</a>
+                                <a href="profile.php">⚙️ 修改资料</a>
+                                <a href="my_orders.php">📦 我的订单</a>
+                                <a href="logout.php" class="uc-drop-logout">🚪 退出登录</a>
+                            </div>
+                        </div>
                     <?php else: ?>
                         <a href="user_login.php" class="nav-cta">登录 / 注册</a>
                     <?php endif; ?>

@@ -995,6 +995,23 @@ $profileHtml=render_profile_page(['user_id'=>$levelUser,'role'=>'user']);
 check(strpos($profileHtml,'修改个人资料')!==false && strpos($profileHtml,'name="update_profile"')!==false && strpos($profileHtml,'name="new_password"')!==false,'profile page hosts the migrated profile form');
 check(strpos($profileHtml,'uc-side')!==false && strpos($profileHtml,'active')!==false,'profile page shares the sidebar shell');
 check(strpos($profileHtml,htmlspecialchars('qa_level_user'))!==false,'profile page prefills current nickname');
+// ===== 首页导航栏京东式头像下拉菜单（个人中心唯一入口）：登录态头像+下拉锚点 / 未登录无下拉 =====
+function render_index_page(array $session) {
+    global $conn;
+    $backupGet=$_GET; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+    $_SESSION=$session; $_GET=[]; $_SERVER['REQUEST_METHOD']='GET';
+    ob_start();
+    include __DIR__.'/../index.php';
+    $html=ob_get_clean();
+    $_GET=$backupGet; $_SESSION=$backupSession;
+    if ($backupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$backupMethod;
+    return $html;
+}
+$navLoggedHtml=render_index_page(['user_id'=>$levelUser,'role'=>'user','username'=>'qa_level_user']);
+check(strpos($navLoggedHtml,'user-avatar')!==false && strpos($navLoggedHtml,'user-dropdown')!==false && strpos($navLoggedHtml,'href="member.php"')!==false && strpos($navLoggedHtml,'href="profile.php"')!==false,'index nav shows avatar trigger with member and profile dropdown anchors');
+check(strpos($navLoggedHtml,'href="logout.php"')!==false && strpos($navLoggedHtml,'href="user_center.php"')!==false,'index dropdown includes logout link and trigger points to user center');
+$navGuestHtml=render_index_page([]);
+check(strpos($navGuestHtml,'user-dropdown')===false && strpos($navGuestHtml,'登录 / 注册')!==false,'index nav keeps plain login entry for guests without dropdown');
 // ===== 我的会员页（member.php）：门禁 / 档位 Hero 与进度条 / 六档对比表 / 至尊顶档文案 =====
 function render_member_page(array $session) {
     global $conn; // member.php 在函数作用域内 include，需要全局数据库连接可见
