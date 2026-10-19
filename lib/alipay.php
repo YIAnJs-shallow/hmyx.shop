@@ -11,7 +11,15 @@ define('ALIPAY_SITE_BASE', 'https://xn--4oq564b47zxtj');
 
 function alipay_private_key_resource() {
     $key = trim(ALIPAY_APP_PRIVATE_KEY);
-    $pem = "-----BEGIN PRIVATE KEY-----\n" . chunk_split($key, 64, "\n") . "-----END PRIVATE KEY-----";
+    if ($key === '') throw new RuntimeException('支付宝应用私钥未配置');
+    if (strpos($key, '-----BEGIN') === 0) $pem = $key; // 已是完整 PEM
+    else {
+        // PKCS#8 与 PKCS#1 双格式兼容：源可能是 openssl genpkey(8) 或传统导出(1)
+        $body = chunk_split($key, 64, "\n");
+        $pem = "-----BEGIN PRIVATE KEY-----\n" . $body . "-----END PRIVATE KEY-----";
+        $res = openssl_pkey_get_private($pem);
+        if ($res === false) $pem = "-----BEGIN RSA PRIVATE KEY-----\n" . $body . "-----END RSA PRIVATE KEY-----";
+    }
     $res = openssl_pkey_get_private($pem);
     if ($res === false) throw new RuntimeException('支付宝应用私钥格式无效');
     return $res;

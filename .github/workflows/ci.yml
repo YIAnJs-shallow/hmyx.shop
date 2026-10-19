@@ -48,6 +48,12 @@ jobs:
           # 直接取 PEM 的 base64 体（不做 DER 往返：DER 转换会破坏 PKCS#8 结构，导致 openssl_pkey_get_private 报 wrong tag）
           PRIV="$(openssl pkey -in /tmp/key.pem | grep -v 'BEGIN\|END' | tr -d '\n\r')"
           PUB="$(openssl pkey -in /tmp/key.pem -pubout | grep -v 'BEGIN\|END' | tr -d '\n\r')"
+          # fail-fast：提取异常（长度不足）立即报错退出，绝不把空/残缺密钥静默写入后续流程
+          if [ -z "$PRIV" ] || [ ${#PRIV} -lt 800 ] || [ -z "$PUB" ]; then
+            echo "::error::密钥提取异常 PRIV=${#PRIV} PUB=${#PUB}"
+            openssl pkey -in /tmp/key.pem 2>&1 | head -5 || true
+            exit 1
+          fi
           cat > "$PRIVATE_DIR/secrets.php" <<EOF
           <?php
           define('ALIPAY_SANDBOX_APP_ID', 'ci-test-app');
@@ -56,7 +62,7 @@ jobs:
           define('ALIPAY_ALIPAY_PUBLIC_KEY', '$PUB');
           define('ADMIN_ALLOWED_IPS', '127.0.0.1,::1');
           EOF
-          rm /tmp/key.pem
+          rm -f /tmp/key.pem
       - name: 初始化数据库结构
         run: php scripts/migrate.php
       - name: PHP 语法检查
