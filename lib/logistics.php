@@ -104,7 +104,7 @@ function logistics_map_url(array $order, string $shipFrom): ?string
     $params = [
         'key'     => AMAP_KEY,
         'size'    => '600*300',
-        'markers' => 'mid,0x2563EB:A:' . $from['lng'] . ',' . $from['lat'] . '|mid,0xF59E0B:B:' . $to['lng'] . ',' . $to['lat'],
+        'markers' => 'mid,0x2563EB:A:' . $from['lng'] . ',' . $from['lat'] . ';mid,0xF59E0B:B:' . $to['lng'] . ',' . $to['lat'],
         'paths'   => '5,0x2563EB,1,,:' . $path,
     ];
     return 'https://restapi.amap.com/v3/staticmap?' . http_build_query($params);
