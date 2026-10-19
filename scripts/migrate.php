@@ -615,19 +615,31 @@ add_column('orders','group_success','tinyint NOT NULL DEFAULT 0');
 
 // ===== 会员等级体系：阈值表 + users 快照列 + 等级流水 + 订单会员折扣列 =====
 // 建模为 CRMEB 混合式：user_levels 存阈值/折扣，users 冗余 level_id/total_spent_cents 快照，level_log 留痕对账
+// 2026-10-19 六档升级：白银→黄金→铂金→白钻→黑钻→至尊；id 语义不变（原普通=1/银卡=2/金卡=3 映射为白银/黄金/铂金，折扣不变存量无感）
 query("CREATE TABLE IF NOT EXISTS user_levels (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(20) NOT NULL,
     min_spent_cents BIGINT NOT NULL COMMENT '升级门槛（累计实付，分）',
     discount_percent INT NOT NULL DEFAULT 100 COMMENT '100=无折扣，95=95折',
+    points_rate_x10 TINYINT NOT NULL DEFAULT 10 COMMENT '积分倍率×10（10=×1.0），确认收货发分按当时等级倍率',
     sort INT NOT NULL DEFAULT 0,
     UNIQUE KEY uk_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-// 种子（按 sort 顺序插入保证 普通=1 / 银卡=2 / 金卡=3；uk_name 保证幂等）
-query("INSERT IGNORE INTO user_levels(name,min_spent_cents,discount_percent,sort) VALUES
-    ('普通',0,100,1),
-    ('银卡',50000,98,2),
-    ('金卡',200000,95,3)");
+add_column('user_levels','points_rate_x10','tinyint NOT NULL DEFAULT 10 COMMENT \'积分倍率×10（10=×1.0），确认收货发分按当时等级倍率\'');
+// 种子（id 显式指定保证 六档=1..6；主键冲突 INSERT IGNORE 幂等；后随按 id UPDATE 供存量库改名/改门槛，重复执行结果一致）
+query("INSERT IGNORE INTO user_levels(id,name,min_spent_cents,discount_percent,points_rate_x10,sort) VALUES
+    (1,'白银',0,100,10,1),
+    (2,'黄金',50000,98,10,2),
+    (3,'铂金',200000,95,10,3),
+    (4,'白钻',500000,93,11,4),
+    (5,'黑钻',1000000,92,12,5),
+    (6,'至尊',2000000,90,15,6)");
+query("UPDATE user_levels SET name='白银',min_spent_cents=0,discount_percent=100,points_rate_x10=10,sort=1 WHERE id=1 AND (name<>'白银' OR min_spent_cents<>0)");
+query("UPDATE user_levels SET name='黄金',min_spent_cents=50000,discount_percent=98,points_rate_x10=10,sort=2 WHERE id=2 AND (name<>'黄金' OR min_spent_cents<>50000)");
+query("UPDATE user_levels SET name='铂金',min_spent_cents=200000,discount_percent=95,points_rate_x10=10,sort=3 WHERE id=3 AND (name<>'铂金' OR min_spent_cents<>200000)");
+query("UPDATE user_levels SET name='白钻',min_spent_cents=500000,discount_percent=93,points_rate_x10=11,sort=4 WHERE id=4 AND (name<>'白钻' OR min_spent_cents<>500000)");
+query("UPDATE user_levels SET name='黑钻',min_spent_cents=1000000,discount_percent=92,points_rate_x10=12,sort=5 WHERE id=5 AND (name<>'黑钻' OR min_spent_cents<>1000000)");
+query("UPDATE user_levels SET name='至尊',min_spent_cents=2000000,discount_percent=90,points_rate_x10=15,sort=6 WHERE id=6 AND (name<>'至尊' OR min_spent_cents<>2000000)");
 add_column('users','level_id','tinyint NOT NULL DEFAULT 1');
 add_column('users','total_spent_cents','bigint NOT NULL DEFAULT 0');
 query("CREATE TABLE IF NOT EXISTS level_log (

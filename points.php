@@ -37,7 +37,7 @@ page_start('积分中心');
 ?>
 <section class="card"><h2>我的积分</h2>
 <p>当前积分余额：<strong class="price"><?=(int)$balance?></strong> 分<?php if ($todaySigned): ?> · 已连续签到 <strong><?=(int)$todayStreak?></strong> 天<?php endif; ?></p>
-<p class="muted">签到每日 +5 分，连续签到每满 7 天当天额外 +20 分；订单确认收货按实付金额每 1 元 = 1 分；首次评价 +10 分、追评 +5 分；100 积分 = 1 元，结算时最多抵应付金额的 10%。</p>
+<p class="muted">签到每日 +5 分，连续签到每满 7 天当天额外 +20 分；订单确认收货按实付金额每 1 元 = 1 分（白钻及以上按会员档位倍率加成，见<a href="member.php">我的会员</a>）；首次评价 +10 分、追评 +5 分；100 积分 = 1 元，结算时最多抵应付金额的 10%。</p>
 <p><a href="user_center.php">返回个人中心</a></p>
 <form method="post" class="inline"><?=csrf_field()?><button name="signin" value="1" <?=$todaySigned?'disabled':''?>><?=$todaySigned ? '今日已签到' : '立即签到（+5 分）'?></button></form>
 </section>

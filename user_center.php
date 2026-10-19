@@ -307,23 +307,11 @@ $username = !empty($user['username']) ? $user['username'] : ($_SESSION['username
                 <span style="background: #eff6ff; color: #2563eb; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">
                     <?php echo ($role === 'admin') ? '🏪 商家账号' : '👤 普通买家'; ?>
                 </span>
-                <?php if ($is_logged_in): $memberLevel = one('SELECT l.name, l.discount_percent, u.total_spent_cents FROM users u JOIN user_levels l ON l.id = u.level_id WHERE u.id = ?', [(int)$user_id]); ?>
-                <?php if ($memberLevel): ?>
-                <span class="role-badge" style="background:#fef9c3;color:#a16207;">
-                    会员等级：<?php echo htmlspecialchars($memberLevel['name']); ?><?php echo ((int)$memberLevel['discount_percent'] < 100) ? '（' . (100 - (int)$memberLevel['discount_percent']) / 10 . ' 折）' : ''; ?>
-                </span>
-                <p style="margin: 6px 0 0 0; font-size: 0.82rem; color: #64748b;">
-                    累计实付 <strong style="color:#1e293b;">¥ <?php echo number_format(((int)$memberLevel['total_spent_cents']) / 100, 2); ?></strong>
-                    <?php $nextLevel = one('SELECT name, min_spent_cents FROM user_levels WHERE min_spent_cents > ? ORDER BY min_spent_cents LIMIT 1', [(int)$memberLevel['total_spent_cents']]); ?>
-                    <?php if ($nextLevel): ?>
-                    · 距<?php echo htmlspecialchars($nextLevel['name']); ?>还差 <strong style="color:#dc2626;">¥ <?php echo number_format((((int)$nextLevel['min_spent_cents']) - ((int)$memberLevel['total_spent_cents'])) / 100, 2); ?></strong>
-                    <?php else: ?>
-                    · 已达最高等级
-                    <?php endif; ?>
-                </p>
-                <p style="margin: 2px 0 0 0; font-size: 0.75rem; color: #94a3b8;">等级规则：按累计实付自动升级（银卡 ≥ ¥500、金卡 ≥ ¥2000），确认收货后计入，退款不扣减。</p>
-                <?php endif; ?>
-                <?php endif; ?>
+                <?php if ($is_logged_in): $ucProg = level_progress((int)$user_id); if ($ucProg): ?>
+                <a href="member.php" style="display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 5px 12px; border-radius: 18px; background: linear-gradient(90deg, #1e293b, #334155); color: #fbbf24; font-size: 0.8rem; font-weight: 700; text-decoration: none;">
+                    🎫 我的会员：<?php echo htmlspecialchars($ucProg['level']['name']); ?><?php echo ((int)$ucProg['level']['discount_percent'] < 100) ? ' · ' . rtrim(rtrim(number_format((int)$ucProg['level']['discount_percent'] / 10, 1), '0'), '.') . ' 折' : ''; ?><?php echo $ucProg['next'] ? ' · 距' . htmlspecialchars($ucProg['next']['name']) . '还差 ¥ ' . number_format(((int)$ucProg['next_remain_cents']) / 100, 2) : ' · 已达最高等级'; ?> ›
+                </a>
+                <?php endif; endif; ?>
             </div>
         </div>
 
@@ -434,7 +422,7 @@ $username = !empty($user['username']) ? $user['username'] : ($_SESSION['username
         <!-- 4. 资料及安全修改表单 -->
         <?php if ($is_logged_in): ?>
             <div class="profile-edit">
-                <div class="section-title">修改个人资料与安全设置</div>
+                <div class="section-title">修改个人资料</div>
                 <form action="user_center.php" method="POST" enctype="multipart/form-data"><?php echo csrf_field(); ?>
                     <input type="hidden" name="update_profile" value="1">
                     

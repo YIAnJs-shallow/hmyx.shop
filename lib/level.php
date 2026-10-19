@@ -40,3 +40,39 @@ function level_discount_percent($userId) {
     $row = one('SELECT l.discount_percent FROM users u JOIN user_levels l ON l.id=u.level_id WHERE u.id=?', [(int)$userId]);
     return $row ? (int)$row['discount_percent'] : 100;
 }
+
+// ===== 2026-10-19 六档升级展示助手 =====
+
+// 全部档位（门槛升序）：供"我的会员"页权益对比表与进度条使用
+function levels_all() {
+    return rows('SELECT id,name,min_spent_cents,discount_percent,points_rate_x10 FROM user_levels ORDER BY min_spent_cents, id');
+}
+
+// 用户等级进度：当前档行、下一档行、累计实付、进度百分比（0-100）、距下一档差额（分）；用户缺失返回 null
+function level_progress($userId) {
+    $userId = (int)$userId;
+    $spentRow = one('SELECT total_spent_cents FROM users WHERE id=?', [$userId]);
+    if (!$spentRow) return null;
+    $spent = (int)$spentRow['total_spent_cents'];
+    $all = levels_all();
+    $current = null; $next = null;
+    foreach ($all as $lv) {
+        if ((int)$lv['min_spent_cents'] <= $spent) { $current = $lv; }
+        elseif ($next === null) { $next = $lv; }
+    }
+    if ($current === null && $all) { $current = $all[0]; }
+    if ($current === null) return null;
+    $percent = 100;
+    if ($next !== null) {
+        $span = (int)$next['min_spent_cents'] - (int)$current['min_spent_cents'];
+        $percent = $span > 0 ? (int)floor((($spent - (int)$current['min_spent_cents']) / $span) * 100) : 0;
+        $percent = max(0, min(100, $percent));
+    }
+    return [
+        'level' => $current,
+        'next' => $next,
+        'next_remain_cents' => $next !== null ? (int)$next['min_spent_cents'] - $spent : 0,
+        'spent_cents' => $spent,
+        'percent' => $percent,
+    ];
+}

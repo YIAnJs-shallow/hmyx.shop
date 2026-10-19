@@ -894,12 +894,15 @@ check(alipay_trade_refund('QA-REFUND-2',100,'QA-REFUND-2-R1')===false,'alipay re
 putenv('ALIPAY_GATEWAY_OVERRIDE');
 // ===== 会员等级体系：阈值种子 / completed 积累 / 退款不扣减 / 折扣叠加 / 对账 cron / 用户中心展示 =====
 // 1) 阈值种子与折扣配置
-$levels=rows('SELECT id,name,min_spent_cents,discount_percent FROM user_levels ORDER BY min_spent_cents');
-check(count($levels)===3 && $levels[0]['name']==='普通' && (int)$levels[0]['min_spent_cents']===0 && $levels[1]['name']==='银卡' && (int)$levels[1]['min_spent_cents']===50000 && $levels[2]['name']==='金卡' && (int)$levels[2]['min_spent_cents']===200000,'member level thresholds seeded as 0/500/2000 yuan');
+$levels=rows('SELECT id,name,min_spent_cents,discount_percent,points_rate_x10 FROM user_levels ORDER BY min_spent_cents, id');
+check(count($levels)===6 && $levels[0]['name']==='白银' && (int)$levels[0]['min_spent_cents']===0 && $levels[1]['name']==='黄金' && (int)$levels[1]['min_spent_cents']===50000 && $levels[2]['name']==='铂金' && (int)$levels[2]['min_spent_cents']===200000,'member level thresholds seeded as six tiers (0/500/2000)');
 check((int)$levels[0]['discount_percent']===100 && (int)$levels[1]['discount_percent']===98 && (int)$levels[2]['discount_percent']===95,'member level discounts configured 100/98/95');
+check($levels[3]['name']==='白钻' && (int)$levels[3]['min_spent_cents']===500000 && (int)$levels[3]['discount_percent']===93 && (int)$levels[3]['points_rate_x10']===11,'white-diamond tier seeded at 5000 yuan with 93 percent and 1.1x points rate');
+check($levels[4]['name']==='黑钻' && (int)$levels[4]['min_spent_cents']===1000000 && (int)$levels[4]['discount_percent']===92 && (int)$levels[4]['points_rate_x10']===12,'black-diamond tier seeded at 10000 yuan with 92 percent and 1.2x points rate');
+check($levels[5]['name']==='至尊' && (int)$levels[5]['min_spent_cents']===2000000 && (int)$levels[5]['discount_percent']===90 && (int)$levels[5]['points_rate_x10']===15,'supreme tier seeded at 20000 yuan with 90 percent and 1.5x points rate');
 $noOverlap=true; for($li=1;$li<count($levels);$li++){ if((int)$levels[$li]['min_spent_cents']<=(int)$levels[$li-1]['min_spent_cents']) $noOverlap=false; }
 check($noOverlap,'member level threshold ranges do not overlap');
-// 2) 新用户完成 520 元订单 → 累计实付 520 元并升级银卡
+// 2) 新用户完成 520 元订单 → 累计实付 520 元并升级黄金档
 query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('等级测试商品','520.00',5,?,?,1,'approved')",[$category,$shop]); $pLevel=(int)$conn->insert_id;
 $levelUser=insert_user('qa_level_user','user');
 query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'等级买家','13800000003','测试省测试市等级地址',1)",[$levelUser]); $levelAddress=(int)$conn->insert_id;
@@ -908,7 +911,7 @@ change_order($levelOrder,$levelUser,'pay');
 $_SESSION['role']='merchant'; change_order($levelOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'LVL00001']);
 $_SESSION=['user_id'=>$levelUser,'role'=>'user']; change_order($levelOrder,$levelUser,'receive');
 check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===52000,'completed order accrues actual paid cents');
-check((int)one('SELECT level_id FROM users WHERE id=?',[$levelUser])['level_id']===(int)$levels[1]['id'],'buyer upgraded to silver at 500 yuan threshold');
+check((int)one('SELECT level_id FROM users WHERE id=?',[$levelUser])['level_id']===(int)$levels[1]['id'],'buyer upgraded to gold tier at 500 yuan threshold');
 check((int)one('SELECT delta_cents FROM level_log WHERE user_id=? AND order_id=?',[$levelUser,$levelOrder])['delta_cents']===52000,'level log records the accrual with paid cents');
 // 3) 已完成订单售后退款：累计实付不扣减、不降级
 change_order($levelOrder,$levelUser,'after_sale',['reason'=>'完成后申请退货']);
@@ -919,17 +922,17 @@ $_SESSION=['user_id'=>$levelUser,'role'=>'user'];
 check(one('SELECT status FROM after_sale_requests WHERE order_id=?',[$levelOrder])['status']==='refunded','level order after-sale refunded');
 check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===52000 && (int)one('SELECT level_id FROM users WHERE id=?',[$levelUser])['level_id']===(int)$levels[1]['id'],'refund keeps lifetime accrual and level without downgrade');
 check(one('SELECT id FROM level_log WHERE user_id=? AND delta_cents<0',[$levelUser])===null,'no negative level log entry is ever written');
-// 4) 累计达 2000 元 → 金卡（下一笔 completed 触发重算并写等级变更流水）
+// 4) 累计达 2000 元 → 铂金（下一笔 completed 触发重算并写等级变更流水）
 query("UPDATE users SET total_spent_cents=200000 WHERE id=?",[$levelUser]);
 query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('等级升级商品','20.00',5,?,?,1,'approved')",[$category,$shop]); $pGold=(int)$conn->insert_id;
 $goldOrder=(int)create_orders($levelUser,$pGold,1,$levelAddress,'level-gold')[0];
 change_order($goldOrder,$levelUser,'pay');
 $_SESSION['role']='merchant'; change_order($goldOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'LVL00002']);
 $_SESSION=['user_id'=>$levelUser,'role'=>'user']; change_order($goldOrder,$levelUser,'receive');
-check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===201960,'gold order accrues paid cents net of silver-level discount on top of adjusted history');
+check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===201960,'gold order accrues paid cents net of member discount on top of adjusted history');
 $goldChange=one('SELECT old_level_id,new_level_id,delta_cents FROM level_log WHERE user_id=? AND delta_cents=0 ORDER BY id DESC LIMIT 1',[$levelUser]);
-check((int)$goldChange['old_level_id']===(int)$levels[1]['id'] && (int)$goldChange['new_level_id']===(int)$levels[2]['id'],'buyer upgraded to gold with a zero-delta change log');
-// 5) 金卡下单：member_discount_cents=5%，券门槛按折后小计判定，实付=小计-会员折扣-券
+check((int)$goldChange['old_level_id']===(int)$levels[1]['id'] && (int)$goldChange['new_level_id']===(int)$levels[2]['id'],'buyer upgraded to platinum tier with a zero-delta change log');
+// 5) 铂金档下单：member_discount_cents=5%，券门槛按折后小计判定，实付=小计-会员折扣-券
 query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('等级测试券：满100减10',1000,10000,100)"); $levelCouponId=(int)$conn->insert_id;
 coupon_claim($levelUser,$levelCouponId);
 $levelCoupon=one('SELECT uc.id FROM user_coupons uc WHERE uc.coupon_id=? AND uc.user_id=?',[$levelCouponId,$levelUser]);
@@ -937,7 +940,7 @@ query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_s
 $goldCouponOrder=(int)create_orders($levelUser,$pMember,1,$levelAddress,'level-coupon-ok',(int)$levelCoupon['id'])[0];
 $goldRow=one('SELECT total_amount,discount_amount,member_discount_cents,points_discount_cents FROM orders WHERE id=?',[$goldCouponOrder]);
 check($goldRow['total_amount']==='200.00' && (int)$goldRow['member_discount_cents']===1000 && $goldRow['discount_amount']==='10.00' && (int)$goldRow['points_discount_cents']===0,'gold member order records 5 percent member discount plus coupon');
-// 券门槛以折后小计为基数：原小计 104 元满 100 门槛、金卡 95 折后 98.80 不满 → 拒单
+// 券门槛以折后小计为基数：原小计 104 元满 100 门槛、铂金 95 折后 98.80 不满 → 拒单
 query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('等级门槛商品','104.00',5,?,?,1,'approved')",[$category,$shop]); $pThreshold=(int)$conn->insert_id;
 query("INSERT INTO coupons(title,discount_cents,min_spend_cents,total_count) VALUES('等级门槛券：满100减5',500,10000,100)"); $thresholdCouponId=(int)$conn->insert_id;
 coupon_claim($levelUser,$thresholdCouponId);
@@ -955,7 +958,7 @@ check(cron_reconcile_levels()===1,'level reconcile fixes exactly the tampered us
 check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===53960,'reconcile restores total spent to completed-orders sum');
 check((int)one('SELECT level_id FROM users WHERE id=?',[$levelUser])['level_id']===(int)$levels[1]['id'],'reconcile recalculates level from the restored total');
 check(cron_reconcile_levels()===0,'reconcile rerun finds no drift');
-// 8) 用户中心：未登录不显示等级区块，登录后显示徽章与累计实付
+// 8) 用户中心：未登录不显示会员入口，登录后显示"我的会员"入口条（详情在 member.php 我的会员页）
 function render_user_center_page(array $session) {
     global $conn; // user_center.php 在函数作用域内 include，需要全局数据库连接可见
     $backupGet=$_GET; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
@@ -968,9 +971,43 @@ function render_user_center_page(array $session) {
     return $html;
 }
 $guestCenterHtml=render_user_center_page([]);
-check(strpos($guestCenterHtml,'会员等级')===false,'user center hides member level section for guests');
+check(strpos($guestCenterHtml,'我的会员：')===false && strpos($guestCenterHtml,'member.php')===false,'user center hides member entry strip for guests');
 $memberCenterHtml=render_user_center_page(['user_id'=>$levelUser,'role'=>'user']);
-check(strpos($memberCenterHtml,'会员等级：银卡')!==false && strpos($memberCenterHtml,'累计实付')!==false,'user center shows level badge and lifetime spending');
+check(strpos($memberCenterHtml,'我的会员：黄金')!==false && strpos($memberCenterHtml,'href="member.php"')!==false,'user center shows member entry strip linking to member page');
+// ===== 我的会员页（member.php）：门禁 / 档位 Hero 与进度条 / 六档对比表 / 至尊顶档文案 =====
+function render_member_page(array $session) {
+    global $conn; // member.php 在函数作用域内 include，需要全局数据库连接可见
+    $backupGet=$_GET; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+    $_SESSION=$session; $_GET=[]; $_SERVER['REQUEST_METHOD']='GET';
+    ob_start();
+    include __DIR__.'/../member.php';
+    $html=ob_get_clean();
+    $_GET=$backupGet; $_SESSION=$backupSession;
+    if ($backupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$backupMethod;
+    return $html;
+}
+$guestMemberHtml=render_member_page([]);
+check(strpos($guestMemberHtml,'请先登录后查看我的会员')!==false,'member page rejects guests with login notice');
+$goldMemberHtml=render_member_page(['user_id'=>$levelUser,'role'=>'user']);
+check(strpos($goldMemberHtml,'黄金 会员')!==false && strpos($goldMemberHtml,'会员档位与权益对比')!==false,'member page shows current tier hero and comparison section');
+check(strpos($goldMemberHtml,'白银')!==false && strpos($goldMemberHtml,'黄金')!==false && strpos($goldMemberHtml,'铂金')!==false && strpos($goldMemberHtml,'白钻')!==false && strpos($goldMemberHtml,'黑钻')!==false && strpos($goldMemberHtml,'至尊')!==false,'member page lists all six tiers');
+check(strpos($goldMemberHtml,'（当前）')!==false && strpos($goldMemberHtml,'mm-current')!==false,'member page highlights the current tier row');
+check(strpos($goldMemberHtml,'还差 ¥')!==false && strpos($goldMemberHtml,'mm-progress-bar')!==false,'member page renders progress bar with remaining amount to next tier');
+query('UPDATE users SET total_spent_cents=2000000 WHERE id=?',[$plainUser]);
+$supremeMemberHtml=render_member_page(['user_id'=>$plainUser,'role'=>'user']);
+check(strpos($supremeMemberHtml,'至尊 会员')!==false && strpos($supremeMemberHtml,'已达最高等级')!==false,'member page shows supreme max-level note without next-tier progress');
+query('UPDATE users SET total_spent_cents=0 WHERE id=?',[$plainUser]);
+// 9) 积分倍率：白钻（×1.1）确认收货发分按实付分×11/1000 向下取整，倍率取发分时点等级
+$rateUser=insert_user('qa_rate_user','user');
+query('UPDATE users SET level_id=4 WHERE id=?',[$rateUser]);
+query("INSERT INTO products(title,price,stock,category_id,shop_id,status,audit_status) VALUES('倍率测试商品','100.00',5,?,?,1,'approved')",[$category,$shop]); $pRate=(int)$conn->insert_id;
+query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'倍率买家','13800000005','测试省测试市倍率地址',1)",[$rateUser]); $rateAddress=(int)$conn->insert_id;
+$rateOrder=(int)create_orders($rateUser,$pRate,1,$rateAddress,'rate-order')[0];
+check((int)one('SELECT member_discount_cents FROM orders WHERE id=?',[$rateOrder])['member_discount_cents']===700,'white-diamond order applies 7 percent member discount at order creation');
+change_order($rateOrder,$rateUser,'pay');
+$_SESSION['role']='merchant'; change_order($rateOrder,$merchant,'ship',['express_company'=>'测试快递','express_no'=>'RATE00001']);
+$_SESSION=['user_id'=>$rateUser,'role'=>'user']; change_order($rateOrder,$rateUser,'receive');
+check((int)one('SELECT points FROM users WHERE id=?',[$rateUser])['points']===102,'white-diamond completion grants 102 points at 1.1x rate on 9300 paid cents');
 // ===== 结算页最优券推荐：GET 默认选最大面额券，POST 用户选择优先（含"不使用"），无券用户无提示 =====
 function render_checkout_page(array $session, array $get, array $post = []) {
     $backupGet=$_GET; $backupPost=$_POST; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;

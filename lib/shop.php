@@ -433,10 +433,15 @@ function change_order($id, $actor, $action, $data = []) {
             notify((int)$order['user_id'], 'order', '您的订单已发货（运单号 '.$number.'）', '订单 '.$order['order_no'].' 已由'.$company.'发出，运单号 '.$number.'，请注意查收。', 'my_orders.php');
         } elseif ($action === 'receive' && $owner && $order['status'] === 'shipped') {
             query("UPDATE orders SET status='completed',completed_at=NOW() WHERE id=?", [$id]);
-            // 确认收货发分：实付 = 商品合计 - 优惠券优惠 - 积分抵扣 - 会员折扣，每 1 元 = 1 分（向下取整）
+            // 确认收货发分：实付 = 商品合计 - 优惠券优惠 - 积分抵扣 - 会员折扣，每 1 元 = 1 分（向下取整）；
+            // 2026-10-19 六档升级：白钻及以上按等级积分倍率加成（倍率取发分时点等级，×10 整数口径）
             $paidCents = (int)round(((float)$order['total_amount']) * 100) - (int)round(((float)$order['discount_amount']) * 100) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents'];
-            $earned = max(0, intdiv($paidCents, 100));
-            if ($earned > 0) grant_points((int)$order['user_id'], 'order', $earned, (int)$id, '确认收货赠送积分');
+            $rateRow = one('SELECT l.points_rate_x10 FROM users u JOIN user_levels l ON l.id=u.level_id WHERE u.id=?', [(int)$order['user_id']]);
+            $pointsRate = $rateRow ? max(10, (int)$rateRow['points_rate_x10']) : 10;
+            $earned = max(0, (int)floor($paidCents * $pointsRate / 1000));
+            if ($earned > 0) grant_points((int)$order['user_id'], 'order', $earned, (int)$id, '确认收货赠送积分' . ($pointsRate > 10 ? '（含会员积分倍率加成）' : ''));
+            // 会员等级积累：与发分同一事务同一实付口径（completed 触发，退款不扣减）
+            level_accrue((int)$order['user_id'], (int)$id, max(0, $paidCents));
             // 会员等级积累：与发分同一事务同一实付口径（completed 触发，退款不扣减）
             level_accrue((int)$order['user_id'], (int)$id, max(0, $paidCents));
         } elseif ($action === 'refund' && $owner && $order['status'] === 'paid') {
