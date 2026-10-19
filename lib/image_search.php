@@ -70,7 +70,8 @@ function image_search_sanitize($raw) {
     $out = [];
     foreach ($decoded as $item) {
         if (!is_string($item)) continue;
-        $word = preg_replace('/[^\p{Han}A-Za-z0-9 ]+/u', '', trim($item));
+        // 用明确码位区间（CJK 基本区）而非 \p{Han}：新 PCRE2 已把【】等括号归入 Han 文字属性，跨版本行为会漂移
+        $word = preg_replace('/[^\x{4E00}-\x{9FFF}A-Za-z0-9 ]+/u', '', trim($item));
         $word = trim(preg_replace('/\s+/u', ' ', $word));
         if ($word === '' || in_array($word, $out, true)) continue;
         $out[] = mb_substr($word, 0, 12);
