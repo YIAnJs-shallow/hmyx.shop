@@ -25,30 +25,48 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>找回密码 - 惠蒙优选</title>
-    <style>
-        body { background-color: #f1f5f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; font-family: sans-serif; }
-        .box { background: #fff; padding: 30px; border-radius: 8px; width: 360px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #cbd5e1; }
-        h2 { text-align: center; margin-bottom: 20px; color: #0f172a; }
-        .input-group { margin-bottom: 15px; }
-        .input-group label { display: block; margin-bottom: 5px; font-size: 14px; color: #475569; }
-        .input-group input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
-        .tip { font-size: 12px; color: #64748b; margin-top: 4px; }
-        .btn-submit { width: 100%; padding: 10px; background: #16a34a; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        .btn-submit:hover { background: #15803d; }
-        .links { margin-top: 18px; text-align: center; font-size: 14px; }
-        .links a { color: #2563eb; text-decoration: none; }
-        .links a:hover { text-decoration: underline; }
-        .msg { padding: 8px; border-radius: 4px; margin-bottom: 15px; text-align: center; font-size: 13px; }
-        .msg-err { background: #fef2f2; color: #dc2626; }
-        .msg-succ { background: #f0fdf4; color: #166534; }
-    </style>
+    <link rel="stylesheet" href="css/auth.css?v=8">
 </head>
-<body>
-    <div class="box">
+<body class="auth-page">
+    <div class="auth-wrap">
+        <!-- Canvas 天空背景：极光 / 繁星 / 雪原（js/sky.js 绘制，纯装饰） -->
+        <canvas id="sky-canvas" aria-hidden="true"></canvas>
+        <!-- 左区：品牌展示（与登录/注册页一致） -->
+        <div class="auth-brand">
+            <h1 class="brand-name">惠蒙优选</h1>
+            <p class="brand-slogan"><span class="slogan-main">好货精选</span><span class="slogan-sub">多商户入驻</span></p>
+            <ul class="brand-points">
+                <li>
+                    <span class="point-icon">🛍️</span>
+                    <div>
+                        <p class="point-title">精选好物</p>
+                        <p class="point-desc">热销榜单每日更新</p>
+                    </div>
+                </li>
+                <li>
+                    <span class="point-icon">🏪</span>
+                    <div>
+                        <p class="point-title">多商户入驻</p>
+                        <p class="point-desc">店铺商品一键直达</p>
+                    </div>
+                </li>
+                <li>
+                    <span class="point-icon">🎁</span>
+                    <div>
+                        <p class="point-title">新人礼包</p>
+                        <p class="point-desc">注册即领满 100 减 20</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- 右区：表单卡片 -->
+        <div class="auth-form">
+            <div class="auth-card">
         <h2>找回密码</h2>
 
         <?php if (!empty($message)): ?>
-            <div class="msg <?php echo $success ? 'msg-succ' : 'msg-err'; ?>">
+            <div class="msg <?php echo $success ? 'msg-succ' : ''; ?>">
                 <?php echo htmlspecialchars($message); ?>
             </div>
         <?php endif; ?>
@@ -63,9 +81,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         </form>
 
         <div class="links">
-            <a href="reset_password.php">已收到验证码？去重置密码</a><br>
+            <a href="reset_password.php">已收到验证码？去重置密码</a>
             <a href="user_login.php">← 返回登录</a>
         </div>
+            </div>
+        </div>
     </div>
+
+    <div class="auth-footer">© 2026 惠蒙优选 · 本站为课程演示项目</div>
+
+    <script src="js/sky.js?v=9"></script>
 </body>
 </html>
