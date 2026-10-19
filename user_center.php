@@ -53,7 +53,7 @@ $browsing = browsing_history($user_id);
         <div>
             <h3 class="uc-hero-name"><?php echo htmlspecialchars($username); ?></h3>
             <div>
-                <span class="uc-hero-badge uc-role"><?php echo ($role === 'admin') ? '🏪 商家账号' : '👤 普通买家'; ?></span>
+                <span class="uc-hero-badge uc-role"><?php echo ($role === 'admin') ? '🛠️ 平台管理员' : (($role === 'merchant') ? '🏪 商家账号' : '👤 普通买家'); ?></span>
                 <?php if ($ucProg): ?>
                 <span class="uc-hero-badge">🎫 <?php echo htmlspecialchars($ucProg['level']['name']); ?>会员</span>
                 <?php endif; ?>
@@ -75,6 +75,28 @@ $browsing = browsing_history($user_id);
     </div>
     <?php endif; ?>
 </div>
+
+<!-- 商家工作台：仅 merchant 且已有店铺时展示（经营视角待办，京东千牛式；口径与 admin_orders.php 一致） -->
+<?php if ($role === 'merchant'):
+    $ucShop = one('SELECT id, shop_name FROM shops WHERE user_id=? AND status=1', [$user_id]);
+    if ($ucShop):
+        $ucShopId = (int)$ucShop['id'];
+        $cntShopToday = (int)one("SELECT COUNT(*) AS n FROM orders WHERE shop_id=? AND created_at>=CURDATE()", [$ucShopId])['n'];
+        $cntShopUnship = (int)one("SELECT COUNT(*) AS n FROM orders WHERE shop_id=? AND status='paid'", [$ucShopId])['n'];
+        $cntShopAfter = (int)one("SELECT COUNT(*) AS n FROM after_sale_requests a JOIN orders o ON o.id=a.order_id WHERE o.shop_id=? AND a.status='pending'", [$ucShopId])['n']
+                      + (int)one("SELECT COUNT(*) AS n FROM refund_requests r JOIN orders o ON o.id=r.order_id WHERE o.shop_id=? AND r.status='pending'", [$ucShopId])['n'];
+        $cntShopReply = (int)one("SELECT COUNT(*) AS n FROM reviews r JOIN products p ON p.id=r.product_id WHERE p.shop_id=? AND r.parent_id IS NULL AND r.reply_content IS NULL", [$ucShopId])['n'];
+?>
+<div class="uc-card uc-merchant">
+    <h4 class="uc-card-title">🏪 商家工作台 · <?php echo htmlspecialchars($ucShop['shop_name']); ?><a class="uc-more" href="admin_orders.php">进入工作台 ›</a></h4>
+    <div class="uc-grid uc-grid-4">
+        <a href="admin_orders.php?status=all"><span class="uc-grid-icon">📈<?php echo badge_html($cntShopToday); ?></span>今日新订单</a>
+        <a href="admin_orders.php?status=paid"><span class="uc-grid-icon">📦<?php echo badge_html($cntShopUnship); ?></span>待发货</a>
+        <a href="admin_orders.php?status=all"><span class="uc-grid-icon">🧾<?php echo badge_html($cntShopAfter); ?></span>处理中售后</a>
+        <a href="admin_orders.php"><span class="uc-grid-icon">⭐<?php echo badge_html($cntShopReply); ?></span>待回复评价</a>
+    </div>
+</div>
+<?php endif; endif; ?>
 
 <!-- 我的订单：四宫格状态入口（口径与 my_orders.php 状态页签一致） -->
 <div class="uc-card">
