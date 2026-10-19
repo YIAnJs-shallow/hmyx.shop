@@ -1008,8 +1008,9 @@ function render_index_page(array $session) {
     return $html;
 }
 $navLoggedHtml=render_index_page(['user_id'=>$levelUser,'role'=>'user','username'=>'qa_level_user']);
-check(strpos($navLoggedHtml,'user-avatar')!==false && strpos($navLoggedHtml,'user-dropdown')!==false && strpos($navLoggedHtml,'href="member.php"')!==false && strpos($navLoggedHtml,'href="profile.php"')!==false,'index nav shows avatar trigger with member and profile dropdown anchors');
-check(strpos($navLoggedHtml,'href="logout.php"')!==false && strpos($navLoggedHtml,'href="user_center.php"')!==false,'index dropdown includes logout link and trigger points to user center');
+check(strpos($navLoggedHtml,'user-avatar')!==false && strpos($navLoggedHtml,'user-dropdown')!==false && strpos($navLoggedHtml,'href="member.php"')!==false && preg_match('#class="user-trigger" href="profile\.php"#',$navLoggedHtml)===1,'index nav avatar trigger opens profile page with member anchor in dropdown');
+check(strpos($navLoggedHtml,'href="logout.php"')!==false && strpos($navLoggedHtml,'href="user_center.php"')!==false,'index dropdown links user center hub and logout');
+check(strpos($navLoggedHtml,'⚙️ 修改资料')===false,'index dropdown no longer duplicates profile entry since trigger opens it directly');
 $navGuestHtml=render_index_page([]);
 check(strpos($navGuestHtml,'user-dropdown')===false && strpos($navGuestHtml,'登录 / 注册')!==false,'index nav keeps plain login entry for guests without dropdown');
 // ===== 我的会员页（member.php）：门禁 / 档位 Hero 与进度条 / 六档对比表 / 至尊顶档文案 =====

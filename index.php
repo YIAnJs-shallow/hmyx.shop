@@ -246,7 +246,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
     <link rel="stylesheet" href="css/shop.css?v=3">
     <link rel="stylesheet" href="css/style.css?v=7">
-    <link rel="stylesheet" href="css/user_menu.css?v=1">
+    <link rel="stylesheet" href="css/user_menu.css?v=2">
 </head>
 <body class="page-home">
         <header>
@@ -282,17 +282,17 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
                     <?php endif; ?>
                 </li>
 
-                <!-- 个人中心 / 登录 入口（京东式头像下拉菜单：悬停/聚焦弹出，点击头像或用户名进入个人中心） -->
+                <!-- 账户设置 / 登录 入口（京东式：点头像/用户名直达修改资料页，悬停下拉含个人中心枢纽） -->
                 <li>
                     <?php if ($is_logged_in): ?>
                         <div class="user-menu">
-                            <a class="user-trigger" href="user_center.php" aria-haspopup="true">
+                            <a class="user-trigger" href="profile.php" aria-haspopup="true">
                                 <span class="user-avatar"><?php if ($nav_avatar !== ''): ?><img src="<?php echo htmlspecialchars($nav_avatar); ?>" alt="头像"><?php else: ?>👤<?php endif; ?></span>
                                 <span class="user-name"><?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?></span>
                             </a>
                             <div class="user-dropdown">
+                                <a href="user_center.php">🏠 个人中心</a>
                                 <a href="member.php">🎫 我的会员</a>
-                                <a href="profile.php">⚙️ 修改资料</a>
                                 <a href="my_orders.php">📦 我的订单</a>
                                 <a href="logout.php" class="uc-drop-logout">🚪 退出登录</a>
                             </div>
