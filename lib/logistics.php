@@ -3,6 +3,14 @@
 // 设计哲学与"演示支付"一致：不接真实快递 API，按发货时间生成确定性轨迹，让全流程体验完整。
 // 将来接真实物流：新增 provider（如 kuaidi100），在 logistics_track() 里按 provider 分发，页面零改动。
 
+// AMAP_KEY 来自 Web 根目录外 private/my_project/secrets.php（模板见 config/secrets.example.php），禁止硬编码入库。
+// 本文件是物流页的首个密钥使用点：主动引入 secrets.php（幂等），保证 express_detail 直连链路可用。
+if (!defined('AMAP_KEY') && function_exists('project_private_config_dir')) {
+    $logisticsSecretsPath = project_private_config_dir() . '/secrets.php';
+    if (is_file($logisticsSecretsPath)) require_once $logisticsSecretsPath;
+}
+unset($logisticsSecretsPath);
+
 const LOGISTICS_HOURS = 48; // 发货→签收总时长（小时）
 
 function logistics_provider(): string
@@ -62,9 +70,11 @@ function logistics_geocode(string $addr): ?array
 {
     if (!defined('AMAP_KEY') || AMAP_KEY === '' || trim($addr) === '') return null;
     $cacheFile = sys_get_temp_dir() . '/hm_geo_' . md5($addr) . '.json';
-    if (is_file($cacheFile) && filemtime($cacheFile) > time() - 30 * 86400) {
+    if (is_file($cacheFile)) {
         $hit = json_decode((string)file_get_contents($cacheFile), true);
-        if (is_array($hit)) return $hit ?: null;
+        // 成功结果缓存 30 天；失败结果只缓存 10 分钟（配好 Key / 修好地址后快速自愈）
+        $ttl = (is_array($hit) && $hit) ? 30 * 86400 : 600;
+        if (filemtime($cacheFile) > time() - $ttl) return $hit ?: null;
     }
     $ch = curl_init('https://restapi.amap.com/v3/geocode/geo?key=' . urlencode(AMAP_KEY) . '&address=' . urlencode($addr));
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 6, CURLOPT_CONNECTTIMEOUT => 4]);
