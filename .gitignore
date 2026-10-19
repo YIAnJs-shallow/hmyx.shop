@@ -12,3 +12,9 @@ tests/__pycache__/
 
 # 本地工具（不入库）
 打开仓库历史.bat
+
+# 本地前端开发工具（BrowserSync 热重载，灵犀 2026-10-18 配置，不入库）
+node_modules/
+package.json
+package-lock.json
+bs-config.js
