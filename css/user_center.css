@@ -1,0 +1,122 @@
+/* ===== 个人中心体系共享样式（京东"我的京东"式布局：顶部通栏 + 左侧栏 + 内容区）=====
+   使用方：user_center.php / profile.php / member.php（引用带 ?v=1 破缓存）
+   移动端窄屏：左侧栏折叠为顶部横向滚动 tab（京东 H5 口径） */
+* { box-sizing: border-box; }
+body { margin: 0; background: #f4f6f8; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #334155; }
+a { text-decoration: none; }
+
+/* 顶部通栏 */
+.uc-topbar { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 12px 4%; display: flex; align-items: center; gap: 16px; }
+.uc-topbar .uc-logo { font-size: 1.15rem; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 8px; }
+.uc-topbar .uc-logo strong { color: #2563eb; }
+.uc-topbar .uc-topbar-links { margin-left: auto; display: flex; gap: 14px; font-size: .9rem; }
+.uc-topbar .uc-topbar-links a { color: #475569; font-weight: 600; }
+.uc-topbar .uc-topbar-links a:hover { color: #2563eb; }
+
+/* 布局：左侧栏 + 内容 */
+.uc-layout { max-width: 1080px; margin: 18px auto; padding: 0 14px; display: flex; gap: 16px; align-items: flex-start; }
+.uc-side { width: 180px; flex: none; background: #fff; border: 1px solid #f1f5f9; border-radius: 10px; padding: 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,.03); }
+.uc-side a { display: flex; align-items: center; gap: 8px; padding: 11px 16px; color: #475569; font-size: .92rem; font-weight: 600; border-left: 3px solid transparent; }
+.uc-side a:hover { background: #f8fafc; color: #2563eb; }
+.uc-side a.active { background: #eff6ff; color: #2563eb; border-left-color: #2563eb; }
+.uc-side a.uc-logout { color: #dc2626; margin-top: 6px; border-top: 1px solid #f1f5f9; }
+.uc-side a.uc-logout:hover { background: #fef2f2; color: #dc2626; }
+.uc-main { flex: 1; min-width: 0; }
+
+/* 卡片通用 */
+.uc-card { background: #fff; border: 1px solid #f1f5f9; border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.03); }
+.uc-card-title { display: flex; justify-content: space-between; align-items: center; margin: 0 0 14px 0; font-size: 1rem; color: #0f172a; border-left: 4px solid #2563eb; padding-left: 10px; }
+.uc-card-title .uc-more { font-size: .82rem; color: #64748b; font-weight: 400; border: none; padding: 0; }
+.uc-card-title .uc-more:hover { color: #2563eb; }
+
+/* 顶部用户卡（通栏 Hero） */
+.uc-hero { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 10px; padding: 22px 24px; color: #fff; margin-bottom: 16px; }
+.uc-hero-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.uc-hero-avatar { width: 72px; height: 72px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid #60a5fa; display: flex; align-items: center; justify-content: center; font-size: 2rem; overflow: hidden; flex: none; }
+.uc-hero-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.uc-hero-name { margin: 0 0 6px 0; font-size: 1.2rem; }
+.uc-hero-badge { display: inline-block; padding: 3px 10px; border-radius: 14px; font-size: .78rem; font-weight: 700; background: rgba(255,255,255,.14); color: #fbbf24; margin-right: 6px; }
+.uc-hero-badge.uc-role { background: rgba(255,255,255,.14); color: #93c5fd; }
+.uc-hero-link { margin-left: auto; color: #fbbf24; font-size: .85rem; font-weight: 700; background: rgba(255,255,255,.1); padding: 7px 14px; border-radius: 16px; }
+.uc-hero-link:hover { background: rgba(255,255,255,.2); }
+
+/* 会员进度条（Hero 内，复用 member 页 mm- 前缀类） */
+.mm-progress-wrap { margin-top: 16px; }
+.mm-progress-track { height: 8px; border-radius: 4px; background: rgba(255,255,255,.18); overflow: hidden; margin-top: 14px; }
+.mm-progress-bar { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.mm-progress-meta { display: flex; justify-content: space-between; font-size: .76rem; opacity: .85; margin-top: 5px; }
+
+/* 宫格入口（订单四宫格 / 资产宫格） */
+.uc-grid { display: grid; text-align: center; gap: 8px; }
+.uc-grid.uc-grid-4 { grid-template-columns: repeat(4, 1fr); }
+.uc-grid.uc-grid-5 { grid-template-columns: repeat(5, 1fr); }
+.uc-grid a { padding: 14px 6px; border-radius: 8px; background: #f8fafc; color: #334155; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: .84rem; font-weight: 600; }
+.uc-grid a:hover { background: #eff6ff; color: #2563eb; }
+.uc-grid .uc-grid-icon { font-size: 1.6rem; position: relative; line-height: 1; }
+.uc-grid .uc-count { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 9px; background: #dc2626; color: #fff; font-size: .7rem; font-weight: 700; }
+.uc-grid .uc-count.uc-zero { background: #cbd5e1; color: #64748b; }
+
+/* 我的足迹商品卡 */
+.uc-foot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+.uc-foot-grid a.uc-foot-item { background: #f8fafc; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; color: #334155; }
+.uc-foot-grid img { width: 100%; height: 96px; object-fit: cover; border-radius: 6px; background: #e2e8f0; }
+.uc-foot-grid .uc-foot-ph { width: 100%; height: 96px; border-radius: 6px; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+.uc-foot-grid .uc-foot-title { font-size: .82rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uc-foot-grid .uc-foot-price { font-size: .88rem; font-weight: 700; color: #c75022; }
+
+/* member.php 我的会员页（沿用既有 mm- 类名，测试断言依赖） */
+.mm-hero { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 10px; padding: 22px 24px; color: #fff; margin-bottom: 16px; }
+.mm-hero-top { display: flex; align-items: center; gap: 15px; }
+.mm-tier-icon { width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; font-size: 2rem; flex: none; }
+.mm-hero h2 { margin: 0 0 4px 0; font-size: 1.25rem; }
+.mm-hero .mm-sub { margin: 0; font-size: .85rem; opacity: .85; }
+.mm-hero .mm-back { margin-left: auto; color: #fff; font-size: .85rem; opacity: .9; }
+.mm-perks { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.mm-perk { background: rgba(255,255,255,.1); border-radius: 8px; padding: 10px 14px; font-size: .85rem; }
+.mm-perk strong { color: #fbbf24; }
+.mm-section { background: #fff; border: 1px solid #f1f5f9; box-shadow: 0 2px 8px rgba(0,0,0,.03); border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+.mm-section h3 { margin: 0 0 14px 0; font-size: 1.05rem; color: #0f172a; border-left: 4px solid #2563eb; padding-left: 10px; }
+.mm-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.mm-table th, .mm-table td { padding: 10px 8px; border-bottom: 1px solid #f1f5f9; text-align: center; }
+.mm-table th { color: #475569; background: #f8fafc; }
+.mm-current td { background: #eff6ff; font-weight: 700; }
+.mm-max-note { color: #fbbf24; font-size: .85rem; margin: 8px 0 0 0; }
+.mm-rules { color: #64748b; font-size: .85rem; line-height: 1.9; margin: 0; padding-left: 18px; }
+
+/* profile.php 修改资料表单（原 user_center 表单样式迁移） */
+.profile-edit { background: #fff; border: 1px solid #f1f5f9; border-radius: 10px; padding: 22px; box-shadow: 0 2px 8px rgba(0,0,0,.03); }
+.profile-edit .section-title { font-weight: 700; font-size: 1.05rem; margin-bottom: 15px; color: #0f172a; border-left: 4px solid #2563eb; padding-left: 10px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.form-row { margin-bottom: 5px; }
+.form-row.full { grid-column: span 2; }
+.form-row label { display: block; margin-bottom: 6px; color: #475569; font-size: .88rem; font-weight: 600; }
+.form-row input[type="text"], .form-row input[type="password"], .form-row input[type="email"], .form-row input[type="tel"] { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; outline: none; }
+.form-row input:focus { border-color: #2563eb; }
+.avatar-upload-box { display: flex; align-items: center; gap: 15px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px dashed #cbd5e1; }
+.avatar-preview-small { width: 50px; height: 50px; border-radius: 50%; background: #e2e8f0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.avatar-preview-small img { width: 100%; height: 100%; object-fit: cover; }
+.btn-save { padding: 11px 25px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; font-size: .95rem; margin-top: 10px; }
+.btn-save:hover { background: #1d4ed8; }
+.alert-msg { padding: 12px 15px; border-radius: 6px; margin-bottom: 15px; font-size: .9rem; font-weight: 500; }
+.alert-msg.success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+.alert-msg.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+/* 未登录提示 */
+.uc-guest { background: #fff; border: 1px solid #f1f5f9; border-radius: 10px; padding: 40px 20px; text-align: center; }
+.uc-guest .btn-login { display: inline-block; margin-top: 14px; padding: 9px 26px; background: #2563eb; color: #fff; border-radius: 20px; font-weight: 700; }
+
+/* 页脚 */
+.uc-footer { text-align: center; color: #94a3b8; font-size: .8rem; padding: 18px 0 26px 0; }
+
+/* 移动端窄屏：左侧栏折叠为顶部横向滚动 tab（京东 H5 口径） */
+@media (max-width: 720px) {
+    .uc-layout { flex-direction: column; margin-top: 12px; }
+    .uc-side { width: 100%; display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0; border-radius: 0 0 10px 10px; }
+    .uc-side a { flex: none; padding: 10px 14px; border-left: none; border-bottom: 3px solid transparent; }
+    .uc-side a.active { border-bottom-color: #2563eb; }
+    .uc-side a.uc-logout { margin-top: 0; border-top: none; }
+    .uc-grid.uc-grid-5 { grid-template-columns: repeat(3, 1fr); }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-row.full { grid-column: span 1; }
+    .uc-hero-link { margin-left: 0; }
+}

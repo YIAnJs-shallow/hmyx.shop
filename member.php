@@ -1,15 +1,16 @@
 <?php
-// ===== 我的会员（会员体系独立子页，2026-10-19 六档升级配套）=====
+// ===== 我的会员（会员体系独立子页，2026-10-19 六档升级配套；同日并入个人中心左侧栏体系）=====
 // 定位：个人中心（user_center.php）的会员板块子页。展示当前档位/进度条/权益速览/六档对比/等级规则。
 // 数据来自 lib/level.php 的 levels_all / level_progress（user_levels 表 + users 快照），纯读渲染，无写路径。
 require_once __DIR__ . '/lib/shop.php';
+require_once __DIR__ . '/lib/uc.php';
 
 // 未登录：Web 跳登录页；CLI（测试进程内渲染）输出拒绝提示（与 points.php 门禁口径一致）
 if (empty($_SESSION['user_id'])) {
     if (PHP_SAPI !== 'cli') login_redirect(current_page_url());
-    page_start('我的会员');
+    uc_page_start('我的会员', 'member');
     echo '<p class="notice error" role="alert">请先登录后查看我的会员，<a href="user_login.php">去登录</a>。</p>';
-    page_end();
+    uc_page_end();
     return;
 }
 
@@ -36,30 +37,7 @@ function member_tier_theme($id) {
 }
 }
 ?>
-<?php page_start('我的会员'); ?>
-<style>
-.mm-hero { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 12px; padding: 25px; color: #fff; margin-bottom: 18px; }
-.mm-hero-top { display: flex; align-items: center; gap: 15px; }
-.mm-tier-icon { width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; font-size: 2rem; flex: none; }
-.mm-hero h2 { margin: 0 0 4px 0; font-size: 1.25rem; }
-.mm-hero .mm-sub { margin: 0; font-size: .85rem; opacity: .85; }
-.mm-progress-wrap { margin-top: 18px; }
-.mm-progress-track { height: 10px; border-radius: 5px; background: rgba(255,255,255,.18); overflow: hidden; }
-.mm-progress-bar { height: 100%; border-radius: 5px; background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-.mm-progress-meta { display: flex; justify-content: space-between; font-size: .78rem; opacity: .85; margin-top: 6px; }
-.mm-perks { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
-.mm-perk { background: rgba(255,255,255,.1); border-radius: 8px; padding: 10px 14px; font-size: .85rem; }
-.mm-perk strong { color: #fbbf24; }
-.mm-section { background: #fff; border: 1px solid #f1f5f9; box-shadow: 0 4px 12px rgba(0,0,0,.03); border-radius: 12px; padding: 20px; margin-bottom: 18px; }
-.mm-section h3 { margin: 0 0 14px 0; font-size: 1.05rem; color: #0f172a; border-left: 4px solid #2563eb; padding-left: 10px; }
-.mm-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
-.mm-table th, .mm-table td { padding: 10px 8px; border-bottom: 1px solid #f1f5f9; text-align: center; }
-.mm-table th { color: #475569; background: #f8fafc; }
-.mm-current td { background: #eff6ff; font-weight: 700; }
-.mm-max-note { color: #fbbf24; font-size: .85rem; margin: 8px 0 0 0; }
-.mm-rules { color: #64748b; font-size: .85rem; line-height: 1.9; margin: 0; padding-left: 18px; }
-</style>
-<div class="mm-wrap" style="max-width: 850px; margin: 25px auto; padding: 0 15px;">
+<?php uc_page_start('我的会员', 'member'); ?>
 <?php if ($prog): $cur = $prog['level']; $next = $prog['next']; $curTheme = member_tier_theme((int)$cur['id']); ?>
     <!-- 档位 Hero：当前档位徽章 + 累计实付 + 距下一档进度条 -->
     <div class="mm-hero">
@@ -69,7 +47,7 @@ function member_tier_theme($id) {
                 <h2><?php echo $curTheme['icon']; ?> <?php echo h($cur['name']); ?> 会员</h2>
                 <p class="mm-sub">累计实付 ¥ <?php echo h(number_format(((int)$prog['spent_cents']) / 100, 2)); ?></p>
             </div>
-            <a href="user_center.php" style="margin-left: auto; color: #fff; font-size: .85rem; opacity: .9;">返回个人中心 ›</a>
+            <a class="mm-back" href="user_center.php">返回个人中心 ›</a>
         </div>
         <div class="mm-progress-wrap">
             <?php if ($next): ?>
@@ -119,5 +97,4 @@ function member_tier_theme($id) {
             <li>普通买家默认为白银档，等级提升后立即生效、长期有效。</li>
         </ul>
     </div>
-</div>
-<?php page_end(); ?>
+<?php uc_page_end(); ?>

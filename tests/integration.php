@@ -958,7 +958,7 @@ check(cron_reconcile_levels()===1,'level reconcile fixes exactly the tampered us
 check((int)one('SELECT total_spent_cents FROM users WHERE id=?',[$levelUser])['total_spent_cents']===53960,'reconcile restores total spent to completed-orders sum');
 check((int)one('SELECT level_id FROM users WHERE id=?',[$levelUser])['level_id']===(int)$levels[1]['id'],'reconcile recalculates level from the restored total');
 check(cron_reconcile_levels()===0,'reconcile rerun finds no drift');
-// 8) 用户中心：未登录不显示会员入口，登录后显示"我的会员"入口条（详情在 member.php 我的会员页）
+// 8) 用户中心（京东式枢纽 Dashboard）：未登录登录引导；登录后 Hero 用户卡（会员徽章/进度条/我的会员入口）+ 左侧栏
 function render_user_center_page(array $session) {
     global $conn; // user_center.php 在函数作用域内 include，需要全局数据库连接可见
     $backupGet=$_GET; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
@@ -971,9 +971,30 @@ function render_user_center_page(array $session) {
     return $html;
 }
 $guestCenterHtml=render_user_center_page([]);
-check(strpos($guestCenterHtml,'我的会员：')===false && strpos($guestCenterHtml,'member.php')===false,'user center hides member entry strip for guests');
+check(strpos($guestCenterHtml,'登录后查看个人中心')!==false && strpos($guestCenterHtml,'update_profile')===false,'user center dashboard shows login prompt for guests and hosts no profile form');
 $memberCenterHtml=render_user_center_page(['user_id'=>$levelUser,'role'=>'user']);
-check(strpos($memberCenterHtml,'我的会员：黄金')!==false && strpos($memberCenterHtml,'href="member.php"')!==false,'user center shows member entry strip linking to member page');
+check(strpos($memberCenterHtml,'黄金会员')!==false && strpos($memberCenterHtml,'我的会员 · 权益详情')!==false && strpos($memberCenterHtml,'mm-progress-bar')!==false,'user center hero shows tier badge, member entry and progress bar');
+check(strpos($memberCenterHtml,'我的订单')!==false && strpos($memberCenterHtml,'status=pending')!==false && strpos($memberCenterHtml,'我的资产')!==false && strpos($memberCenterHtml,'浏览足迹')!==false,'user center dashboard renders order grid, asset grid and browsing history');
+check(strpos($memberCenterHtml,'uc-side')!==false && strpos($memberCenterHtml,'修改资料')!==false && strpos($memberCenterHtml,'安全退出')!==false,'shared sidebar renders profile and logout entries');
+check(strpos($memberCenterHtml,'update_profile')===false,'profile form no longer hosted in user center');
+// ===== 修改资料页（profile.php）：门禁 / 表单整体迁移落点（口径与原 user_center 表单一致） =====
+function render_profile_page(array $session) {
+    global $conn;
+    $backupGet=$_GET; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+    $_SESSION=$session; $_GET=[]; $_SERVER['REQUEST_METHOD']='GET';
+    ob_start();
+    include __DIR__.'/../profile.php';
+    $html=ob_get_clean();
+    $_GET=$backupGet; $_SESSION=$backupSession;
+    if ($backupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$backupMethod;
+    return $html;
+}
+$guestProfileHtml=render_profile_page([]);
+check(strpos($guestProfileHtml,'请先登录后修改个人资料')!==false,'profile page rejects guests with login notice');
+$profileHtml=render_profile_page(['user_id'=>$levelUser,'role'=>'user']);
+check(strpos($profileHtml,'修改个人资料')!==false && strpos($profileHtml,'name="update_profile"')!==false && strpos($profileHtml,'name="new_password"')!==false,'profile page hosts the migrated profile form');
+check(strpos($profileHtml,'uc-side')!==false && strpos($profileHtml,'active')!==false,'profile page shares the sidebar shell');
+check(strpos($profileHtml,htmlspecialchars('qa_level_user'))!==false,'profile page prefills current nickname');
 // ===== 我的会员页（member.php）：门禁 / 档位 Hero 与进度条 / 六档对比表 / 至尊顶档文案 =====
 function render_member_page(array $session) {
     global $conn; // member.php 在函数作用域内 include，需要全局数据库连接可见
@@ -989,7 +1010,7 @@ function render_member_page(array $session) {
 $guestMemberHtml=render_member_page([]);
 check(strpos($guestMemberHtml,'请先登录后查看我的会员')!==false,'member page rejects guests with login notice');
 $goldMemberHtml=render_member_page(['user_id'=>$levelUser,'role'=>'user']);
-check(strpos($goldMemberHtml,'黄金 会员')!==false && strpos($goldMemberHtml,'会员档位与权益对比')!==false,'member page shows current tier hero and comparison section');
+check(strpos($goldMemberHtml,'黄金 会员')!==false && strpos($goldMemberHtml,'会员档位与权益对比')!==false && strpos($goldMemberHtml,'返回个人中心')!==false,'member page shows tier hero, comparison section and back link');
 check(strpos($goldMemberHtml,'白银')!==false && strpos($goldMemberHtml,'黄金')!==false && strpos($goldMemberHtml,'铂金')!==false && strpos($goldMemberHtml,'白钻')!==false && strpos($goldMemberHtml,'黑钻')!==false && strpos($goldMemberHtml,'至尊')!==false,'member page lists all six tiers');
 check(strpos($goldMemberHtml,'（当前）')!==false && strpos($goldMemberHtml,'mm-current')!==false,'member page highlights the current tier row');
 check(strpos($goldMemberHtml,'还差 ¥')!==false && strpos($goldMemberHtml,'mm-progress-bar')!==false,'member page renders progress bar with remaining amount to next tier');
