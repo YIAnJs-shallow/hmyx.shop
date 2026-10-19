@@ -1285,4 +1285,19 @@ file_put_contents(__DIR__.'/state.json',json_encode(['database'=>$testDb,'buyer'
 // ===== 全站 PHP 响应统一禁缓存：config/db.php 公共链路 + help.php 独立静态页链路（CLI 守卫防 tests/cron 报错） =====
 check(strpos(file_get_contents(__DIR__.'/../config/db.php'),"Cache-Control: no-cache, must-revalidate")!==false && strpos(file_get_contents(__DIR__.'/../config/db.php'),"PHP_SAPI !== 'cli'")!==false && strpos(file_get_contents(__DIR__.'/../config/db.php'),'headers_sent')!==false,'db entry sends no-cache headers for web SAPI only');
 check(strpos(file_get_contents(__DIR__.'/../help.php'),'Cache-Control: no-cache')!==false && strpos(file_get_contents(__DIR__.'/../help.php'),'headers_sent')!==false,'help page sends no-cache headers outside the db entry chain');
+// ===== 演示物流：轨迹引擎确定性 + 发货地字段 + express_detail 渲染 =====
+require_once __DIR__.'/../lib/logistics.php';
+$lgOrder=['shipped_at'=>date('Y-m-d H:i:s',time()-20*3600),'receiver_address'=>'广东省深圳市南山区科技园路 1 号'];
+$lgTrack=logistics_track($lgOrder,'浙江省杭州市西湖区文一西路 100 号');
+check($lgTrack['stage']==='运输中' && $lgTrack['percent']>13 && $lgTrack['percent']<83,'simulated logistics stage matches elapsed time');
+check(count($lgTrack['events'])===6 && $lgTrack['events'][2]['done']===true && $lgTrack['events'][3]['done']===false && $lgTrack['events'][5]['done']===false,'simulated logistics events reveal progressively by time');
+check(logistics_city('广东省深圳市南山区科技园路 1 号')==='广东省深圳市' && logistics_city('北京市朝阳区x路')==='北京市','logistics city parser extracts city segment');
+$lgDone=logistics_track(['shipped_at'=>date('Y-m-d H:i:s',time()-72*3600),'receiver_address'=>'上海市浦东新区'],'');
+check($lgDone['stage']==='已签收','simulated logistics completes after 48h');
+$lgBackupSession=$_SESSION; $lgBackupGet=$_GET; $lgBackupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+$_SESSION=['user_id'=>$buyer,'role'=>'user']; $_GET=['order_id'=>$cronShip];
+ob_start(); include __DIR__.'/../express_detail.php'; $lgExprHtml=ob_get_clean();
+$_GET=$lgBackupGet; $_SESSION=$lgBackupSession;
+if ($lgBackupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$lgBackupMethod;
+check(is_string($lgExprHtml) && strpos($lgExprHtml,'物流轨迹')!==false && strpos($lgExprHtml,'演示物流说明')!==false && strpos($lgExprHtml,$cronShipExpressNo ?? 'CRON00001')!==false,'express detail renders simulated logistics timeline');
 echo "$assertions integration assertions passed. Test database: $testDb\n";

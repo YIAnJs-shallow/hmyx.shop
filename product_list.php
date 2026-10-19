@@ -39,6 +39,22 @@ if (!$shop || ($_SESSION['role'] ?? '') !== 'merchant' || (int)$shop['status'] !
     exit();
 }
 
+// ==================== 1.5 店铺发货地设置（演示物流起点，express_detail.php 消费） ====================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_ship_from') {
+    csrf_check();
+    $shipFrom = trim((string)($_POST['ship_from'] ?? ''));
+    if (mb_strlen($shipFrom) > 255) $shipFrom = mb_substr($shipFrom, 0, 255);
+    if ($db instanceof PDO) {
+        $st = $db->prepare("UPDATE shops SET ship_from = ? WHERE id = ?");
+        $st->execute([$shipFrom, $shop_id]);
+    } elseif ($db instanceof mysqli) {
+        $st = $db->prepare("UPDATE shops SET ship_from = ? WHERE id = ?");
+        $st->bind_param("si", $shipFrom, $shop_id);
+        $st->execute();
+    }
+    redirect_to('product_list.php', '发货地已保存');
+}
+
 $shop_id = intval($shop['id']);
 
 // ==================== 2. AJAX 无刷新操作：下架 / 上下架切换 ====================
@@ -197,6 +213,17 @@ foreach ($products as $p) {
         </a >
         <span class="text-muted small"><?= htmlspecialchars($shop['shop_name']) ?> · 商品管理</span>
     </div>
+
+    <!-- 发货地设置：演示物流轨迹的起点（买家在物流页看到"从哪里发货"） -->
+    <div class="card mb-3"><div class="card-body py-2">
+        <form method="post" class="d-flex gap-2 align-items-center flex-wrap">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="save_ship_from">
+            <span class="text-muted small">发货地（演示物流起点，如：浙江省杭州市）</span>
+            <input class="form-control form-control-sm" style="max-width:280px" name="ship_from" maxlength="255" value="<?= htmlspecialchars($shop['ship_from'] ?? '') ?>" placeholder="省份+城市">
+            <button class="btn btn-sm btn-primary">保存发货地</button>
+        </form>
+    </div></div>
 
     <!-- 统计概览 -->
     <div class="row g-3 mb-4">

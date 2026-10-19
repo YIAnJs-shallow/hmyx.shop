@@ -663,3 +663,6 @@ add_column('orders','pay_stage',"enum('full','deposit','balance') NOT NULL DEFAU
 add_column('orders','paid_cents','decimal(10,2) NOT NULL DEFAULT 0');
 
 echo "Migration complete.\n";
+
+// ===== 演示物流：店铺发货地（模拟轨迹起点，商家在商品管理页设置；express_detail.php 消费） =====
+add_column('shops','ship_from','varchar(255) NOT NULL DEFAULT \'\'');

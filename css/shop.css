@@ -54,3 +54,13 @@
 .mc-stat span{font-size:12px;color:#dbeafe}
 .mc-stat.mc-hot b{color:#fbbf24}
 @media(max-width:600px){.mc-stats{grid-template-columns:repeat(2,1fr)}}
+/* ===== 演示物流轨迹页（express_detail.php 专属：进度条 + 时间线 + 静态地图） ===== */
+.lg-progress{background:#e2e8f0;border-radius:25px;height:10px;overflow:hidden;margin:12px 0 6px}
+.lg-progress-bar{background:linear-gradient(90deg,#2563eb,#7c3aed);height:100%;transition:width .4s}
+.lg-map{width:100%;max-width:600px;border:1px solid #e2e5ea;border-radius:10px;margin:10px 0;display:block}
+.lg-timeline{list-style:none;margin:10px 0 0;padding:0}
+.lg-timeline li{padding:7px 0 7px 18px;border-left:2px solid #e2e5ea;position:relative;color:#64748b}
+.lg-timeline li.lg-on{border-left-color:#2563eb;color:#1c2330}
+.lg-timeline li::before{content:'';position:absolute;left:-6px;top:13px;width:10px;height:10px;border-radius:50%;background:#e2e5ea}
+.lg-timeline li.lg-on::before{background:#2563eb}
+.lg-timeline .lg-time{display:inline-block;min-width:130px;color:#7a8494;margin-right:8px;font-size:13px}
