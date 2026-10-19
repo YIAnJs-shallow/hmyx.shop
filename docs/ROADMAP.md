@@ -29,6 +29,7 @@
 | P1 | **个人中心京东化改版（枢纽 Dashboard + 左侧栏）**（2026-10-19 用户提案，结构定死） | ✅ 2026-10-19 完成（365 断言全绿；无 DDL 无依赖） |
 | P1 | **首页导航栏京东式头像下拉菜单（个人中心唯一入口）**（2026-10-19 用户提案，交互定死） | ✅ 2026-10-19 完成（368 断言全绿；无 DDL 无依赖） |
 | P1 | **头像点击目标修正直达 profile.php + 可点性修复**（2026-10-19 用户提案，改动定死） | ✅ 2026-10-19 完成（369 断言全绿；css ?v=2） |
+| P1 | **全站 PHP 响应统一禁缓存**（2026-10-19 用户提案，治"改版后浏览器死缓存"根因） | ✅ 2026-10-19 完成（371 断言全绿；curl 实测 HTML 带 no-cache、静态资源不受影响） |
 
 ### 开工方案：个人中心重组 + 会员体系六档升级（2026-10-19，用户提案，默认自主执行）
 
@@ -61,6 +62,12 @@
 - **做了什么**：① index.php `.user-trigger` href 改指 profile.php（点头像/用户名直达"账户设置"式修改资料页）；下拉调整为 个人中心（user_center.php）/ 我的会员 / 我的订单 / 退出登录 四项（修改资料项移除，触发本体即入口）；② 可点性排查与防御修复：header 为 sticky + z-index:1000 的层叠上下文（style.css:58-60），下拉 z-index:60 在其内部不会被 Hero canvas 遮挡、overflow 未裁剪——层叠链无阻塞；"感觉不可点击"的最可能吞点击点已消除：`.user-dropdown::before` 悬停桥由 -8px 收窄为精确 -6px 贴缝（不再上探 2px 遮挡触发区底部）、`.user-trigger` 提至 z-index:61 并显式 cursor:pointer、头像图与用户名文字加 pointer-events:none 使点击必落触发链接本体、hover 反馈增强（#e2e8f0）；css/user_menu.css 升 ?v=2 破缓存；③ tests：触发目标/下拉四项断言改写 + "修改资料项已移除"反断言，368→369。
 - **边界**：未做浏览器实测（本机无自动化浏览器手段），已按层叠上下文链路排查并做防御修复；若用户实测仍不可点，请 F12 检查是否仍有元素覆盖触发区，把截图/元素信息反馈后继续排查。
 - **负面清单**：不动 lib/uc.php、user_center.php、profile.php；无 DDL；不加 JS。
+
+### 完成汇报：全站 PHP 响应统一禁缓存（2026-10-19，用户提案，改动定死）
+
+- **做了什么**：① config/db.php 顶部（全站统一入口：前台经 lib/shop.php、后台经 admin/inc/auth.php、AJAX/JSON/验证码出口直接 require）统一发送 `Cache-Control: no-cache, must-revalidate` + `Pragma: no-cache`，守卫 `PHP_SAPI !== 'cli' && !headers_sent()`（CLI 的 tests/cron 不发头）；② 例外链路单独补头：help.php（纯静态内容页不连库，require lib/site_footer.php 不经过 db.php）；③ 五个 301/303 旧书签跳转文件（admin.php 等）无 HTML 正文不需处理；静态资源（css/js/img/uploads）策略未动，仍走 Apache 协商缓存 + ?v=N 管变更。
+- **验证**：php -l 两文件全过；371 断言全绿（369→371，+2：db.php 入口守卫与头、help.php 独立链路；整套 CLI 渲染/cron 断言跑通本身即 CLI 不报错实证）；curl 实测正式库站点：index.php / user_center.php / help.php 均返回 no-cache 头，css/user_menu.css 无该头（静态策略不变）。
+- **负面清单**：不动 .htaccess/Apache 配置、不改静态资源缓存策略、不加 JS、无 DDL。
 
 ### 开工方案：后台搜索词分析看板（2026-10-17，默认自主执行）
 

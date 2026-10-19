@@ -1,5 +1,12 @@
 <?php
 require_once __DIR__ . '/../lib/security.php';
+// 全站 HTML 响应统一禁缓存（2026-10-19 治"改版后浏览器死缓存"根因）：
+// 所有动态页面（前台经 lib/shop.php、后台经 admin/inc/auth.php、AJAX/JSON 出口直接）都经本文件加载。
+// 仅 Web SAPI 且输出未开始时发送（CLI 的 tests/cron 不发头）；静态资源不动（css/js 由 ?v=N 版本号管变更）。
+if (PHP_SAPI !== 'cli' && !headers_sent()) {
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Pragma: no-cache');
+}
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 if (!function_exists('project_private_config_dir')) {
     function project_private_config_dir() {

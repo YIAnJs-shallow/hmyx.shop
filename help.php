@@ -4,6 +4,11 @@
  * 通过锚点章节承接页脚指南类链接，底部复用全站公共页脚。
  */
 require_once __DIR__ . '/lib/site_footer.php';
+// 本页为纯静态内容页，不经过 config/db.php 公共链路，禁缓存头单独发送（口径与 db.php 一致）
+if (PHP_SAPI !== 'cli' && !headers_sent()) {
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Pragma: no-cache');
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">

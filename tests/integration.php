@@ -1282,4 +1282,7 @@ foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) 
     session_id($sid);session_start();$_SESSION=['admin'=>['id'=>$aid]];refresh_admin_session();csrf_token();session_write_close();
 }
 file_put_contents(__DIR__.'/state.json',json_encode(['database'=>$testDb,'buyer'=>$buyer,'other'=>$other,'merchant'=>$merchant,'admin'=>$admin,'address'=>$address,'platform_product'=>$p1,'shop_product'=>$p2,'shop'=>$shop,'completed_item'=>(int)$item['id'],'super_id'=>$superId,'operator_id'=>$operatorId,'super_session'=>$superSession,'operator_session'=>$operatorSession],JSON_PRETTY_PRINT));
+// ===== 全站 PHP 响应统一禁缓存：config/db.php 公共链路 + help.php 独立静态页链路（CLI 守卫防 tests/cron 报错） =====
+check(strpos(file_get_contents(__DIR__.'/../config/db.php'),"Cache-Control: no-cache, must-revalidate")!==false && strpos(file_get_contents(__DIR__.'/../config/db.php'),"PHP_SAPI !== 'cli'")!==false && strpos(file_get_contents(__DIR__.'/../config/db.php'),'headers_sent')!==false,'db entry sends no-cache headers for web SAPI only');
+check(strpos(file_get_contents(__DIR__.'/../help.php'),'Cache-Control: no-cache')!==false && strpos(file_get_contents(__DIR__.'/../help.php'),'headers_sent')!==false,'help page sends no-cache headers outside the db entry chain');
 echo "$assertions integration assertions passed. Test database: $testDb\n";
