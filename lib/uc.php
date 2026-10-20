@@ -1,7 +1,7 @@
 <?php
 // ===== 个人中心体系共享布局（京东"我的京东"式：顶部通栏 + 左侧栏 + 内容区）=====
 // 使用方：user_center.php（枢纽 Dashboard）/ profile.php（修改资料）/ member.php（我的会员）。
-// 依赖 lib/shop.php 已加载（uid/csrf_field 等）；样式集中在 css/user_center.css?v=2，移动端左侧栏折叠为横向 tab。
+// 依赖 lib/shop.php 已加载（uid/csrf_field 等）；样式集中在 css/user_center.css?v=3，移动端左侧栏折叠为横向 tab。
 // function_exists 守卫：允许测试进程内重复 include。
 
 if (!function_exists('uc_page_start')) {
@@ -27,7 +27,7 @@ function uc_page_start($title, $active = '') {
     $role = $_SESSION['role'] ?? 'guest';
     echo '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>' . htmlspecialchars($title) . ' - 惠蒙优选</title>';
-    echo '<link rel="stylesheet" href="css/user_center.css?v=2"></head><body>';
+    echo '<link rel="stylesheet" href="css/user_center.css?v=3"></head><body>';
     echo '<div class="uc-topbar">';
     echo '<a class="uc-logo" href="index.php">🛍️ <strong>惠蒙优选</strong> · 个人中心</a>';
     echo '<div class="uc-topbar-links"><a href="index.php">返回首页</a><a href="cart.php">🛒 购物车</a></div>';

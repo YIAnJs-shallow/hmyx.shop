@@ -43,13 +43,13 @@ $browsing = browsing_history($user_id);
 <!-- 顶部通栏用户卡：头像/昵称/角色与六档会员徽章/我的会员入口/会员进度条 -->
 <div class="uc-hero">
     <div class="uc-hero-top">
-        <a class="uc-hero-avatar" href="profile.php" title="修改资料">
-            <?php if ($avatar !== ''): ?>
-                <img src="<?php echo htmlspecialchars($avatar); ?>" alt="头像">
-            <?php else: ?>
-                👤
-            <?php endif; ?>
-        </a>
+        <?php if ($avatar !== ''): ?>
+        <button type="button" class="uc-hero-avatar" id="uc-avatar-trigger" title="查看头像">
+            <img src="<?php echo htmlspecialchars($avatar); ?>" alt="头像">
+        </button>
+        <?php else: ?>
+        <div class="uc-hero-avatar">👤</div>
+        <?php endif; ?>
         <div>
             <h3 class="uc-hero-name"><?php echo htmlspecialchars($username); ?></h3>
             <div>
@@ -139,6 +139,22 @@ $browsing = browsing_history($user_id);
         <?php endforeach; ?>
     </div>
 </div>
+<?php endif; ?>
+<?php if ($avatar !== ''): ?>
+<div class="uc-lightbox" id="uc-lightbox" hidden>
+    <img src="<?php echo htmlspecialchars($avatar); ?>" alt="头像大图">
+</div>
+<script>
+(function () {
+    var trigger = document.getElementById('uc-avatar-trigger');
+    var lightbox = document.getElementById('uc-lightbox');
+    if (!trigger || !lightbox) return;
+    trigger.addEventListener('click', function () { lightbox.hidden = false; });
+    // 点击遮罩任意处关闭；Esc 亦可
+    lightbox.addEventListener('click', function () { lightbox.hidden = true; });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') lightbox.hidden = true; });
+})();
+</script>
 <?php endif; ?>
 <?php uc_page_end(); ?>
 
