@@ -1,7 +1,7 @@
 <?php
 // ===== 个人中心体系共享布局（京东"我的京东"式：顶部通栏 + 左侧栏 + 内容区）=====
 // 使用方：user_center.php（枢纽 Dashboard）/ profile.php（修改资料）/ member.php（我的会员）。
-// 依赖 lib/shop.php 已加载（uid/csrf_field 等）；样式集中在 css/user_center.css?v=3，移动端左侧栏折叠为横向 tab。
+// 依赖 lib/shop.php 已加载（uid/csrf_field 等）；样式集中在 css/user_center.css?v=4，移动端左侧栏折叠为横向 tab。
 // function_exists 守卫：允许测试进程内重复 include。
 
 if (!function_exists('uc_page_start')) {
@@ -27,7 +27,7 @@ function uc_page_start($title, $active = '') {
     $role = $_SESSION['role'] ?? 'guest';
     echo '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>' . htmlspecialchars($title) . ' - 惠蒙优选</title>';
-    echo '<link rel="stylesheet" href="css/user_center.css?v=3"></head><body>';
+    echo '<link rel="stylesheet" href="css/user_center.css?v=4"></head><body>';
     echo '<div class="uc-topbar">';
     echo '<a class="uc-logo" href="index.php">🛍️ <strong>惠蒙优选</strong> · 个人中心</a>';
     echo '<div class="uc-topbar-links"><a href="index.php">返回首页</a><a href="cart.php">🛒 购物车</a></div>';
@@ -42,6 +42,39 @@ function uc_page_start($title, $active = '') {
 // 内容区闭标签 + 页脚
 function uc_page_end() {
     echo '</main></div><div class="uc-footer">惠蒙优选 · 精选好物，安心选购</div></body></html>';
+}
+
+// 头像点击放大预览：绑定到触发元素 id，点击时才懒创建全屏遮罩并挂到 body 末尾
+// （挂 body 是为了脱离页面内容流——避免被祖先容器的层叠上下文/overflow 裁剪导致遮罩不可见）；
+// 触发元素是 img 时直接用其 src（含 profile 页即时预览的 dataURL），否则取其内部 img（uc Hero button）
+function uc_avatar_lightbox_script(string $triggerId): void {
+    $tid = h($triggerId);
+    echo <<<HTML
+<script>
+(function () {
+    var t = document.getElementById("{$tid}");
+    if (!t) return;
+    t.style.cursor = "zoom-in";
+    t.addEventListener("click", function () {
+        var inner = t.querySelector ? t.querySelector("img") : null;
+        var src = inner ? inner.src : (t.tagName === "IMG" ? t.src : "");
+        if (!src) return;
+        var stale = document.getElementById("uc-lightbox");
+        if (stale) stale.remove();
+        var lb = document.createElement("div");
+        lb.id = "uc-lightbox";
+        lb.className = "uc-lightbox";
+        var img = document.createElement("img");
+        img.alt = "头像大图";
+        img.src = src;
+        lb.appendChild(img);
+        document.body.appendChild(lb);
+        lb.addEventListener("click", function () { lb.remove(); });
+        document.addEventListener("keydown", function (e) { if (e.key === "Escape") lb.remove(); });
+    });
+})();
+</script>
+HTML;
 }
 
 // 宫格数量徽标：0 时灰色样式（uc-zero），超过 99 显示 99+

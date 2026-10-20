@@ -140,21 +140,6 @@ $browsing = browsing_history($user_id);
     </div>
 </div>
 <?php endif; ?>
-<?php if ($avatar !== ''): ?>
-<div class="uc-lightbox" id="uc-lightbox" hidden>
-    <img src="<?php echo htmlspecialchars($avatar); ?>" alt="头像大图">
-</div>
-<script>
-(function () {
-    var trigger = document.getElementById('uc-avatar-trigger');
-    var lightbox = document.getElementById('uc-lightbox');
-    if (!trigger || !lightbox) return;
-    trigger.addEventListener('click', function () { lightbox.hidden = false; });
-    // 点击遮罩任意处关闭；Esc 亦可
-    lightbox.addEventListener('click', function () { lightbox.hidden = true; });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') lightbox.hidden = true; });
-})();
-</script>
-<?php endif; ?>
+<?php if ($avatar !== '') uc_avatar_lightbox_script('uc-avatar-trigger'); ?>
 <?php uc_page_end(); ?>
 

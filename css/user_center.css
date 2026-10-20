@@ -37,9 +37,8 @@ a { text-decoration: none; }
 /* 头像为可点按钮（点击放大预览大图；"修改资料"入口在左侧栏） */
 button.uc-hero-avatar { padding: 0; cursor: pointer; transition: border-color .2s, transform .2s; }
 button.uc-hero-avatar:hover { border-color: #93c5fd; transform: scale(1.04); }
-/* 头像大图遮罩：点击任意处或 Esc 关闭 */
+/* 头像大图遮罩：由 JS 懒创建挂 body 末尾，点击任意处或 Esc 关闭 */
 .uc-lightbox { position: fixed; inset: 0; z-index: 2000; background: rgba(15, 23, 42, .82); display: flex; align-items: center; justify-content: center; cursor: zoom-out; }
-.uc-lightbox[hidden] { display: none; }
 .uc-lightbox img { max-width: min(80vw, 420px); max-height: 80vh; border-radius: 16px; border: 3px solid #93c5fd; box-shadow: 0 24px 64px rgba(0, 0, 0, .5); }
 .uc-hero-name { margin: 0 0 6px 0; font-size: 1.2rem; }
 .uc-hero-badge { display: inline-block; padding: 3px 10px; border-radius: 14px; font-size: .78rem; font-weight: 700; background: rgba(255,255,255,.14); color: #fbbf24; margin-right: 6px; }

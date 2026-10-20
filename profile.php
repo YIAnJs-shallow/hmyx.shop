@@ -246,4 +246,6 @@ uc_page_start('修改个人资料', 'profile');
     });
 })();
 </script>
+<?php // 头像预览可点击放大（绑定预览容器：即时预览替换内部 img 后依然有效；无图时点击无响应）
+uc_avatar_lightbox_script('avatar-preview-box'); ?>
 <?php uc_page_end(); ?>
