@@ -1,5 +1,7 @@
 <?php
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+// 禁发真实邮件（send_mail 测试注入口，子进程经环境继承同样生效）：防止测试假邮箱触发真实 SMTP 投递、退信灌入真实发件邮箱
+putenv('SHOP_MAIL_DISABLE=1');
 ob_start(); // Session fixtures must be created before test output is flushed.
 require_once __DIR__.'/../lib/shop.php';
 $source = $db_name;
@@ -1370,4 +1372,5 @@ check(strpos((string)$rlGeoJson, '操作过于频繁') !== false, 'amap geo pars
 $_SESSION = $rlBackupSession; $_POST = $rlBackupPost; $_GET = $rlBackupGet;
 if ($rlBackupMethod === null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD'] = $rlBackupMethod;
 if ($rlBackupAddr === null) unset($_SERVER['REMOTE_ADDR']); else $_SERVER['REMOTE_ADDR'] = $rlBackupAddr;
+check(send_mail('qa-disable@example.com', 'qa', 'qa') === true, 'mail send disabled under SHOP_MAIL_DISABLE in test env');
 echo "$assertions integration assertions passed. Test database: $testDb\n";

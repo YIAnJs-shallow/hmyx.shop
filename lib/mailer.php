@@ -44,6 +44,9 @@ function smtp_config() {
  * 发送邮件（失败抛异常，由调用方决定如何提示/记录）
  */
 function send_mail($to, $subject, $htmlBody) {
+    // 测试注入口（同 ALIPAY_GATEWAY_OVERRIDE 惯例）：置位时跳过真实 SMTP 投递直接成功，
+    // 防止测试套件的假邮箱（rl-*@example.com）触发真实发送、退信灌入真实发件邮箱
+    if (getenv('SHOP_MAIL_DISABLE') === '1') return true;
     $cfg = smtp_config();
     if ($cfg === null) throw new RuntimeException('SMTP 未配置');
     $mail = new PHPMailer(true);
