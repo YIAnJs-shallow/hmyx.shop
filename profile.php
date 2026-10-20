@@ -111,6 +111,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
         }
     }
 
+    // 邮箱/手机号唯一性预检（users.uk_email 唯一索引，冲突会抛 1062 未捕获异常；排除本人行，值未变更则不查）
+    if ($msg_type !== 'error') {
+        if ($has_email && $new_email !== '' && $new_email !== ($user['email'] ?? '')) {
+            $dup = one('SELECT id FROM users WHERE email=? AND id<>?', [$new_email, (int)$user_id]);
+            if ($dup) { $msg = '该邮箱已被其他账号绑定，请换用其他邮箱！'; $msg_type = 'error'; }
+        }
+        if ($msg_type !== 'error' && $has_phone && $new_phone !== '' && $new_phone !== ($user['phone'] ?? '')) {
+            $dup = one('SELECT id FROM users WHERE phone=? AND id<>?', [$new_phone, (int)$user_id]);
+            if ($dup) { $msg = '该手机号已被其他账号绑定！'; $msg_type = 'error'; }
+        }
+    }
+
     // 动态组装 UPDATE 语句
     if ($msg_type !== 'error') {
         $update_fields = ["username = ?"];
@@ -129,7 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
             if ($stmt) {
                 $types = str_repeat('s', count($bind_params) - 1) . 'i';
                 $stmt->bind_param($types, ...$bind_params);
-                $success = $stmt->execute();
+                // 并发下唯一索引兜底（预检与提交之间邮箱被占），转为友好提示而非致命错误
+                try { $success = $stmt->execute(); } catch (mysqli_sql_exception $e) { error_log($e->getMessage()); $success = false; }
             } else {
                 $success = false;
             }
