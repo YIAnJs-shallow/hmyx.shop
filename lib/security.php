@@ -20,6 +20,46 @@ function csrf_check() {
         exit('请求已过期或来源无效，请刷新页面重试。');
     }
 }
+
+// ===== 接口限流原语（2026-10-20 方向 A 安全加固）=====
+// DB 计数桶：bucket_key 存桶名 sha256（防超长/特殊字符），窗口内 COUNT 达上限即拒绝。
+// 依赖 query()/one()（lib/shop.php，调用点均在 config/db.php 加载之后，函数体内才解析故加载顺序安全）。
+// 窗口口径对齐现有：登录失败窗口 10 分钟（=验证码 TTL），发码 IP 配额 1 小时，清理窗口 2 天。
+const RATE_LOGIN_ID_MAX = 10;     // 同一账号密码失败上限 / 窗口
+const RATE_LOGIN_ID_WINDOW = 600; // 10 分钟（对齐验证码 10 分钟 TTL）
+const RATE_LOGIN_IP_MAX = 30;     // 同一 IP 密码失败上限 / 窗口
+const RATE_LOGIN_IP_WINDOW = 600;
+const RATE_SEND_IP_MAX = 20;      // 同一 IP 发码/找回/注册上限 / 窗口
+const RATE_SEND_IP_WINDOW = 3600; // 1 小时
+const RATE_GEO_IP_MAX = 120;      // 同一 IP 高德定位解析上限 / 窗口（保护配额，登录态内）
+const RATE_GEO_IP_WINDOW = 3600;
+
+function client_rate_ip() {
+    // 只取 REMOTE_ADDR：X-Forwarded-For 等头可被伪造，不能作为限流依据
+    return ($_SERVER['REMOTE_ADDR'] ?? '') !== '' ? $_SERVER['REMOTE_ADDR'] : 'cli';
+}
+function rate_limit_bucket_key($bucket) {
+    return hash('sha256', (string)$bucket, false);
+}
+function rate_limit_count($bucket, $windowSeconds) {
+    return (int)(one('SELECT COUNT(*) AS c FROM rate_limit_hits WHERE bucket_key=? AND hit_at > NOW() - INTERVAL ' . (int)$windowSeconds . ' SECOND', [rate_limit_bucket_key($bucket)])['c'] ?? 0);
+}
+// 仅查询不记账：用于"先判断是否已被限流"（如登录入口，被限流则不进凭据校验）
+function rate_limit_ok($bucket, $max, $windowSeconds) {
+    return rate_limit_count($bucket, $windowSeconds) < (int)$max;
+}
+// 查询并记账一次；超限返回 false（该次不计入，避免被拒请求无限续窗）
+function rate_limit_hit($bucket, $max, $windowSeconds) {
+    if (!rate_limit_ok($bucket, $max, $windowSeconds)) return false;
+    query('INSERT INTO rate_limit_hits (bucket_key, hit_at) VALUES (?, NOW())', [rate_limit_bucket_key($bucket)]);
+    // 顺带清理 2 天前旧行（表小无负担，免维护 cron）
+    query('DELETE FROM rate_limit_hits WHERE hit_at < NOW() - INTERVAL 172800 SECOND', []);
+    return true;
+}
+// 成功后清账：如登录成功清该账号失败计数，避免真实用户偶错后被锁
+function rate_limit_clear($bucket) {
+    query('DELETE FROM rate_limit_hits WHERE bucket_key=?', [rate_limit_bucket_key($bucket)]);
+}
 function account_password_needs_reset($stored) {
     return !is_string($stored) || !password_get_info($stored)['algo'];
 }

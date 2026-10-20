@@ -30,6 +30,11 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 100) {
     json_exit(false, '请输入有效的邮箱地址！');
 }
 
+// IP 维度发码配额（同邮箱 60 秒窗口已有，此处防"换邮箱轰炸"）；格式合法才记账，超限直接拒绝
+if (!rate_limit_hit('send-ip:' . client_rate_ip(), RATE_SEND_IP_MAX, RATE_SEND_IP_WINDOW)) {
+    json_exit(false, '请求过于频繁，请稍后再试。');
+}
+
 email_login_issue($email);
 
 // 无论邮箱是否注册、60 秒内是否重复请求，对外提示完全一致（防枚举/防探测）

@@ -17,6 +17,7 @@ $active_tab = $_POST['login_type'] ?? 'code';
 if (!in_array($active_tab, ['code', 'account'], true)) { $active_tab = 'code'; } // 先取值再白名单校验（原写法条件用兜底值、取值用原始值，GET 时返回 null）
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $login_ip = client_rate_ip();
     if ($active_tab === 'code') {
         // ===== 验证码登录：邮箱 + 6 位验证码，登录注册二合一 =====
         $email = trim($_POST['email'] ?? '');
@@ -31,9 +32,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if ($result === 'locked') {
                 $message = '验证码错误次数过多，该邮箱已锁定 30 分钟，请稍后再试。';
             } elseif ($result !== 'ok') {
+                // 失败记账：按邮箱（账号级）+ 按 IP，双桶防爆破与换邮箱轰炸
+                rate_limit_hit('login-code:' . mb_strtolower($email), RATE_LOGIN_ID_MAX, RATE_LOGIN_ID_WINDOW);
+                rate_limit_hit('login-ip:' . $login_ip, RATE_LOGIN_IP_MAX, RATE_LOGIN_IP_WINDOW);
                 $message = '验证码错误或已过期，请重新获取！';
             } else {
                 // 验证通过：邮箱存在即登录，不存在则自动创建账号
+                rate_limit_clear('login-code:' . mb_strtolower($email));
                 $user = email_login_find_or_create($email);
                 if (($user['role'] ?? '') === 'admin') {
                     // 管理员账号只能通过后台独立登录入口
@@ -55,13 +60,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if (empty($identifier) || empty($password)) {
             $message = '账号或密码不能为空！';
         } else {
-            $user = find_user_by_login_identifier($identifier);
-
-            if ($user && login_account($user, $password)) {
-                header('Location: '.($next !== '' ? $next : 'user_center.php'), true, 303);
-                exit();
+            $bucket_id = 'login-id:' . mb_strtolower($identifier);
+            $bucket_ip = 'login-ip:' . $login_ip;
+            // 先判是否已被限流：被限流时不进凭据校验（不给时间侧信道，也不消耗失败记账）
+            if (!rate_limit_ok($bucket_id, RATE_LOGIN_ID_MAX, RATE_LOGIN_ID_WINDOW)
+                || !rate_limit_ok($bucket_ip, RATE_LOGIN_IP_MAX, RATE_LOGIN_IP_WINDOW)) {
+                $message = '尝试次数过多，请 10 分钟后再试。';
             } else {
-                $message = '账号或密码错误！';
+                $user = find_user_by_login_identifier($identifier);
+                if ($user && login_account($user, $password)) {
+                    rate_limit_clear($bucket_id); // 成功清账号级失败账
+                    header('Location: '.($next !== '' ? $next : 'user_center.php'), true, 303);
+                    exit();
+                } else {
+                    rate_limit_hit($bucket_id, RATE_LOGIN_ID_MAX, RATE_LOGIN_ID_WINDOW);
+                    rate_limit_hit($bucket_ip, RATE_LOGIN_IP_MAX, RATE_LOGIN_IP_WINDOW);
+                    $message = '账号或密码错误！';
+                }
             }
         }
     }

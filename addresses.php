@@ -101,6 +101,11 @@ function httpGetJson($url, $provider) {
 // IP 定位兜底：浏览器禁用 geolocation 时使用（城市级精度，无需授权）
 if (isset($_GET['action']) && $_GET['action'] === 'ip_locate') {
     header('Content-Type: application/json; charset=utf-8');
+    // 高德配额保护：定位解析按 IP 限流
+    if (!rate_limit_hit('geo-ip:' . client_rate_ip(), RATE_GEO_IP_MAX, RATE_GEO_IP_WINDOW)) {
+        echo json_encode(['status' => 0, 'msg' => '操作过于频繁，请稍后再试'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     $result = ['status' => 0, 'msg' => '未能通过 IP 定位，请手动填写地址'];
     if (!empty($AMAP_KEY)) {
         $res = httpGetJson("https://restapi.amap.com/v3/ip?key=" . urlencode($AMAP_KEY), 'amap_ip');
@@ -121,6 +126,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'ip_locate') {
 
 if (isset($_GET['action']) && $_GET['action'] === 'parse_geo') {
     header('Content-Type: application/json; charset=utf-8');
+    // 高德配额保护：逆地理解析按 IP 限流
+    if (!rate_limit_hit('geo-ip:' . client_rate_ip(), RATE_GEO_IP_MAX, RATE_GEO_IP_WINDOW)) {
+        echo json_encode(['status' => 0, 'msg' => '操作过于频繁，请稍后再试'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     $lat = floatval($_GET['lat'] ?? 0);
     $lng = floatval($_GET['lng'] ?? 0);
 

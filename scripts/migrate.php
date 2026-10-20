@@ -666,3 +666,12 @@ echo "Migration complete.\n";
 
 // ===== 演示物流：店铺发货地（模拟轨迹起点，商家在商品管理页设置；express_detail.php 消费） =====
 add_column('shops','ship_from','varchar(255) NOT NULL DEFAULT \'\'');
+
+// ===== 安全加固：接口限流计数表（2026-10-20 方向 A）=====
+// bucket_key=sha256(桶名) hex 64；窗口内 COUNT 达上限超限即拒绝；短窗口自然过期清账；>2 天旧行由 rate_limit_hit 顺带清理
+query("CREATE TABLE IF NOT EXISTS rate_limit_hits (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    bucket_key CHAR(64) NOT NULL,
+    hit_at DATETIME NOT NULL,
+    KEY idx_bucket_time (bucket_key, hit_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");

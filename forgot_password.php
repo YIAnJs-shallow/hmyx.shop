@@ -12,7 +12,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 100) {
         $message = '请输入有效的邮箱地址！';
     } else {
-        password_reset_issue($email);
+        // IP 维度发码配额（同邮箱 10 分钟窗口已有）；超限静默跳过发送，对外提示不变（与按邮箱限流表现一致，防枚举）
+        if (rate_limit_hit('send-ip:' . client_rate_ip(), RATE_SEND_IP_MAX, RATE_SEND_IP_WINDOW)) {
+            password_reset_issue($email);
+        }
         // 无论邮箱是否注册、是否发送成功，对外提示完全一致，不泄露账号信息
         $success = true;
         $message = '如果该邮箱已注册，验证码已发送，请查收邮件（10 分钟内有效，同一邮箱 10 分钟内只能获取一次）。';

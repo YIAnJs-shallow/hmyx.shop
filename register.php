@@ -27,7 +27,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $session_captcha = $_SESSION['captcha_code'] ?? '';
     unset($_SESSION['captcha_code']); // 用完销毁
 
-    if (empty($captcha) || $captcha !== $session_captcha) {
+    // IP 维度注册配额：图形验证码之外的第二道闸，防脚本批量注册（无效请求同样记账）
+    if (!rate_limit_hit('reg-ip:' . client_rate_ip(), RATE_SEND_IP_MAX, RATE_SEND_IP_WINDOW)) {
+        $message = '操作过于频繁，请 1 小时后再试。';
+    }
+    elseif (empty($captcha) || $captcha !== $session_captcha) {
         $message = '验证码错误或已过期，请重新输入！';
     }
     // 2. 基础非空校验
