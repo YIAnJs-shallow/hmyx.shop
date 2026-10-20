@@ -179,14 +179,15 @@ uc_page_start('修改个人资料', 'profile');
         <div class="form-row full" style="margin-bottom: 15px;">
             <label>更换个人头像</label>
             <div class="avatar-upload-box">
-                <div class="avatar-preview-small">
+                <div class="avatar-preview-small" id="avatar-preview-box">
                     <?php if (!empty($user['avatar']) && file_exists($user['avatar'])): ?>
-                        <img src="<?php echo htmlspecialchars($user['avatar']); ?>" alt="预览">
+                        <img id="avatar-preview" src="<?php echo htmlspecialchars($user['avatar']); ?>" alt="预览">
                     <?php else: ?>
-                        👤
+                        <span id="avatar-placeholder">👤</span>
                     <?php endif; ?>
                 </div>
-                <input type="file" name="avatar" accept="image/*">
+                <input type="file" name="avatar" id="avatar-input" accept="image/*">
+                <div class="text-muted small" style="margin-top:6px;">选择图片后此处即时预览，仍需点击下方「保存更新资料」按钮才会上传生效。</div>
             </div>
         </div>
 
@@ -220,4 +221,29 @@ uc_page_start('修改个人资料', 'profile');
         <button type="submit" class="btn-save">保存更新资料</button>
     </form>
 </div>
+<script>
+// 头像即时预览：选中图片文件后立刻替换预览区（上传本身仍由表单提交触发）
+(function () {
+    var input = document.getElementById('avatar-input');
+    var box = document.getElementById('avatar-preview-box');
+    if (!input || !box) return;
+    input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (!file || !/^image\//.test(file.type)) return;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var img = document.getElementById('avatar-preview');
+            if (!img) {
+                box.innerHTML = '';
+                img = document.createElement('img');
+                img.id = 'avatar-preview';
+                img.alt = '预览';
+                box.appendChild(img);
+            }
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+})();
+</script>
 <?php uc_page_end(); ?>
