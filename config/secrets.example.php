@@ -4,9 +4,14 @@
  * 使用方法：复制到 <phpStudy root>/private/my_project/secrets.php 后填入真实值；目标目录必须位于 WWW 和 Web 根目录之外
  */
 
-// 高德开放平台 Web服务 Key
+// 高德开放平台 Web服务 Key（服务端：地理编码/静态地图，express_detail 物流页使用）
 // 申请地址：https://console.amap.com/dev/key/app
 define('AMAP_KEY', '');
+
+// 高德开放平台 Web端(JS API) Key + 安全密钥（前端交互式物流地图；两个值必须来自同一"Web端(JS API)"类型 Key）
+// 未配置时物流页自动降级为 AMAP_KEY 的静态路线图，互不影响
+define('AMAP_JS_KEY', '');
+define('AMAP_JS_SECURITY', '');
 
 // SMTP 发件配置（用于找回密码验证码邮件；也可改用同名环境变量）
 // 以 QQ 邮箱为例：SMTP_HOST=smtp.qq.com，SMTP_PORT=465，SMTP_SECURE='ssl'

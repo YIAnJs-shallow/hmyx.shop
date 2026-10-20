@@ -1300,4 +1300,6 @@ ob_start(); include __DIR__.'/../express_detail.php'; $lgExprHtml=ob_get_clean()
 $_GET=$lgBackupGet; $_SESSION=$lgBackupSession;
 if ($lgBackupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$lgBackupMethod;
 check(is_string($lgExprHtml) && strpos($lgExprHtml,'物流轨迹')!==false && strpos($lgExprHtml,'演示物流说明')!==false && strpos($lgExprHtml,$cronShipExpressNo ?? 'CRON00001')!==false,'express detail renders simulated logistics timeline');
+check(strpos(file_get_contents(__DIR__.'/../express_detail.php'),'webapi.amap.com/maps')!==false && strpos(file_get_contents(__DIR__.'/../express_detail.php'),'_AMapSecurityConfig')!==false && strpos(file_get_contents(__DIR__.'/../express_detail.php'),'lg-map-err')!==false,'express detail wires interactive AMap with security config and static fallback');
+check(strpos(file_get_contents(__DIR__.'/../config/secrets.example.php'),"define('AMAP_JS_KEY', '')")!==false && strpos(file_get_contents(__DIR__.'/../config/secrets.example.php'),"define('AMAP_JS_SECURITY', '')")!==false,'secrets template declares interactive map key slots');
 echo "$assertions integration assertions passed. Test database: $testDb\n";
