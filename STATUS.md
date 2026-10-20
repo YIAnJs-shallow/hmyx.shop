@@ -3,7 +3,7 @@
 > 本文件由项目负责人（Claude Code）维护：每开始一个任务、每提交一次、遇到阻塞时立即更新。
 > ROADMAP.md 管全局规划与历史；本文件只管"现在做到哪了"。
 
-- 当前任务：演示物流系统（方案A）——已完成并提交（915479d）
-- 进行到的步骤：2026-10-19 轨迹引擎/静态地图/发货地设置/物流页改版落地，测试 371→376 全绿；同日早前商家工作台已提交（77b835a）
-- 遗留：①**正式库需执行 scripts/migrate.php**（新增 shops.ship_from 列 + 六档种子，幂等，DDL 已在测试库验证，待用户确认执行）；②用户验收：商家设发货地→发货→买家看物流轨迹与地图；③头像可点性待用户实测反馈；④空目录 E:\e2中文路径占位\ 待用户手删
-- 下一步：用户确认 DDL → 执行 migrate → push（push 由用户执行）→ TypeTrans 侧 push（缓存功能 bcc9653 待推）
+- 当前任务：P0 正式库 migrate——已执行并逐项验证（2026-10-20，用户确认后执行）
+- 进行到的步骤：scripts/migrate.php 跑通无报错；验证 10 处积压 DDL 全部在位（shops.ship_from、products.presale/deposit_cents/presale_end_at、orders.pay_stage/paid_cents、coupons.scope/product_id/valid_days、user_levels.points_rate_x10）+ 六档种子内容与方案逐项一致（白银0/100/×1 … 至尊 2000000/90/×1.5）；tests/integration.php 378 断言复跑全绿
+- 遗留：①用户验收：商家设发货地→发货→买家看物流轨迹与地图；②头像可点性待用户实测反馈；③空目录 E:\e2中文路径占位\ 待用户手删；④AMAP_JS_KEY/SECURITY_JS_KEY 未配置则动态地图停在静态图降级层
+- 下一步：用户 git push（本地领先 origin/main 6 个提交）→ CI 自动校验 → 浏览器实测物流链路
