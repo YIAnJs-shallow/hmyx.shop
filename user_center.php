@@ -43,13 +43,13 @@ $browsing = browsing_history($user_id);
 <!-- 顶部通栏用户卡：头像/昵称/角色与六档会员徽章/我的会员入口/会员进度条 -->
 <div class="uc-hero">
     <div class="uc-hero-top">
-        <div class="uc-hero-avatar">
+        <a class="uc-hero-avatar" href="profile.php" title="修改资料">
             <?php if ($avatar !== ''): ?>
                 <img src="<?php echo htmlspecialchars($avatar); ?>" alt="头像">
             <?php else: ?>
                 👤
             <?php endif; ?>
-        </div>
+        </a>
         <div>
             <h3 class="uc-hero-name"><?php echo htmlspecialchars($username); ?></h3>
             <div>
