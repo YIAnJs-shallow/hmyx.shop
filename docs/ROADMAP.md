@@ -1,6 +1,6 @@
 # 惠蒙优选 · 项目路线图（ROADMAP）
 
-> 负责人：Claude Code（授权见 PROJECT-LEAD.md）
+> 负责人：Claude Code（授权见规范第八章「项目负责人权限」，原 PROJECT-LEAD.md 已于 2026-10-20 并入）
 > 规范来源：`C:\Users\Lenovo\ai_operation_hobby.md`（唯一权威，不可修改）
 > 断言基线：282 条（2026-10-17，tests/integration.php）
 
