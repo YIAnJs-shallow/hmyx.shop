@@ -706,8 +706,18 @@ function admin_stats_overview() {
         : null;
     return $out;
 }
+// ===== 全站统一品牌 logo（2026-10-21）：SVG 商标此前只在首页内联，其余页面是纯文字，统一抽公共函数复用 =====
+// SVG 商标：蓝色渐变圆角购物包 + 白色提手/分隔线 + 橙色星。help.php 为不连库静态链路，内联了同款 SVG（改动需两处同步）
+function site_logo_svg(int $size = 36): string {
+    return '<svg viewBox="0 0 100 100" width="'.$size.'" height="'.$size.'" aria-hidden="true"><defs><linearGradient id="logoBlue" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient></defs><rect x="15" y="25" width="70" height="65" rx="14" fill="url(#logoBlue)"/><path d="M 35 25 A 15 15 0 0 1 65 25" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/><path d="M 35 45 L 35 70 M 65 45 L 65 70 M 35 57 L 65 57" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/><path d="M 75 18 L 77 25 L 84 27 L 77 29 L 75 36 L 73 29 L 66 27 L 73 25 Z" fill="#f59e0b"/></svg>';
+}
+// 完整品牌锁定版式（SVG + 中英文双行字标），内联样式自包含，任何页面无需额外 CSS 即可正确渲染
+function site_logo_html(): string {
+    return '<div class="logo"><a href="index.php" style="display:flex;align-items:center;gap:10px;text-decoration:none;">'.site_logo_svg()
+        .'<span style="display:flex;flex-direction:column;line-height:1.1;"><span style="font-size:1.3rem;font-weight:800;color:#1e293b;">惠蒙优选</span><span style="font-size:0.55rem;font-weight:700;color:#2563eb;letter-spacing:1.2px;">HUIMENG CHOICE</span></span></a></div>';
+}
 function page_start($title) {
-    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=4"></head><body><header><a class="brand" href="index.php">惠蒙优选</a><nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
+    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=5"></head><body><header>'.site_logo_html().'<nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
     if (!empty($_SESSION['user_id'])) {
         // 未读角标：一次性 COUNT 查询
         $unread = (int)one('SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND read_at IS NULL', [(int)$_SESSION['user_id']])['n'];

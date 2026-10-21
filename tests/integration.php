@@ -1404,5 +1404,6 @@ ob_start(); include __DIR__ . '/../profile.php'; $profViewHtml = ob_get_clean();
 $_SESSION = $_profSess;
 if ($_profMethod === null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD'] = $_profMethod;
 check(strpos($profViewHtml, 'avatar-preview-box') !== false && strpos($profViewHtml, 'uc-lightbox') !== false, 'profile avatar preview wired with lightbox');
+check(strpos(file_get_contents(__DIR__.'/../lib/shop.php'),'function site_logo_svg') !== false && strpos(file_get_contents(__DIR__.'/../lib/shop.php'),'<header>\'.site_logo_html()') !== false && strpos(file_get_contents(__DIR__.'/../index.php'),'echo site_logo_html()') !== false && strpos(file_get_contents(__DIR__.'/../lib/uc.php'),'site_logo_svg(22)') !== false && strpos(file_get_contents(__DIR__.'/../help.php'),'url(#logoBlue)') !== false, 'site brand logo unified across index, page_start, uc sidebar and help page');
 check(send_mail('qa-disable@example.com', 'qa', 'qa') === true, 'mail send disabled under SHOP_MAIL_DISABLE in test env');
 echo "$assertions integration assertions passed. Test database: $testDb\n";

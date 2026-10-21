@@ -27,9 +27,9 @@ function uc_page_start($title, $active = '') {
     $role = $_SESSION['role'] ?? 'guest';
     echo '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>' . htmlspecialchars($title) . ' - 惠蒙优选</title>';
-    echo '<link rel="stylesheet" href="css/user_center.css?v=4"></head><body>';
+    echo '<link rel="stylesheet" href="css/user_center.css?v=5"></head><body>';
     echo '<div class="uc-topbar">';
-    echo '<a class="uc-logo" href="index.php">🛍️ <strong>惠蒙优选</strong> · 个人中心</a>';
+    echo '<a class="uc-logo" href="index.php">'.site_logo_svg(22).' <strong>惠蒙优选</strong> · 个人中心</a>';
     echo '<div class="uc-topbar-links"><a href="index.php">返回首页</a><a href="cart.php">🛒 购物车</a></div>';
     echo '</div><div class="uc-layout"><nav class="uc-side">';
     foreach (uc_nav_items($role) as $key => $item) {

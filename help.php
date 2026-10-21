@@ -21,7 +21,8 @@ if (PHP_SAPI !== 'cli' && !headers_sent()) {
 <body>
 <div class="help-wrap">
     <div class="help-topbar">
-        <a href="index.php" class="help-logo">惠蒙优选</a>
+        <a href="index.php" class="help-logo"><?php // 本页为不连库静态链路，无法加载 lib/shop.php 的 site_logo_svg()，故内联同款 SVG——改动需与 lib/shop.php 保持同步 ?>
+            <svg viewBox="0 0 100 100" width="22" height="22" aria-hidden="true" style="vertical-align:-5px;margin-right:4px;"><defs><linearGradient id="logoBlue" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient></defs><rect x="15" y="25" width="70" height="65" rx="14" fill="url(#logoBlue)"/><path d="M 35 25 A 15 15 0 0 1 65 25" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/><path d="M 35 45 L 35 70 M 65 45 L 65 70 M 35 57 L 65 57" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/><path d="M 75 18 L 77 25 L 84 27 L 77 29 L 75 36 L 73 29 L 66 27 L 73 25 Z" fill="#f59e0b"/></svg>惠蒙优选</a>
         <a href="index.php" class="help-back-home">返回首页</a>
     </div>
     <h1>帮助中心</h1>

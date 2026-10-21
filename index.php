@@ -251,25 +251,8 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
 <body class="page-home">
         <header>
         <div class="logo">
-            <!-- 修复：补全 index.php 跳转链接 -->
-            <a href="index.php" style="display: flex; align-items: center; gap: 10px; text-decoration: none;">
-                <svg viewBox="0 0 100 100" width="36" height="36">
-                    <defs>
-                        <linearGradient id="logoBlue" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stop-color="#3b82f6" />
-                            <stop offset="100%" stop-color="#1d4ed8" />
-                        </linearGradient>
-                    </defs>
-                    <rect x="15" y="25" width="70" height="65" rx="14" fill="url(#logoBlue)" />
-                    <path d="M 35 25 A 15 15 0 0 1 65 25" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
-                    <path d="M 35 45 L 35 70 M 65 45 L 65 70 M 35 57 L 65 57" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
-                    <path d="M 75 18 L 77 25 L 84 27 L 77 29 L 75 36 L 73 29 L 66 27 L 73 25 Z" fill="#f59e0b"/>
-                </svg>
-                <div style="display: flex; flex-direction: column; line-height: 1.1;">
-                    <span style="font-size: 1.3rem; font-weight: 800; color: #1e293b;">惠蒙优选</span>
-                    <span style="font-size: 0.55rem; font-weight: 700; color: #2563eb; letter-spacing: 1.2px;">HUIMENG CHOICE</span>
-                </div>
-            </a >
+            <?php // 全站统一品牌 logo：公共函数输出（与 page_start/uc 侧栏同源），改 logo 只改 lib/shop.php 一处
+            echo site_logo_html(); ?>
         </div>
         <nav>
             <ul>
