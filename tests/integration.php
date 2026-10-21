@@ -1071,6 +1071,11 @@ check($selectedOpt!==null && (int)round(((float)$selectedOpt[3])*100)===$bestDis
 check(strpos($checkoutGetHtml,'已为你选中最优惠的优惠券')!==false, 'checkout shows best-coupon hint when a coupon is preselected');
 $checkoutPostHtml=render_checkout_page(['user_id'=>$buyer,'role'=>'user'],['product_id'=>$p1,'quantity'=>1],['product_id'=>$p1,'quantity'=>1,'user_coupon_id'=>0,'checkout_token'=>'']);
 check(strpos($checkoutPostHtml,' selected')===false && strpos($checkoutPostHtml,'已为你选中最优惠的优惠券')!==false, 'checkout POST respects explicit no-coupon choice without preselecting');
+// 换券即时重算：POST 不带 submit_order 时仅刷新预览（不建单），实付按所选券渲染
+check(strpos(file_get_contents(__DIR__.'/../checkout.php'),'name="user_coupon_id" onchange="this.form.submit()"')!==false, 'coupon select auto-submits for instant preview recompute');
+$recBucId=(int)one('SELECT id FROM user_coupons WHERE user_id=? AND coupon_id=?',[$buyer,$recCouponB])['id'];
+$checkoutRecomputeHtml=render_checkout_page(['user_id'=>$buyer,'role'=>'user'],['product_id'=>$p1,'quantity'=>1],['product_id'=>$p1,'quantity'=>1,'user_coupon_id'=>$recBucId,'checkout_token'=>'']);
+check(strpos($checkoutRecomputeHtml,'优惠券优惠 <strong>- ¥ 8.00')!==false, 'checkout preview recomputes payable with selected coupon without creating order');
 $noCouponUser=insert_user('rec-nocoupon-'.bin2hex(random_bytes(4)),'user');
 $noCouponHtml=render_checkout_page(['user_id'=>$noCouponUser,'role'=>'user'],['product_id'=>$p1,'quantity'=>1]);
 check(strpos($noCouponHtml,'已为你选中最优惠的优惠券')===false && strpos($noCouponHtml,'暂无可用优惠券')!==false, 'checkout hides hint and shows coupon-free hint for users without coupons');
