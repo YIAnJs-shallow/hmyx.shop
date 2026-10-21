@@ -22,7 +22,8 @@ $db_user = getenv('DB_USER') ?: ($databaseLocal['user'] ?? 'root');
 $db_pass = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : ($databaseLocal['password'] ?? '');
 $db_name = getenv('DB_NAME') ?: ($databaseLocal['database'] ?? 'my_web_db');
 
-// 建立连接
+// 建立连接（先显式初始化：try 块内赋值属条件定义，静态分析无法确认后续路径必有值）
+$conn = null;
 try {
     $conn = new mysqli($host, $db_user, $db_pass, $db_name, (int)(getenv('DB_PORT') ?: ($databaseLocal['port'] ?? 3306)));
 } catch (mysqli_sql_exception $e) {

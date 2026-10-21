@@ -30,7 +30,8 @@
 | P1 | **首页京东式改版专项（A+B）**：左侧分类导航 + 右侧悬浮 dock + 楼层电梯 + 秒杀楼层 + 卡片体验（2026-10-21 用户拍板，参考京东/淘宝） | ✅ 2026-10-21 完成（03ef75c，410 断言；正式库 seckill_items 建表 DDL 待确认执行 migrate） |
 | P2 | **每日签到送积分（C）** | ✅ 核查发现历史会话已交付（每日 +5、连续每满 7 天额外 +20、日历视图、points.php 入口，grant_points 含 signin 幂等），无需重复开发，规则文案与现状一致 |
 | P1 | **E-v2：客服私聊会话 + 资质背书**（2026-10-21 用户动线反馈改版：详情页应为"商品信息→评价+资质背书→点客服进入对话"，公开问答撤出详情页改一对一私聊） | ✅ 2026-10-21 完成（11f7318 + IM 化 3fe2151；**正式库 DDL 已于用户报错后执行并验证**；product_chats 表停用，DROP 待批） |
-| P1 | **PHPStan 静态分析引入**（2026-10-21 用户拍板"试试"；PHAR 2.3.1 置于 WWW 外 tools/phpstan/，phpstan.neon level 0） | ✅ 2026-10-21 完成（全项目 0 错误；抓出 tests/integration.php:820 闭包缺 use() 的空转断言并修复，445 断言复跑全绿；顺手清 user_center.php 文件尾空白） |
+| P1 | **PHPStan 静态分析引入**（2026-10-21 用户拍板"试试"；PHAR 2.3.1 置于 WWW 外 tools/phpstan/） | ✅ 2026-10-21 完成（抓出 tests/integration.php:820 闭包缺 use() 的空转断言并修复，445 断言复跑全绿；顺手清 user_center.php 文件尾空白） |
+| P1 | **PHPStan 接入 CI + 升 level 1**（2026-10-21 用户拍板执行） | ✅ 2026-10-21 完成（ci.yml 加 PHAR 下载缓存步骤；level 1 清零过程：144 条 variable.undefined 实测为 PHPStan 不传播 require 文件变量的固有行为，连接族 $conn/$db_name 精准豁免入 neon 并注明理由；真问题 2 处已修——product_edit.php:290 $locked_product 缺防御初始化、addresses.php 两处未使用 use($ee)；断言 445 全绿） |
 | P1 | **详情页对标淘宝查漏补缺**（2026-10-21 用户拍板"客服先不做，对标淘宝查漏补缺"）：多图相册/服务保障条/评价前置/撤客服卡 | ✅ 2026-10-21 完成（a2b8baf，443 断言；**新表 DDL：product_images——需执行 scripts/migrate.php，待确认**；客服功能冻结：入口收敛店铺主页，代码保留） |
 
 ### 开工方案：E-v2 客服私聊 + 资质背书（2026-10-21，用户动线反馈，结构定死）

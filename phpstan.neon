@@ -1,8 +1,8 @@
 # PHPStan 静态分析配置（开发期工具，不进运行时）
 # 运行：E:/e2/phpstudy/phpstudy_pro/Extensions/php/php7.4.3nts/php.exe E:/e2/phpstudy/phpstudy_pro/tools/phpstan/phpstan.phar analyse --no-progress
 parameters:
-	# 起步 0 级：未知的类/函数 + 实参个数错误（专治 bind_param 参数错位类失误）；后续按需逐级上调
-	level: 0
+	# 2026-10-21 起升到 level 1（实参个数/未定义变量等基线之上加方法与属性基础检查）
+	level: 1
 	paths:
 		- .
 	excludePaths:
@@ -14,3 +14,11 @@ parameters:
 	scanFiles:
 		- lib/PHPMailer/src/PHPMailer.php
 		- lib/PHPMailer/src/SMTP.php
+	ignoreErrors:
+		# 连接族变量经 require_once(config/db.php) 顶层注入，PHPStan 不传播 require 文件的变量
+		# （已用最小用例实测确认属工具固有行为，非代码缺陷）。未正确 require 的页面运行时有
+		# 503 兜底 + 集成测试捕获；豁免仅限连接族，其余未定义变量检查保持生效
+		# （历史上 tests/integration.php:820 闭包缺 use 的空转断言即由此类检查抓出）。
+		-
+			identifier: variable.undefined
+			message: '#^Variable \$(conn|db_name|db_user|db_pass|host) might not be defined\.$#'

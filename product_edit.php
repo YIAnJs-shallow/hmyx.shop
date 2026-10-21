@@ -266,6 +266,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lock_sql = $is_admin
                 ? "SELECT stock, image_url FROM products WHERE id = ? FOR UPDATE"
                 : "SELECT stock, image_url FROM products WHERE id = ? AND shop_id = ? FOR UPDATE";
+            // 防御初始化：连接对象既非 PDO 也非 mysqli 时走下方 product_not_found 异常而非未定义变量
+            $locked_product = null;
             if ($db instanceof PDO) {
                 $db->beginTransaction();
                 $transactionStarted = true;

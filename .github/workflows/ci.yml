@@ -72,5 +72,18 @@ jobs:
             php -l "$f" >/dev/null || { echo "语法错误: $f"; FAIL=1; }
           done < <(find . -path ./backup_ -prune -o -name '*.php' -print)
           exit $FAIL
+      - name: 缓存 PHPStan PHAR
+        uses: actions/cache@v4
+        with:
+          path: /tmp/phpstan
+          key: phpstan-phar-2.3.1
+      - name: PHPStan 静态分析（等级以 phpstan.neon 为准）
+        run: |
+          mkdir -p /tmp/phpstan
+          if [ ! -f /tmp/phpstan/phpstan.phar ]; then
+            curl -sSL --fail -o /tmp/phpstan/phpstan.phar \
+              https://github.com/phpstan/phpstan/releases/download/2.3.1/phpstan.phar
+          fi
+          php /tmp/phpstan/phpstan.phar analyse --no-progress --memory-limit=1G --error-format=github
       - name: 集成测试
         run: php tests/integration.php

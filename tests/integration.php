@@ -60,7 +60,7 @@ check(cents('19.90')===1990 && money(3001)==='30.01','integer money arithmetic')
 rejects(function(){ quantity(-1); },'negative quantity rejected');
 rejects(function(){ quantity('1.5'); },'fractional quantity rejected');
 query('INSERT INTO cart(user_id,product_id,quantity) VALUES(?,?,2),(?,?,1)',[$buyer,$p1,$buyer,$p2]);
-rejects(function()use($buyer,$other,$p1,$address){create_orders($other,$p1,1,$address,'wrong-owner');},'foreign address rejected');
+rejects(function()use($other,$p1,$address){create_orders($other,$p1,1,$address,'wrong-owner');},'foreign address rejected');
 $ids=create_orders($buyer,0,1,$address,'test-checkout');
 check(count($ids)===2,'cross-shop checkout splits orders');
 check(create_orders($buyer,0,1,$address,'test-checkout')===$ids,'checkout retry is idempotent');
