@@ -630,7 +630,16 @@ function home_slot_products($slot, $limit = 8) {
 }
 // ===== 首页改版：秒杀楼层（2026-10-21 A+B 专项）=====
 // 进行中的秒杀商品（status=1 且当前处于场次窗口内），可见口径与 home_slot_products 完全一致，sort 升序
+// 防御：楼层为展示层功能，正式库表未建等异常时返回空数组隐藏楼层，不允许炸掉整个首页
 function seckill_active_items($limit = 8) {
+    try {
+        return seckill_active_items_unsafe($limit);
+    } catch (Throwable $e) {
+        error_log('seckill floor degraded: ' . $e->getMessage());
+        return [];
+    }
+}
+function seckill_active_items_unsafe($limit = 8) {
     return rows("SELECT si.id, si.seckill_price_cents, si.total_stock, si.sold, si.end_at, p.id AS pid, p.title, p.image_url, p.price
         FROM seckill_items si
         JOIN products p ON p.id = si.product_id
