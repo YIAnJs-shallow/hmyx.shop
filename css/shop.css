@@ -141,3 +141,11 @@ img.thumb{background:#eef2f7 linear-gradient(100deg,rgba(255,255,255,0) 20%,rgba
 .im-inputbar button{padding:11px 26px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:700;cursor:pointer}
 .im-inputbar button:hover{background:#1e40af}
 .im-inputbar button:disabled{opacity:.55;cursor:default}
+
+/* ===== 商品相册（2026-10-21 查漏补缺）：主图 + 缩略图切换 ===== */
+.pd-gallery{display:flex;flex-direction:column;gap:10px}
+.pd-gallery .hero{width:100%;max-width:420px;border-radius:12px;border:1px solid #e2e8f0;background:#f8fafc}
+.pd-thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.pd-thumb{width:64px;height:64px;object-fit:cover;border-radius:8px;border:2px solid #e2e8f0;cursor:pointer;transition:border-color .15s}
+.pd-thumb:hover{border-color:#93c5fd}
+.pd-thumb.pd-on{border-color:#1d4ed8}

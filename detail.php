@@ -23,7 +23,7 @@ $reviews=rows('SELECT r.*,u.username FROM reviews r JOIN users u ON u.id=r.user_
 // ===== E-v2：客服入口与资质背书数据 =====
 $detailShop = $p['shop_id'] ? one('SELECT * FROM shops WHERE id=? AND status=1', [(int)$p['shop_id']]) : null;
 $detailCerts = $detailShop ? shop_cert_list($detailShop) : [];
-$detailChatUnread = !empty($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'user' && $p['shop_id'] ? shop_chat_thread_unread((int)$p['shop_id'], (int)$_SESSION['user_id']) : 0;
+// 客服入口已收敛到店铺主页（功能冻结），详情页不再计算会话未读
 // 追评与晒图统计只针对当前展示的首评（评分均值不含 rating 固定为 0 的追评）
 $stats=one('SELECT COUNT(*) AS n,ROUND(AVG(rating),1) AS score FROM reviews WHERE product_id=? AND parent_id IS NULL',[$id]);
 $followups=[]; $reviewImages=[];
@@ -39,10 +39,45 @@ $flash=($skus || $gb) ? null : flash_price_cents($p);
 $gbStats=$gb ? group_buy_stats((int)$gb['id']) : [0, 0];
 $displayPriceCents=$gb ? (int)$gb['price_cents'] : ($flash!==null ? $flash : (int)round((float)$p['price']*100));
 ?>
-<section class="card row"><?php if($p['image_url']): ?><img class="hero" src="<?=h($p['image_url'])?>" alt="<?=h($p['title'])?>"><?php endif; ?><div class="grow"><?php if(!empty($p['shop_id'])): ?><a class="badge" style="text-decoration:none;" href="shop.php?id=<?=(int)$p['shop_id']?>" title="进入店铺主页">🏪 <?=h($p['shop_name'])?></a><?php else: ?><span class="badge">平台自营</span><?php endif; ?><?php foreach ($detailCerts as $ci): ?><span class="badge" style="background:#ecfdf5;color:#047857;">✅ <?= h($ci) ?></span><?php endforeach; ?><h2><?=h($p['title'])?></h2><?php if(!empty($_SESSION['user_id'])): $viewerLevel=one('SELECT l.name,l.discount_percent FROM users u JOIN user_levels l ON l.id=u.level_id WHERE u.id=?',[(int)$_SESSION['user_id']]); if($viewerLevel && (int)$viewerLevel['discount_percent']<100): ?><span class="badge" style="background:#fef9c3;color:#a16207;"><?=h($viewerLevel['name'])?>会员 <?=(int)$viewerLevel['discount_percent']?>折</span><?php endif; endif; ?><p class="price">¥ <?=h($skus ? money(min(array_map('intval',array_column($skus,'price_cents')))) : money($displayPriceCents))?></p><?php if($flash!==null): ?><p><s class="muted">原价 ¥ <?=h($p['price'])?></s> · <strong style="color:#dc2626;">限时特价</strong> · 活动截止时间 <?=h($p['flash_end'])?></p><?php endif; ?><?php if($gb): ?><p><s class="muted">原价 ¥ <?=h($p['price'])?></s> · <strong style="color:#dc2626;">拼团价 ¥ <?=money((int)$gb['price_cents'])?></strong> · <?=(int)$gb['size']?> 人成团 · 已开 <?=(int)$gbStats[0]?> 团 / 已拼 <?=(int)$gbStats[1]?> 件 · 限购 1 件</p><?php endif; ?><?php if((int)($p['presale'] ?? 0)===1): ?><p><span class="badge" style="background:#fef3c7;color:#b45309;">预售</span> 定金 ¥ <?=h(money((int)($p['deposit_cents'] ?? 0)))?>（商品总价 ¥ <?=h($p['price'])?>）<?php if(!empty($p['presale_end_at'])): ?> · 定金支付截止 <?=h($p['presale_end_at'])?><?php endif; ?></p><?php endif; ?><p>库存 <?=(int)$buyable?> 件 · 评价 <?=(int)$stats['n']?> 条<?php if($stats['score']): ?> · <?=h($stats['score'])?> / 5 星<?php endif; ?></p><?php if($p['material']!==''): ?><p>材质：<?=h($p['material'])?></p><?php endif; ?>
+<section class="card row"><?php $gallery = array_merge(
+    $p['image_url'] ? [['id' => 0, 'image_url' => $p['image_url']]] : [],
+    product_images_list($id)
+); ?>
+<?php if ($gallery): ?>
+<div class="pd-gallery">
+    <img class="hero" id="pd-main-img" src="<?= h($gallery[0]['image_url']) ?>" alt="<?= h($p['title']) ?>">
+    <?php if (count($gallery) > 1): ?>
+    <div class="pd-thumbs">
+        <?php foreach ($gallery as $gi => $gimg): ?>
+        <img class="pd-thumb <?= $gi === 0 ? 'pd-on' : '' ?>" src="<?= h($gimg['image_url']) ?>" data-full="<?= h($gimg['image_url']) ?>" alt="商品图<?= $gi + 1 ?>">
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+</div>
+<script>
+(function () {
+    var main = document.getElementById('pd-main-img');
+    if (!main) return;
+    document.querySelectorAll('.pd-thumb').forEach(function (t) {
+        t.addEventListener('click', function () {
+            main.src = t.getAttribute('data-full');
+            document.querySelectorAll('.pd-thumb').forEach(function (x) { x.classList.remove('pd-on'); });
+            t.classList.add('pd-on');
+        });
+    });
+})();
+</script>
+<?php endif; ?><div class="grow"><?php if(!empty($p['shop_id'])): ?><a class="badge" style="text-decoration:none;" href="shop.php?id=<?=(int)$p['shop_id']?>" title="进入店铺主页">🏪 <?=h($p['shop_name'])?></a><?php else: ?><span class="badge">平台自营</span><?php endif; ?><?php foreach ($detailCerts as $ci): ?><span class="badge" style="background:#ecfdf5;color:#047857;">✅ <?= h($ci) ?></span><?php endforeach; ?><h2><?=h($p['title'])?></h2><?php if(!empty($_SESSION['user_id'])): $viewerLevel=one('SELECT l.name,l.discount_percent FROM users u JOIN user_levels l ON l.id=u.level_id WHERE u.id=?',[(int)$_SESSION['user_id']]); if($viewerLevel && (int)$viewerLevel['discount_percent']<100): ?><span class="badge" style="background:#fef9c3;color:#a16207;"><?=h($viewerLevel['name'])?>会员 <?=(int)$viewerLevel['discount_percent']?>折</span><?php endif; endif; ?><p class="price">¥ <?=h($skus ? money(min(array_map('intval',array_column($skus,'price_cents')))) : money($displayPriceCents))?></p><?php if($flash!==null): ?><p><s class="muted">原价 ¥ <?=h($p['price'])?></s> · <strong style="color:#dc2626;">限时特价</strong> · 活动截止时间 <?=h($p['flash_end'])?></p><?php endif; ?><?php if($gb): ?><p><s class="muted">原价 ¥ <?=h($p['price'])?></s> · <strong style="color:#dc2626;">拼团价 ¥ <?=money((int)$gb['price_cents'])?></strong> · <?=(int)$gb['size']?> 人成团 · 已开 <?=(int)$gbStats[0]?> 团 / 已拼 <?=(int)$gbStats[1]?> 件 · 限购 1 件</p><?php endif; ?><?php if((int)($p['presale'] ?? 0)===1): ?><p><span class="badge" style="background:#fef3c7;color:#b45309;">预售</span> 定金 ¥ <?=h(money((int)($p['deposit_cents'] ?? 0)))?>（商品总价 ¥ <?=h($p['price'])?>）<?php if(!empty($p['presale_end_at'])): ?> · 定金支付截止 <?=h($p['presale_end_at'])?><?php endif; ?></p><?php endif; ?><p>库存 <?=(int)$buyable?> 件 · 评价 <?=(int)$stats['n']?> 条<?php if($stats['score']): ?> · <?=h($stats['score'])?> / 5 星<?php endif; ?></p><?php if($p['material']!==''): ?><p>材质：<?=h($p['material'])?></p><?php endif; ?>
 <form method="post" action="cart.php"><?=csrf_field()?><input type="hidden" name="product_id" value="<?=$id?>"><input type="hidden" name="action" value="add"><?php if($skus): $noneChecked=true; ?><fieldset class="skus"><legend>选择规格</legend><?php foreach($skus as $sku): $sellable=(int)$sku['stock']>0; ?><label><input type="radio" name="sku_id" value="<?=(int)$sku['id']?>" data-image="<?=h($sku['image_url'] ?? '')?>" data-price="<?=money((int)$sku['price_cents'])?>" <?=$sellable?'':'disabled'?> <?=$sellable&&$noneChecked?'required checked':''?>><?=h($sku['sku_name'])?> · ¥ <?=money((int)$sku['price_cents'])?> · 库存 <?=(int)$sku['stock']?><?=$sellable?'':'（售罄）'?></label><?php if($sellable) $noneChecked=false; endforeach; ?></fieldset><?php endif; ?><label>购买数量 <input name="quantity" type="number" value="1" min="1" max="<?=min(999,max(1,(int)$buyable))?>" required></label><div class="actions"><?php if((int)($p['presale'] ?? 0)!==1): ?><button <?=$buyable<=0?'disabled':''?>>加入购物车</button><?php endif; ?><button formaction="checkout.php" <?=$buyable<=0?'disabled':''?>><?=((int)($p['presale'] ?? 0)===1?'立即购买（支付定金）':'立即购买')?></button></div></form>
 <?php if($gb): ?><form method="post" action="checkout.php" class="inline"><?=csrf_field()?><input type="hidden" name="product_id" value="<?=$id?>"><input type="hidden" name="quantity" value="1"><input type="hidden" name="group_buy_id" value="<?=(int)$gb['id']?>"><button <?=$buyable<=0?'disabled':''?>>发起拼团 / 参与拼团</button></form><p class="muted">未登录将先跳转登录；系统自动匹配进行中的团，人满即成团发货。</p><?php endif; ?>
 <form method="post" action="favorites.php" class="inline"><?=csrf_field()?><input type="hidden" name="product_id" value="<?=$id?>"><button name="action" value="add">收藏商品</button></form></div></section>
+<section class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:10px 16px;">
+    <span class="badge" style="background:#eff6ff;color:#1d4ed8;">🛡️ 七天无理由退货</span>
+    <span class="badge" style="background:#eff6ff;color:#1d4ed8;">✅ 正品保障</span>
+    <span class="badge" style="background:#eff6ff;color:#1d4ed8;">🚀 极速发货</span>
+    <span class="badge" style="background:#eff6ff;color:#1d4ed8;">📦 48 小时演示物流签收</span>
+    <span class="muted small">以上为演示环境保障口径，正式上线以平台规则为准</span>
+</section>
 <?php
 // 领券区块：展示本商品可用券（全场 + 指定本商品），不含其他商品的指定券与新人券（新人券注册时自动发放）
 $detailCoupons=rows("SELECT c.* FROM coupons c
@@ -58,8 +93,8 @@ $detailCoupons=rows("SELECT c.* FROM coupons c
 <?php else: ?><a href="user_login.php?next=<?=rawurlencode('detail.php?id='.$id)?>">登录后领取</a><?php endif; ?></p>
 <?php endforeach; ?></section>
 <?php endif; ?>
-<section class="card"><h2>商品介绍</h2><div class="product-copy"><?=h($p['detail'] ?: '暂无详细介绍')?></div></section>
-<section class="card"><h2>购买者评价</h2><?php $tagCounts=review_tag_counts($id); if($tagCounts): ?><p class="tag-pills"><?php foreach($tagCounts as $tc): ?><span class="tag-pill"><?=h($tc['tag'])?> <?=(int)$tc['count']?> 条</span><?php endforeach; ?></p><?php endif; ?><p class="muted"><?php if($stats['score']): ?>平均 <?=h($stats['score'])?> / 5 星 · <?php endif; ?>共 <?=(int)$stats['n']?> 条评价</p><?php if(!$reviews) echo '<p class="muted">暂无评价，确认收货后可分享购买体验。</p>'; foreach($reviews as $review): ?><article><strong><?=h(mb_substr($review['username'],0,1))?>*** · <?=(int)$review['rating']?> 星</strong><p class="product-copy"><?=h($review['content'])?></p><?php foreach($reviewImages[(int)$review['id']] ?? [] as $im): ?><img class="thumb" src="<?=h($im['image_url'])?>" alt="评价晒图"><?php endforeach; ?><?php if($review['reply_content']): ?><p class="notice">商家回复：<?=h($review['reply_content'])?> <small><?=h($review['replied_at'])?></small></p><?php endif; ?><?php foreach($followups[(int)$review['id']] ?? [] as $fu): ?><div style="margin-left:24px;border-left:3px solid #e2e8f0;padding-left:12px;"><strong>追评</strong><p class="product-copy"><?=h($fu['content'])?></p><small><?=h($fu['created_at'])?></small></div><?php endforeach; ?><small><?=h($review['created_at'])?></small><hr class="divider"></article><?php endforeach; if($stats['n']>30) echo '<p class="muted">当前展示最新 30 条评价。</p>'; ?></section>
+<section class="card"><h2>购买者评价</h2><?php $tagCounts=review_tag_counts($id); if($tagCounts): ?><p class="tag-pills"><?php foreach($tagCounts as $tc): ?><span class="tag-pill"><?=h($tc['tag'])?> <?=(int)$tc['count']?> 条</span><?php endforeach; ?></p><?php endif; ?><p class="muted"><?php if($stats['score']): ?>平均 <?=h($stats['score'])?> / 5 星 · <?php endif; ?>共 <?=(int)$stats['n']?> 条评价</p><?php if(!$reviews) echo '<p class="muted">暂无评价，确认收货后可分享购买体验。</p>'; foreach($reviews as $review): ?><article><strong><?=h(mb_substr($review['username'],0,1))?>*** · <?=(int)$review['rating']?> 星</strong><p class="product-copy"><?=h($review['content'])?></p><?php foreach($reviewImages[(int)$review['id']] ?? [] as $im): ?><img class="thumb" src="<?=h($im['image_url'])?>" alt="评价晒图"><?php endforeach; ?><?php if($review['reply_content']): ?><p class="notice">商家回复：<?=h($review['reply_content'])?> <small><?=h($review['replied_at'])?></small></p><?php endif; ?><?php foreach($followups[(int)$review['id']] ?? [] as $fu): ?><div style="margin-left:24px;border-left:3px solid #e2e8f0;padding-left:12px;"><strong>追评</strong><p class="product-copy"><?=h($fu['content'])?></p><small><?=h($fu['created_at'])?></small></div><?php endforeach; ?><small><?=h($review['created_at'])?></small><hr class="divider"></article><?php endforeach; if($stats['n']>30) echo '<p class="muted">当前展示最新 30 条评价。</p>'; ?></section><section class="card"><h2>商品介绍</h2><div class="product-copy"><?=h($p['detail'] ?: '暂无详细介绍')?></div></section>
+
 <?php if($skus): ?><script>
 (function () {
     var hero = document.querySelector('img.hero');
@@ -80,15 +115,7 @@ $detailCoupons=rows("SELECT c.* FROM coupons c
 })();
 </script>
 <?php endif; ?>
-<section class="card" style="margin-top:18px;">
-    <h2>💬 联系客服</h2>
-    <p class="muted">购买前想了解的信息，点击下方按钮与商家一对一沟通。</p>
-    <?php if ($detailShop): ?>
-    <a class="btn-buy-link" href="chat.php?shop_id=<?= (int)$p['shop_id'] ?>&product_id=<?= $id ?>">💬 联系客服<?= $detailChatUnread > 0 ? '（<strong style="color:#dc2626;">' . min($detailChatUnread, 99) . '</strong> 条未读）' : '' ?></a>
-    <?php else: ?>
-    <p class="muted">平台自营商品由平台客服服务（演示站暂未开放平台客服通道）。</p>
-    <?php endif; ?>
-</section>
+
 <?php $viewAlso = view_also_items($id, (int)$p['category_id'], (int)($_SESSION['user_id'] ?? 0)); if ($viewAlso): ?>
 <section class="card">
     <h3>👀 看了又看</h3>

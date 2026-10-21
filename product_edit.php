@@ -81,6 +81,26 @@ if (!$product) {
     exit();
 }
 
+// ==================== 2.5 商品相册管理（2026-10-21 查漏补缺）：上传/删除，独立于主保存流程 ====================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['gallery_action'] ?? '') !== '') {
+    try {
+        if (($_POST['gallery_action'] ?? '') === 'add' && isset($_FILES['gallery_image'])) {
+            product_images_add((int)$product['id'], $_FILES['gallery_image']);
+            redirect_to('product_edit.php?id=' . (int)$product['id'], '相册图片已上传');
+        }
+        if (($_POST['gallery_action'] ?? '') === 'del') {
+            product_images_delete((int)$product['id'], (int)($_POST['gallery_image_id'] ?? 0));
+            redirect_to('product_edit.php?id=' . (int)$product['id'], '相册图片已删除');
+        }
+    } catch (DomainException $e) {
+        redirect_to('product_edit.php?id=' . (int)$product['id'], $e->getMessage());
+    } catch (Throwable $e) {
+        if (PHP_SAPI !== 'cli') error_log($e);
+        redirect_to('product_edit.php?id=' . (int)$product['id'], '相册操作失败，请稍后再试');
+    }
+}
+$galleryImages = product_images_list((int)$product['id']);
+
 // ==================== 3. 查询分类（树状） ====================
 $categories = [];
 try {
@@ -525,6 +545,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 <?php endif; ?>
                 <input type="file" name="image" accept="image/*" class="form-control">
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-bold small">商品相册（最多 <?= PRODUCT_GALLERY_MAX ?> 张，详情页主图区轮播展示）</label>
+                <?php if ($galleryImages): ?>
+                <div class="mb-2 d-flex gap-2 flex-wrap">
+                    <?php foreach ($galleryImages as $gi): ?>
+                    <div style="position:relative;">
+                        <img src="<?= htmlspecialchars($gi['image_url']) ?>" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #dee2e6;" alt="相册图">
+                        <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="del"><input type="hidden" name="gallery_image_id" value="<?=(int)$gi['id'] ?>"><button class="btn-close btn-sm" style="position:absolute;top:-4px;right:-4px;background:#fff;border-radius:50%;padding:2px;" title="删除" onclick="return confirm('删除这张相册图？')"></button></form>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+                <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center"><?= csrf_field() ?>
+                    <input type="hidden" name="gallery_action" value="add">
+                    <input type="file" name="gallery_image" accept="image/*" class="form-control" style="max-width:280px;" required>
+                    <button class="btn btn-sm btn-outline-primary">上传相册图</button>
+                </form>
             </div>
 
             <div class="mb-4">

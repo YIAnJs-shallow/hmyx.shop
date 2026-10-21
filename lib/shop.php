@@ -869,7 +869,7 @@ function site_logo_html(): string {
         .'<span style="display:flex;flex-direction:column;line-height:1.1;"><span style="font-size:1.3rem;font-weight:800;color:#1e293b;">惠蒙优选</span><span style="font-size:0.55rem;font-weight:700;color:#2563eb;letter-spacing:1.2px;">HUIMENG CHOICE</span></span></a></div>';
 }
 function page_start($title) {
-    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=9"></head><body><header>'.site_logo_html().'<nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
+    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=10"></head><body><header>'.site_logo_html().'<nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
     if (!empty($_SESSION['user_id'])) {
         // 未读角标：一次性 COUNT 查询
         $unread = (int)one('SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND read_at IS NULL', [(int)$_SESSION['user_id']])['n'];
@@ -1026,3 +1026,24 @@ function canonical_brand($raw) {
     $row = one("SELECT brand FROM products WHERE brand <> '' AND LOWER(brand) = ? ORDER BY id ASC LIMIT 1", [$lower]);
     return $row ? $row['brand'] : $raw;
 }}
+
+// ===== 商品相册（2026-10-21 查漏补缺，对标淘宝主图区）：多图列表/添加/删除 =====
+const PRODUCT_GALLERY_MAX = 8; // 相册上限（张，含主图外附加图）
+// 相册列表（sort 升序，不含主图 image_url，主图在详情页作为第一张合并展示）
+function product_images_list($productId) {
+    try {
+        return rows('SELECT id, image_url, sort FROM product_images WHERE product_id=? ORDER BY sort ASC, id ASC', [(int)$productId]);
+    } catch (Throwable $e) { error_log('product gallery degraded: ' . $e->getMessage()); return []; }
+}
+// 添加相册图（复用 save_image_upload 校验：jpg/png/gif/webp、≤5MB、随机重命名）
+function product_images_add($productId, $file) {
+    if ((int)$productId <= 0 || !one('SELECT id FROM products WHERE id=?', [(int)$productId])) throw new DomainException('商品不存在');
+    if (count(product_images_list($productId)) >= PRODUCT_GALLERY_MAX) throw new DomainException('相册最多 ' . PRODUCT_GALLERY_MAX . ' 张');
+    $path = save_image_upload($file, 'products');
+    query('INSERT INTO product_images (product_id, image_url, sort) VALUES (?,?,?)', [(int)$productId, $path, (int)one('SELECT COALESCE(MAX(sort),0)+1 AS s FROM product_images WHERE product_id=?', [(int)$productId])['s']]);
+    return (int)one('SELECT id FROM product_images ORDER BY id DESC LIMIT 1', [])['id'];
+}
+// 删除相册图（按商品归属限定，物理文件保留——与回滚靠 git/演示口径一致，仅断开引用）
+function product_images_delete($productId, $imageId) {
+    query('DELETE FROM product_images WHERE id=? AND product_id=?', [(int)$imageId, (int)$productId]);
+}
