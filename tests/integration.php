@@ -557,6 +557,9 @@ $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 $_SESSION['admin'] = ['id' => $superId]; refresh_admin_session();
 ob_start(); include __DIR__.'/../admin/stats.php'; $adminStatsHtml = ob_get_clean();
 check(strpos($adminStatsHtml, '运营数据看板') !== false && strpos($adminStatsHtml, '销量 TOP10') !== false && strpos($adminStatsHtml, '支付方式分布') !== false, 'admin stats page renders overview cards and distribution tables');
+check(strpos($adminStatsHtml, '可视化总览') !== false && strpos($adminStatsHtml, 'id="chart-status"') !== false && strpos($adminStatsHtml, 'id="chart-payment"') !== false && strpos($adminStatsHtml, 'id="chart-top"') !== false, 'admin stats page renders chart containers');
+check(strpos($adminStatsHtml, 'js/echarts.min.js?v=1') !== false && strpos($adminStatsHtml, 'echarts.init') !== false, 'admin stats page loads echarts and initializes charts');
+check(file_exists(__DIR__.'/../js/echarts.min.js') && strpos(file_get_contents(__DIR__.'/../js/echarts.min.js'), 'Apache Software Foundation') !== false, 'echarts library vendored with license header');
 unset($_SESSION['admin']);
 if ($backupRemote !== null) $_SERVER['REMOTE_ADDR'] = $backupRemote; else unset($_SERVER['REMOTE_ADDR']);
 // ===== 后台优惠券管理：coupon.manage 权限矩阵、创建券、上下架切换、列表渲染 =====

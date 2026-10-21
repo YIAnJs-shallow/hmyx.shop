@@ -8,6 +8,11 @@ $stats = admin_stats_overview();
 // 支付方式展示标签（未映射的原样展示，避免漏报新渠道）
 $paymentLabels = ['demo' => '演示支付', 'online' => '在线支付', 'alipay_sandbox' => '支付宝沙箱', 'alipay' => '支付宝'];
 $statusLabels = ['pending' => '待支付', 'paid' => '已支付', 'shipped' => '已发货', 'completed' => '已完成', 'cancelled' => '已取消'];
+// 可视化总览数据（ECharts，Apache-2.0，本地化于 js/echarts.min.js）：空数据渲染空图，表格仍为数据兜底
+$chartStatus = $chartPayment = [];
+foreach ($stats['status_dist'] as $st => $cnt) $chartStatus[] = ['name' => $statusLabels[$st] ?? $st, 'value' => (int)$cnt];
+foreach ($stats['payment_dist'] as $pm => $cnt) $chartPayment[] = ['name' => $paymentLabels[$pm] ?? $pm, 'value' => (int)$cnt];
+$chartTop = array_map(static function ($t) { return ['name' => $t['title'], 'value' => (int)$t['sold']]; }, $stats['top_products']);
 function stats_card($label, $value, $sub = '') {
     echo '<div style="flex:1;min-width:180px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px;box-shadow:var(--shadow-sm);">';
     echo '<div style="color:#64748b;font-size:.85rem;">' . h($label) . '</div>';
@@ -28,6 +33,13 @@ require __DIR__ . '/inc/header.php'; ?>
     stats_card('近 30 天 GMV', '¥' . number_format($stats['last30_gmv_cents'] / 100, 2));
     stats_card('近 30 天退款率', $stats['refund_rate_30d'] === null ? '—' : $stats['refund_rate_30d'] . '%', '审批通过退款 ' . $stats['refund_approved_30d'] . ' 单');
     ?>
+</div>
+
+<h2>可视化总览（近 30 天）</h2>
+<div style="display:flex;flex-wrap:wrap;gap:14px;">
+    <div id="chart-status" style="flex:1;min-width:280px;height:320px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;"></div>
+    <div id="chart-payment" style="flex:1;min-width:280px;height:320px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;"></div>
+    <div id="chart-top" style="flex:2;min-width:420px;height:320px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;"></div>
 </div>
 
 <h2>近 30 天订单状态分布</h2>
@@ -63,4 +75,34 @@ require __DIR__ . '/inc/header.php'; ?>
     <tr><td colspan="2">暂无数据</td></tr>
     <?php endif; ?>
 </table>
+<script src="../js/echarts.min.js?v=1"></script>
+<script>
+(function () {
+    if (typeof echarts === 'undefined') return; // 库加载失败时静默退出，表格仍完整可用
+    var data = <?= json_encode(['status' => $chartStatus, 'payment' => $chartPayment, 'top' => $chartTop], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    function pie(id, rows, title) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        echarts.init(el).setOption({
+            title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
+            tooltip: { trigger: 'item' },
+            series: [{ type: 'pie', radius: ['35%', '65%'], center: ['50%', '58%'], data: rows, label: { formatter: '{b}: {c}' } }]
+        });
+    }
+    pie('chart-status', data.status, '订单状态分布');
+    pie('chart-payment', data.payment, '支付方式分布');
+    var top = document.getElementById('chart-top');
+    if (top) {
+        var rows = data.top.slice().reverse(); // 横向条形自下而上绘制，反转使第一名在顶部
+        echarts.init(top).setOption({
+            title: { text: '销量 TOP10 商品', left: 'center', textStyle: { fontSize: 14 } },
+            tooltip: { trigger: 'item' },
+            grid: { left: 150, right: 30, top: 40, bottom: 30 },
+            xAxis: { type: 'value', minInterval: 1 },
+            yAxis: { type: 'category', data: rows.map(function (r) { return r.name.length > 10 ? r.name.slice(0, 10) + '…' : r.name; }) },
+            series: [{ type: 'bar', data: rows.map(function (r) { return r.value; }), barMaxWidth: 18 }]
+        });
+    }
+})();
+</script>
 <?php require __DIR__ . '/inc/footer.php'; ?>

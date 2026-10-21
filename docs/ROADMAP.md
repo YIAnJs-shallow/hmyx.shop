@@ -32,6 +32,10 @@
 | P1 | **E-v2：客服私聊会话 + 资质背书**（2026-10-21 用户动线反馈改版：详情页应为"商品信息→评价+资质背书→点客服进入对话"，公开问答撤出详情页改一对一私聊） | ✅ 2026-10-21 完成（11f7318 + IM 化 3fe2151；**正式库 DDL 已于用户报错后执行并验证**；product_chats 表停用，DROP 待批） |
 | P1 | **PHPStan 静态分析引入**（2026-10-21 用户拍板"试试"；PHAR 2.3.1 置于 WWW 外 tools/phpstan/） | ✅ 2026-10-21 完成（抓出 tests/integration.php:820 闭包缺 use() 的空转断言并修复，445 断言复跑全绿；顺手清 user_center.php 文件尾空白） |
 | P1 | **PHPStan 接入 CI + 升 level 1**（2026-10-21 用户拍板执行） | ✅ 2026-10-21 完成（ci.yml 加 PHAR 下载缓存步骤；level 1 清零过程：144 条 variable.undefined 实测为 PHPStan 不传播 require 文件变量的固有行为，连接族 $conn/$db_name 精准豁免入 neon 并注明理由；真问题 2 处已修——product_edit.php:290 $locked_product 缺防御初始化、addresses.php 两处未使用 use($ee)；断言 445 全绿） |
+| P1 | **gitleaks 安装 + 全历史密钥扫描**（2026-10-21 用户拍板 Q1） | ✅ 2026-10-21 完成（8.30.1 exe 于 tools/gitleaks/，SHA-256 对官方 checksums 一致；185 提交全扫 **no leaks found**，.gitignore 纪律历史清白；CI 接入另行再议） |
+| P2 | **ECharts 看板可视化**（2026-10-21 用户拍板 Q3） | ✅ 2026-10-21 完成（echarts 6.1.0 本地化 js/echarts.min.js，SHA-1 对官方 blob 一致；admin/stats.php 加"可视化总览"三图（状态/支付方式饼图+销量 TOP10 条形图），表格保留兜底、库加载失败静默退出；断言 445→448） |
+| P2 | **Playwright 浏览器实测**（2026-10-21 评审降级为缓） | ⏸ 触发条件：同类 UI 可点性/渲染问题再现 ≥2 次或真实演示前；届时需先批准 Node.js 安装 |
+| P2 | rclone 异地 DB 备份 / Rector（PHP 升级日）/ php-qrcode / Intervention Image | ⏸ 维持搁置，触发条件见开源工具对比表 |
 | P1 | **详情页对标淘宝查漏补缺**（2026-10-21 用户拍板"客服先不做，对标淘宝查漏补缺"）：多图相册/服务保障条/评价前置/撤客服卡 | ✅ 2026-10-21 完成（a2b8baf，443 断言；**新表 DDL：product_images——需执行 scripts/migrate.php，待确认**；客服功能冻结：入口收敛店铺主页，代码保留） |
 
 ### 开工方案：E-v2 客服私聊 + 资质背书（2026-10-21，用户动线反馈，结构定死）
