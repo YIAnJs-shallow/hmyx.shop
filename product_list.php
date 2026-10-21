@@ -40,24 +40,25 @@ if (!$shop || ($_SESSION['role'] ?? '') !== 'merchant' || (int)$shop['status'] !
 }
 
 // ==================== 1.5 店铺发货地设置（演示物流起点，express_detail.php 消费） ====================
+$shop_id = intval($shop['id']); // 提前定义：POST 处理在页面顶部，原定义在其后导致 UPDATE 拿 null 匹配 0 行（发货地保存从未生效的存量 bug）
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_ship_from') {
     csrf_check();
     $shipFrom = trim((string)($_POST['ship_from'] ?? ''));
+    $certifications = trim(strip_tags((string)($_POST['certifications'] ?? '')));
     if (mb_strlen($shipFrom) > 255) $shipFrom = mb_substr($shipFrom, 0, 255);
+    if (mb_strlen($certifications) > 500) $certifications = mb_substr($certifications, 0, 500);
     if ($db instanceof PDO) {
-        $st = $db->prepare("UPDATE shops SET ship_from = ? WHERE id = ?");
-        $st->execute([$shipFrom, $shop_id]);
+        $st = $db->prepare("UPDATE shops SET ship_from = ?, certifications = ? WHERE id = ?");
+        $st->execute([$shipFrom, $certifications, $shop_id]);
     } elseif ($db instanceof mysqli) {
-        $st = $db->prepare("UPDATE shops SET ship_from = ? WHERE id = ?");
-        $st->bind_param("si", $shipFrom, $shop_id);
+        $st = $db->prepare("UPDATE shops SET ship_from = ?, certifications = ? WHERE id = ?");
+        $st->bind_param("ssi", $shipFrom, $certifications, $shop_id);
         $st->execute();
     }
-    redirect_to('product_list.php', '发货地已保存');
+    redirect_to('product_list.php', '店铺信息已保存');
 }
 
 $shop_id = intval($shop['id']);
-
-// ==================== 2. AJAX 无刷新操作：下架 / 上下架切换 ====================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && isset($_POST['is_ajax'])) {
     header('Content-Type: application/json; charset=utf-8');
     $action = $_POST['action'];
@@ -221,7 +222,9 @@ foreach ($products as $p) {
             <input type="hidden" name="action" value="save_ship_from">
             <span class="text-muted small">发货地（演示物流起点，如：浙江省杭州市）</span>
             <input class="form-control form-control-sm" style="max-width:280px" name="ship_from" maxlength="255" value="<?= htmlspecialchars($shop['ship_from'] ?? '') ?>" placeholder="省份+城市">
-            <button class="btn btn-sm btn-primary">保存发货地</button>
+            <span class="text-muted small">资质背书（顿号/逗号分隔，展示于详情页，如：ISO9001、质检报告第2026-001号）</span>
+            <input class="form-control form-control-sm" style="max-width:420px" name="certifications" maxlength="500" value="<?= htmlspecialchars($shop['certifications'] ?? '') ?>" placeholder="认证名称或编号，可留空">
+            <button class="btn btn-sm btn-primary">保存店铺信息</button>
         </form>
     </div></div>
 

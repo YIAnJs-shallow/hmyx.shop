@@ -4,6 +4,8 @@
 require_once __DIR__ . '/lib/shop.php';
 $shopId = (int)($_GET['id'] ?? 0);
 $shop = $shopId > 0 ? one('SELECT * FROM shops WHERE id=? AND status=1', [$shopId]) : null;
+$shopCerts = $shop ? shop_cert_list($shop) : [];
+$shopChatUnread = ($shop && !empty($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'user') ? shop_chat_thread_unread($shopId, (int)$_SESSION['user_id']) : 0;
 if (!$shop) {
     page_start('店铺不存在');
     echo '<section class="card"><p>店铺不存在或已关闭，<a href="index.php">回首页逛逛</a>。</p></section>';
@@ -33,8 +35,12 @@ page_start(h($shop['shop_name']) . ' · 店铺主页');
             开店于 <?= h(substr((string)$shop['created_at'], 0, 10)) ?>
         </p>
         <?php if ($shop['shop_desc']): ?><p style="margin:8px 0 0;"><?= h($shop['shop_desc']) ?></p><?php endif; ?>
+        <?php if ($shopCerts): ?><p style="margin:8px 0 0;"><?php foreach ($shopCerts as $sci): ?><span class="badge" style="background:#ecfdf5;color:#047857;">✅ <?= h($sci) ?></span> <?php endforeach; ?></p><?php endif; ?>
     </div>
-    <div style="text-align:center;"><strong class="price"><?= $total ?></strong><br><span class="muted small">在售商品</span></div>
+    <div style="text-align:center;">
+        <a class="btn-buy-link" href="chat.php?shop_id=<?= $shopId ?>">💬 联系客服<?= $shopChatUnread > 0 ? '（<strong style="color:#dc2626;">' . min($shopChatUnread, 99) . '</strong> 条未读）' : '' ?></a><br>
+        <strong class="price"><?= $total ?></strong><br><span class="muted small">在售商品</span>
+    </div>
 </section>
 <section class="card">
     <h3>🛍️ 全部商品（按销量）</h3>

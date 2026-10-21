@@ -1474,29 +1474,43 @@ if ($_shMethod === null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUE
 check(strpos(file_get_contents(__DIR__.'/../detail.php'), 'shop.php?id=') !== false, 'detail shop badge links to shop page');
 check(strpos(file_get_contents(__DIR__.'/../index.php'),'shop.php?id=<?php echo (int)$row[\'shop_id\']; ?>') !== false, 'search result shop line links to shop page');
 check(strpos(file_get_contents(__DIR__.'/../css/shop.css'),'thumb-shimmer') !== false && strpos(file_get_contents(__DIR__.'/../css/shop.css'),'prefers-reduced-motion') !== false, 'product image skeleton shimmer respects reduced motion');
-// ===== E-lite：售前商品咨询（公开问答） =====
-check((bool)one("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='product_chats'",[]),'product chats table exists');
+// ===== E-v2：客服私聊会话 + 资质背书 =====
+check((bool)one("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shop_chats'",[]),'shop chats table exists');
+check((bool)one("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shops' AND COLUMN_NAME='certifications'",[]),'shops certifications column exists');
 $pcBuyer = $profAId;
-try { product_chat_ask($migrateSku, $pcBuyer, '问'); check(false, 'reject short'); } catch (DomainException $e) { check(true, 'chat ask rejects too-short content'); }
-$pcProduct = (int)one("SELECT id FROM products WHERE shop_id=? ORDER BY id ASC LIMIT 1", [$shId])['id'];
-product_chat_ask($pcProduct, $pcBuyer, '这个商品支持七天无理由退货吗？');
-$pcRow = one("SELECT id FROM product_chats WHERE product_id=? AND sender_role='buyer' ORDER BY id DESC LIMIT 1", [$pcProduct]);
-check((bool)$pcRow, 'chat ask persists buyer question');
-try { product_chat_reply((int)$pcRow['id'], $profBId, '本店统一支持，收货后七天内可退。'); check(false, 'reject foreign reply'); } catch (DomainException $e) { check(true, 'chat reply rejects non-owner merchant'); }
 $pcMerchant = 'pcmerch' . time() . rand(100, 999);
 query("INSERT INTO users (username,password,email,role) VALUES (?,?,?,'merchant')", [$pcMerchant, password_hash('rlpass123', PASSWORD_DEFAULT), $pcMerchant . '@example.com']);
 $pcMerchUid = (int)one('SELECT id FROM users WHERE username=?', [$pcMerchant])['id'];
-query('UPDATE shops SET user_id=? WHERE id=?', [$pcMerchUid, $shId]);
-product_chat_reply((int)$pcRow['id'], $pcMerchUid, '本店统一支持，收货后七天内可退。');
-check((int)one("SELECT COUNT(*) c FROM product_chats WHERE product_id=? AND sender_role='merchant'", [$pcProduct])['c'] === 1, 'chat reply by owner merchant persists');
-check(product_chat_pending_count($shId) === 0, 'answered chat leaves merchant pending count zero');
-product_chat_ask($pcProduct, $pcBuyer, '发货用什么快递？');
-check(product_chat_pending_count($shId) === 1, 'new question bumps merchant pending count');
+query('UPDATE shops SET user_id=? WHERE id=?', [$pcMerchUid, $shId]); // 店铺过户给新商户，客服会话归属校验用
+$pcProduct = (int)one("SELECT id FROM products WHERE shop_id=? ORDER BY id ASC LIMIT 1", [$shId])['id']; // 店铺自有商品（会话上下文/详情渲染用）
+query('UPDATE shops SET certifications=? WHERE id=?', ['ISO9001、质检报告第2026-888号', $shId]); // 预置资质供详情页徽章断言（子进程保存稍后会覆盖）
+try { shop_chat_send($shId, $pcBuyer, 'buyer', '在', null); check(false, 'reject short'); } catch (DomainException $e) { check(true, 'chat send rejects too-short content'); }
+shop_chat_send($shId, $pcBuyer, 'buyer', '这个商品支持七天无理由退货吗？', $pcProduct);
+$scThread = rows('SELECT id, sender_role, content FROM shop_chats WHERE shop_id=? AND user_id=? ORDER BY id', [$shId, $pcBuyer]);
+check(count($scThread) === 1 && $scThread[0]['sender_role'] === 'buyer', 'chat send persists buyer message with product context');
+check(shop_chat_unread_merchant($shId) === 1, 'merchant sees unread after buyer message');
+shop_chat_send($shId, $pcBuyer, 'merchant', '本店统一支持，收货后七天内可退。', null); // 线程归属买家 id + 商户角色
+check(shop_chat_thread_unread($shId, $pcBuyer) === 1, 'merchant reply bumps buyer thread unread');
+check(shop_chat_unread_user($pcBuyer) >= 1, 'buyer unread total counts merchant replies');
+shop_chat_mark_read($shId, $pcBuyer, 'merchant'); // 第二参恒为线程买家 id
+check(shop_chat_unread_merchant($shId) === 0, 'merchant open marks buyer messages read');
+shop_chat_mark_read($shId, $pcBuyer, 'buyer');
+check(shop_chat_thread_unread($shId, $pcBuyer) === 0, 'mark read clears buyer thread unread');
+try { shop_chat_send($shId, $pcBuyer, 'buyer', str_repeat('超', 501)); check(false, 'reject long'); } catch (DomainException $e) { check(true, 'chat send rejects over-length content'); }
 $_pcSess = $_SESSION; $_pcMethod = $_SERVER['REQUEST_METHOD'] ?? null; $_pcGet = $_GET;
-$_SESSION = ['user_id' => $profAId, 'role' => 'user']; $_GET = ['id' => $pcProduct]; $_SERVER['REQUEST_METHOD'] = 'GET';
+$_SESSION = ['user_id' => $pcBuyer, 'role' => 'user']; $_GET = ['id' => $pcProduct]; $_SERVER['REQUEST_METHOD'] = 'GET';
 ob_start(); include __DIR__ . '/../detail.php'; $pcHtml = ob_get_clean();
 $_GET = $_pcGet; $_SESSION = $_pcSess;
 if ($_pcMethod === null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD'] = $_pcMethod;
-check(strpos($pcHtml, '商品咨询') !== false && strpos($pcHtml, '七天无理由') !== false && strpos($pcHtml, '发货用什么快递') !== false, 'detail renders public product chat thread');
+check(strpos($pcHtml, '联系客服') !== false && strpos($pcHtml, '✅ ISO9001') !== false, 'detail shows contact button and certification badges');
+check(strpos($pcHtml, '商品咨询') === false, 'public Q&A section removed from detail page');
+$plScript = tempnam(sys_get_temp_dir(), 'qa_') . '.php';
+file_put_contents($plScript, '<?php $_SERVER["REQUEST_METHOD"]="POST";$_SERVER["REMOTE_ADDR"]="203.0.113.21";$_POST=["action"=>"save_ship_from","ship_from"=>"广东省深圳市","certifications"=>"ISO9001、质检报告第2026-888号","csrf_token"=>"qa-csrf"];$_SESSION=["user_id"=>' . var_export($pcMerchUid, true) . ',"role"=>"merchant","csrf_token"=>"qa-csrf"];require ' . var_export(realpath(__DIR__ . '/../product_list.php'), true) . ';');
+putenv('DB_NAME=' . $testDb);
+shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($plScript) . ' 2>NUL');
+putenv('DB_NAME');
+unlink($plScript);
+$shAfter = one('SELECT ship_from, certifications FROM shops WHERE id=?', [$shId]);
+check($shAfter['ship_from'] === '广东省深圳市' && strpos($shAfter['certifications'], 'ISO9001') !== false, 'shop info save persists ship_from and certifications');
 check(send_mail('qa-disable@example.com', 'qa', 'qa') === true, 'mail send disabled under SHOP_MAIL_DISABLE in test env');
 echo "$assertions integration assertions passed. Test database: $testDb\n";

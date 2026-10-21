@@ -14,18 +14,9 @@ $mcUnship=(int)one("SELECT COUNT(*) AS n FROM orders WHERE shop_id=? AND status=
 $mcAfter=(int)one("SELECT COUNT(*) AS n FROM after_sale_requests a JOIN orders o ON o.id=a.order_id WHERE o.shop_id=? AND a.status='pending'",[$mcShopId])['n']
        +(int)one("SELECT COUNT(*) AS n FROM refund_requests r JOIN orders o ON o.id=r.order_id WHERE o.shop_id=? AND r.status='pending'",[$mcShopId])['n'];
 $mcReply=(int)one("SELECT COUNT(*) AS n FROM reviews r JOIN products p ON p.id=r.product_id WHERE p.shop_id=? AND r.parent_id IS NULL AND r.reply_content IS NULL",[$mcShopId])['n'];
-// 售前咨询：本店商品未答买家提问数（E-lite）；POST 回复处理
-if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['chat_action'] ?? '') === 'reply') {
-    try { product_chat_reply((int)($_POST['chat_id'] ?? 0), $userId, $_POST['chat_content'] ?? ''); }
-    catch (Throwable $e) { if (!($e instanceof DomainException)) error_log($e); redirect_to('admin_orders.php', $e instanceof DomainException ? $e->getMessage() : '回复未发布，请重试'); }
-    redirect_to('admin_orders.php', '回复已发布。');
-}
-$mcChat = product_chat_pending_count($mcShopId);
-$mcChatList = $mcChat ? rows('SELECT pc.id, pc.content, pc.created_at, p.id AS pid, p.title
-    FROM product_chats pc JOIN products p ON p.id = pc.product_id
-    WHERE p.shop_id=? AND pc.sender_role="buyer"
-      AND NOT EXISTS (SELECT 1 FROM product_chats ans WHERE ans.product_id = pc.product_id AND ans.sender_role = "merchant" AND ans.id > pc.id)
-    ORDER BY pc.id DESC LIMIT 20', [$mcShopId]) : [];
+// 客服消息（E-v2）：未读总数 + 会话线程列表；POST 不在本页处理（回复统一在 chat.php 会话页）
+$mcChat = shop_chat_unread_merchant($mcShopId);
+$mcChatThreads = $mcChat ? shop_chat_threads_merchant($mcShopId) : [];
 $where='EXISTS(SELECT 1 FROM shops s WHERE s.id=o.shop_id AND s.user_id=? AND s.status=1)'; $params=[$userId];
 if($status!=='all') {$where.=' AND o.status=?'; $params[]=$status;}
 $page=max(1,(int)($_GET['page'] ?? 1)); $offset=($page-1)*15;
@@ -45,20 +36,20 @@ page_start('商家工作台 · 订单发货与售后');
     <div class="mc-stat<?=(int)$mcUnship>0?' mc-hot':''?>"><b><?=(int)$mcUnship?></b><span>待发货</span></div>
     <div class="mc-stat<?=(int)$mcAfter>0?' mc-hot':''?>"><b><?=(int)$mcAfter?></b><span>处理中售后</span></div>
     <div class="mc-stat<?=(int)$mcReply>0?' mc-hot':''?>"><b><?=(int)$mcReply?></b><span>待回复评价</span></div>
-    <div class="mc-stat<?=$mcChat>0?' mc-hot':''?>"><b><?=$mcChat?></b><span>待回复咨询</span></div>
+    <div class="mc-stat<?=$mcChat>0?' mc-hot':''?>"><b><?=$mcChat?></b><span>客服消息</span></div>
   </div>
 </div>
-<?php if ($mcChatList): ?>
+<?php if ($mcChatThreads): ?>
 <section class="card">
-  <h2>待回复商品咨询</h2>
-  <?php foreach ($mcChatList as $mcc): ?>
-  <div class="row" style="align-items:flex-start;">
+  <h2>客服会话（点击进入回复）</h2>
+  <?php foreach ($mcChatThreads as $t): ?>
+  <div class="row">
     <div class="grow">
-      <a href="detail.php?id=<?=(int)$mcc['pid'] ?>"><?= h(mb_substr($mcc['title'], 0, 24)) ?></a>
-      <p class="muted small" style="margin:2px 0;"><?= h($mcc['created_at']) ?></p>
-      <p style="margin:4px 0;"><?= h($mcc['content']) ?></p>
+      <a href="chat.php?shop_id=<?= $mcShopId ?>&user_id=<?=(int)$t['user_id'] ?>"><strong><?= h($t['username']) ?></strong></a>
+      <p class="muted small" style="margin:2px 0;"><?= h($t['last_at']) ?></p>
+      <p style="margin:4px 0;"><?= h(mb_substr((string)$t['last_content'], 0, 40)) ?></p>
     </div>
-    <form method="post" class="row" style="align-items:flex-end;"><?= csrf_field() ?><input type="hidden" name="chat_action" value="reply"><input type="hidden" name="chat_id" value="<?=(int)$mcc['id'] ?>"><label>回复（2 至 500 字）<input name="chat_content" minlength="2" maxlength="500" required></label><button>回复</button></form>
+    <a class="btn-buy-link" href="chat.php?shop_id=<?= $mcShopId ?>&user_id=<?=(int)$t['user_id'] ?>">回复（<?=(int)$t['unread'] ?>）</a>
   </div>
   <?php endforeach; ?>
 </section>

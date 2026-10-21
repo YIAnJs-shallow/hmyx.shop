@@ -29,7 +29,15 @@
 | P1 | **方向 A·安全加固专项：认证接口限流 + 高德配额防护**（2026-10-20 用户拍板；盘点结论：CSRF 全局强制✅、写接口归属校验✅、邮箱码/找回密码按邮箱窗口✅，缺口=密码登录零限流+IP 维度缺失） | ✅ 2026-10-20 完成（391 断言；正式库 rate_limit_hits 已建） |
 | P1 | **首页京东式改版专项（A+B）**：左侧分类导航 + 右侧悬浮 dock + 楼层电梯 + 秒杀楼层 + 卡片体验（2026-10-21 用户拍板，参考京东/淘宝） | ✅ 2026-10-21 完成（03ef75c，410 断言；正式库 seckill_items 建表 DDL 待确认执行 migrate） |
 | P2 | **每日签到送积分（C）** | ✅ 核查发现历史会话已交付（每日 +5、连续每满 7 天额外 +20、日历视图、points.php 入口，grant_points 含 signin 幂等），无需重复开发，规则文案与现状一致 |
-| P1 | **E-lite：售前商品咨询（公开问答）**（2026-10-21 负责人自主规划；调研结论：订单留言设施完善，缺口=售前咨询，公开问答比私聊会话更简单且有内容沉淀价值） | ✅ 2026-10-21 完成（51005db，428 断言；**新表 DDL：product_chats——正式库需执行 scripts/migrate.php，待确认**） |
+| P1 | **E-v2：客服私聊会话 + 资质背书**（2026-10-21 用户动线反馈改版：详情页应为"商品信息→评价+资质背书→点客服进入对话"，公开问答撤出详情页改一对一私聊） | 🚧 进行中 |
+
+### 开工方案：E-v2 客服私聊 + 资质背书（2026-10-21，用户动线反馈，结构定死）
+
+- **目标**：① 详情页撤公开问答区，改"💬 联系客服"按钮 → chat.php 一对一私聊（气泡对话、可携带商品上下文引用、15 秒轻量轮询）；② shops 加 certifications 字段（商户自填资质），详情页店铺卡与店铺主页展示认证徽章；③ 商户工作台"待回复咨询"改"客服消息"未读数 + 会话列表。
+- **决策定死**：新表 `shop_chats`（id/shop_id FK CASCADE/user_id FK/sender_role enum('buyer','merchant')/product_id NULL/content varchar(500)/read_by_buyer/read_by_merchant/created_at，KEY(shop_id,user_id,id)，thread=(shop_id,user_id)）；shops 加列 certifications varchar(500) DEFAULT ''；限流买家 10 条/10 分钟（'chat-id:'）；未读=对方消息未读计数（read_by_* 位，打开会话即标读）；轮询端点 chat_poll.php（会话双方角色校验，返回 after_id 之后消息）；product_chats 表停用不挂 UI（DROP 属删数据待用户批准，本轮不执行）。
+- **改动**：scripts/migrate.php、lib/shop.php（shop_chat_* 六函数，移除 product_chat_* 四函数）、chat.php（新）、chat_poll.php（新）、detail.php（撤问答区/加客服按钮+资质徽章）、shop.php（同）、admin_orders.php（stat+会话列表）、shop_manage.php（资质填写）、css/shop.css（气泡 v8）、tests/integration.php。
+- **负面清单**：不删 product_chats 表（待批）、不动 order_messages、不做附件/图片消息、不做通知推送、不做客服机器人。
+- **验收口径**：php -l 全部；断言 428 只增不减；**正式库 DDL（shops 加列 + shop_chats 建表）完成后第一行标注需 migrate**。
 
 ### 开工方案：E-lite 售前商品咨询（2026-10-21，负责人自主，授权模式）
 

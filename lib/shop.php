@@ -61,58 +61,84 @@ function view_also_items($productId, $categoryId, $userId, $limit = 8) {
     }
     return $out;
 }
-// ===== E-lite：售前商品咨询（公开问答，2026-10-21）=====
-// 商品维度公开问答：买家提问、商户回答，同商品下所有人可见；与订单留言（order_messages）互不影响
-const PRODUCT_CHAT_MAX = 500;      // 单条内容上限（字）
-const PRODUCT_CHAT_ASK_MAX = 5;    // 同一用户提问限流：次数 / 窗口
-const PRODUCT_CHAT_ASK_WINDOW = 600;
-// 问答列表（公开）：按时间正序，附提问者脱敏名与回答者店铺名
-// 防御：表缺失等异常时降级为空数组隐藏咨询区，不允许展示层异常炸掉详情页（同秒杀楼层口径）
-function product_chat_list($productId, $limit = 30) {
+// ===== E-v2：客服私聊会话（2026-10-21，用户动线反馈改版）=====
+// 会话以 (shop_id, user_id) 为线程；product_id 可空=消息附带的商品上下文引用；公开问答（product_chats）已停用不挂 UI
+const SHOP_CHAT_MAX = 500;        // 单条内容上限（字）
+const SHOP_CHAT_BUYER_MAX = 10;   // 买家发送限流：次数 / 窗口
+const SHOP_CHAT_WINDOW = 600;
+// 会话消息列表（双方共用，$afterId 供轮询增量拉取）；表缺失降级为空数组
+function shop_chat_list($shopId, $userId, $afterId = 0, $limit = 100) {
     try {
-        return rows('SELECT pc.*, u.username AS buyer_name, sh.shop_name AS merchant_shop_name
-            FROM product_chats pc
-            JOIN users u ON u.id = pc.user_id
-            JOIN products p ON p.id = pc.product_id
-            LEFT JOIN shops sh ON sh.id = p.shop_id
-            WHERE pc.product_id=? ORDER BY pc.id LIMIT ' . (int)$limit, [(int)$productId]);
+        return rows('SELECT sc.id, sc.sender_role, sc.product_id, sc.content, sc.created_at, p.title AS product_title
+            FROM shop_chats sc LEFT JOIN products p ON p.id = sc.product_id
+            WHERE sc.shop_id=? AND sc.user_id=? AND sc.id > ? ORDER BY sc.id LIMIT ' . (int)$limit, [(int)$shopId, (int)$userId, (int)$afterId]);
     } catch (Throwable $e) {
-        error_log('product chat degraded: ' . $e->getMessage());
+        error_log('shop chat degraded: ' . $e->getMessage());
         return [];
     }
 }
-// 买家提问（校验下沉；限流防刷；失败抛 DomainException）
-function product_chat_ask($productId, $userId, $content) {
+// 发送消息：$threadUserId 恒为线程归属买家（thread=(shop_id,user_id)）；买家侧限流；商品上下文须真实存在
+function shop_chat_send($shopId, $threadUserId, $role, $content, $productId = null) {
     $content = trim((string)$content);
-    if (mb_strlen($content) < 2 || mb_strlen($content) > PRODUCT_CHAT_MAX) throw new DomainException('咨询内容须为 2 至 500 字');
-    if ((int)$userId <= 0) throw new DomainException('请先登录后咨询');
-    if (!rate_limit_ok('ask-id:' . (int)$userId, PRODUCT_CHAT_ASK_MAX, PRODUCT_CHAT_ASK_WINDOW)) throw new DomainException('提问太频繁，请稍后再试');
-    if (!one('SELECT id FROM products WHERE id=? AND status=1', [(int)$productId])) throw new DomainException('商品不存在或已下架');
-    rate_limit_hit('ask-id:' . (int)$userId, PRODUCT_CHAT_ASK_MAX, PRODUCT_CHAT_ASK_WINDOW);
-    query("INSERT INTO product_chats (product_id, user_id, sender_role, content) VALUES (?,?,'buyer',?)", [(int)$productId, (int)$userId, $content]);
-}
-// 商户回答（校验商品属于该商户的有效店铺；失败抛 DomainException）
-function product_chat_reply($chatId, $merchantUserId, $content) {
-    $content = trim((string)$content);
-    if (mb_strlen($content) < 2 || mb_strlen($content) > PRODUCT_CHAT_MAX) throw new DomainException('回复内容须为 2 至 500 字');
-    $chat = one('SELECT pc.*, p.shop_id FROM product_chats pc JOIN products p ON p.id = pc.product_id WHERE pc.id=?', [(int)$chatId]);
-    if (!$chat || $chat['sender_role'] !== 'buyer') throw new DomainException('咨询不存在或已不可回复');
-    $shop = one('SELECT id FROM shops WHERE user_id=? AND status=1', [(int)$merchantUserId]);
-    if (!$shop || (int)$shop['id'] !== (int)$chat['shop_id']) throw new DomainException('仅本店商户可回复该咨询');
-    query("INSERT INTO product_chats (product_id, user_id, sender_role, content) VALUES (?,?,'merchant',?)", [(int)$chat['product_id'], (int)$merchantUserId, $content]);
-    query('UPDATE product_chats SET read_by_merchant=1 WHERE id=?', [(int)$chatId]);
-}
-// 商户待回复咨询数（本店商品下未答的买家咨询，工作台数字口径；表缺失降级为 0）
-function product_chat_pending_count($shopId) {
-    try {
-        return (int)one('SELECT COUNT(*) AS c FROM product_chats pc
-            JOIN products p ON p.id = pc.product_id
-            WHERE p.shop_id=? AND pc.sender_role="buyer"
-              AND NOT EXISTS (SELECT 1 FROM product_chats ans WHERE ans.product_id = pc.product_id AND ans.sender_role = "merchant" AND ans.id > pc.id)', [(int)$shopId])['c'];
-    } catch (Throwable $e) {
-        error_log('product chat pending degraded: ' . $e->getMessage());
-        return 0;
+    if (mb_strlen($content) < 2 || mb_strlen($content) > SHOP_CHAT_MAX) throw new DomainException('消息须为 2 至 500 字');
+    if (!in_array($role, ['buyer', 'merchant'], true)) throw new DomainException('身份无效');
+    if ((int)$threadUserId <= 0) throw new DomainException('会话对象无效');
+    if ($role === 'buyer') {
+        if (!rate_limit_ok('chat-id:' . (int)$threadUserId, SHOP_CHAT_BUYER_MAX, SHOP_CHAT_WINDOW)) throw new DomainException('发送太频繁，请稍后再试');
+        if (!one('SELECT id FROM shops WHERE id=? AND status=1', [(int)$shopId])) throw new DomainException('店铺不存在或已关闭');
+        rate_limit_hit('chat-id:' . (int)$threadUserId, SHOP_CHAT_BUYER_MAX, SHOP_CHAT_WINDOW);
     }
+    if ($productId !== null && (int)$productId > 0) {
+        if (!one('SELECT id FROM products WHERE id=?', [(int)$productId])) throw new DomainException('引用的商品不存在');
+        $productId = (int)$productId;
+    } else {
+        $productId = null;
+    }
+    query("INSERT INTO shop_chats (shop_id, user_id, sender_role, product_id, content) VALUES (?,?,?,?,?)", [(int)$shopId, (int)$threadUserId, $role, $productId, $content]);
+}
+// 打开会话即标记对方消息为已读
+function shop_chat_mark_read($shopId, $userId, $role) {
+    if ($role === 'buyer') query('UPDATE shop_chats SET read_by_buyer=1 WHERE shop_id=? AND user_id=? AND sender_role="merchant" AND read_by_buyer=0', [(int)$shopId, (int)$userId]);
+    else query('UPDATE shop_chats SET read_by_merchant=1 WHERE shop_id=? AND user_id=? AND sender_role="buyer" AND read_by_merchant=0', [(int)$shopId, (int)$userId]);
+}
+// 买家未读总数（跨全部会话，导航红点口径）；表缺失降级为 0
+function shop_chat_unread_user($userId) {
+    try {
+        return (int)one('SELECT COUNT(*) AS c FROM shop_chats WHERE user_id=? AND sender_role="merchant" AND read_by_buyer=0', [(int)$userId])['c'];
+    } catch (Throwable $e) { error_log('shop chat unread degraded: ' . $e->getMessage()); return 0; }
+}
+// 商户未读总数（本店全部买家会话）
+function shop_chat_unread_merchant($shopId) {
+    try {
+        return (int)one('SELECT COUNT(*) AS c FROM shop_chats WHERE shop_id=? AND sender_role="buyer" AND read_by_merchant=0', [(int)$shopId])['c'];
+    } catch (Throwable $e) { error_log('shop chat unread degraded: ' . $e->getMessage()); return 0; }
+}
+// 商户会话线程列表（含买家昵称、最后一条、未读数）
+function shop_chat_threads_merchant($shopId, $limit = 30) {
+    try {
+        return rows('SELECT sc.user_id, u.username, MAX(sc.id) AS last_id, MAX(sc.created_at) AS last_at,
+            (SELECT COUNT(*) FROM shop_chats x WHERE x.shop_id=sc.shop_id AND x.user_id=sc.user_id AND x.sender_role="buyer" AND x.read_by_merchant=0) AS unread,
+            (SELECT content FROM shop_chats y WHERE y.shop_id=sc.shop_id AND y.user_id=sc.user_id ORDER BY y.id DESC LIMIT 1) AS last_content
+            FROM shop_chats sc JOIN users u ON u.id = sc.user_id
+            WHERE sc.shop_id=? GROUP BY sc.user_id, u.username ORDER BY last_id DESC LIMIT ' . (int)$limit, [(int)$shopId]);
+    } catch (Throwable $e) { error_log('shop chat threads degraded: ' . $e->getMessage()); return []; }
+}
+// 会话线程未读数（详情页"联系客服"按钮"N 条未读"口径）
+function shop_chat_thread_unread($shopId, $userId) {
+    try {
+        return (int)one('SELECT COUNT(*) AS c FROM shop_chats WHERE shop_id=? AND user_id=? AND sender_role="merchant" AND read_by_buyer=0', [(int)$shopId, (int)$userId])['c'];
+    } catch (Throwable $e) { error_log('shop chat thread unread degraded: ' . $e->getMessage()); return 0; }
+}
+// 店铺资质背书：商户自填串拆为徽章数组（顿号/逗号/分号分隔），空返回 []
+function shop_cert_list($shopRow) {
+    $raw = trim((string)($shopRow['certifications'] ?? ''));
+    if ($raw === '') return [];
+    $out = [];
+    foreach (preg_split('/[、，,;；]+/u', $raw) as $c) {
+        $c = trim($c);
+        if ($c !== '' && mb_strlen($c) <= 60 && !in_array($c, $out, true)) $out[] = $c;
+    }
+    return array_slice($out, 0, 8);
 }
 function uid() {
     if (empty($_SESSION['user_id'])) login_redirect(current_page_url());
@@ -840,7 +866,7 @@ function site_logo_html(): string {
         .'<span style="display:flex;flex-direction:column;line-height:1.1;"><span style="font-size:1.3rem;font-weight:800;color:#1e293b;">惠蒙优选</span><span style="font-size:0.55rem;font-weight:700;color:#2563eb;letter-spacing:1.2px;">HUIMENG CHOICE</span></span></a></div>';
 }
 function page_start($title) {
-    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=7"></head><body><header>'.site_logo_html().'<nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
+    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=8"></head><body><header>'.site_logo_html().'<nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
     if (!empty($_SESSION['user_id'])) {
         // 未读角标：一次性 COUNT 查询
         $unread = (int)one('SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND read_at IS NULL', [(int)$_SESSION['user_id']])['n'];

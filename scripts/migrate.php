@@ -707,3 +707,20 @@ query("CREATE TABLE IF NOT EXISTS product_chats (
     KEY idx_pc_product (product_id, id),
     CONSTRAINT fk_pc_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// ===== E-v2：客服私聊会话 + 店铺资质背书（2026-10-21，用户动线反馈）=====
+// 会话以 (shop_id, user_id) 为线程；product_id 可空=消息附带的商品上下文引用；与公开问答（product_chats，已停用）互不影响
+query("CREATE TABLE IF NOT EXISTS shop_chats (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    shop_id INT NOT NULL,
+    user_id INT NOT NULL,
+    sender_role ENUM('buyer','merchant') NOT NULL,
+    product_id INT NULL,
+    content VARCHAR(500) NOT NULL,
+    read_by_buyer TINYINT NOT NULL DEFAULT 0,
+    read_by_merchant TINYINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_sc_thread (shop_id, user_id, id),
+    CONSTRAINT fk_sc_shop FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+add_column('shops', 'certifications', "varchar(500) NOT NULL DEFAULT '' COMMENT '资质背书（商户自填，顿号/逗号分隔，展示用）'");
