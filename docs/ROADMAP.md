@@ -192,6 +192,21 @@
 
 推荐：商品量 < 千级前维持 LIKE；若拍板升级，选 MySQL FULLTEXT ngram（FULLTEXT + LIKE 兜底混合）。
 
+## 待拍板：实用开源工具选型对比表（2026-10-21，只调研未集成，用户下发调研任务）
+
+> 背景：项目"零依赖"方针不变，以下仅列出**在现有原生 PHP 架构上接入成本可控、且能补真实缺口**的工具；全部 MIT/Apache-2.0 过许可证红线；PHP 库均已核对本机 PHP 7.4.3nts 兼容版本。元数据经 GitHub API 实查（2026-10-21）。
+
+| 工具 | Star | 维护 | 许可证 | 环境兼容 | 集成成本 | 结论 |
+|---|---|---|---|---|---|---|
+| PHPStan（phpstan/phpstan） | 14.1k | 活跃（2026-10-20 有提交） | MIT | PHAR 独立运行，PHP 7.2+ | 低：纯开发期工具，不进运行时，跑一次出报告 | **推荐**：本项目历史上多次出现 bind_param 参数错位、列名写错、(int) 误加强转类失误，静态分析可在提交前拦住这类 bug |
+| Apache ECharts（apache/echarts） | 67.6k | 活跃 | Apache-2.0 | 前端单文件，零 PHP 依赖 | 低：admin/stats.php 看板由纯表格升级为图表，仅展示层 | **推荐**：运营数据看板（GMV/状态分布/销量 TOP）用图表呈现直观得多；中文文档完善 |
+| Chart.js（chartjs/Chart.js） | 67.8k | 活跃 | MIT | 前端单文件，零 PHP 依赖 | 低 | ECharts 的轻量替代，二选一即可（ECharts 中文生态更好，默认推荐前者） |
+| chillerlan/php-qrcode 4.3.x | 2.4k | 正常（2026-08 有提交） | Apache-2.0 | PHP ^7.4‖^8.0（已核对 4.3.4 composer.json） | 低：支付页/商品分享渲染二维码 | 可选：演示支付页可加"扫码支付"二维码，贴近真实支付体验 |
+| Intervention Image 2.7.x | 14.4k | 活跃 | MIT | PHP >=5.4（已核对 2.7.2 composer.json），phpStudy 自带 GD | 中：商品图/相册/晒图上传时生成缩略图+压缩，动上传链路 | 可选但建议缓：能减页面图片流量，但触碰上传核心链路，收益中等 |
+| PhpSpreadsheet 1.29.x | 14.0k | 1.29 分支仅维护线 | MIT | 1.x 支持 PHP 7.3+，2.x 需 PHP 8.1（已核对） | 中高：订单/统计导出 Excel，需 ext-zip/xml | 不推荐：PHP 7.4 只能用维护线 1.x，集成成本偏高，按"集成成本闸门"暂不引入 |
+
+**排除说明**：PDF 导出类库（mPDF=GPL、TCPDF=GPL、Dompdf=LGPL）全踩许可证红线，无合规选项，若需要导出 PDF 只能现写或放弃； Typesense=GPL 此前已排除。
+
 ## 阻塞项 / 待用户决策
 
 - 无阻塞项；push 由用户执行（见下方推送协作规则），CI 待每次 push 后自动校验
