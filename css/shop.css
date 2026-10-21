@@ -123,3 +123,21 @@ img.thumb{background:#eef2f7 linear-gradient(100deg,rgba(255,255,255,0) 20%,rgba
 .chat-send{display:flex;gap:10px;margin-top:12px}
 .chat-send input{flex:1;padding:10px 14px;border:1px solid #cbd5e1;border-radius:10px}
 .chat-send button{padding:10px 22px;background:#1d4ed8;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer}
+
+/* ===== 客服会话 IM 化（2026-10-21 E-v2 改版）：微信式全屏布局 ===== */
+.im-wrap{max-width:720px;margin:18px auto;height:calc(100vh - 170px);min-height:420px;display:flex;flex-direction:column;background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 10px 28px rgba(15,23,42,.08)}
+.im-head{display:flex;align-items:center;gap:10px;padding:12px 16px;background:#1d4ed8;color:#fff}
+.im-head .muted{color:rgba(255,255,255,.75)}
+.im-back{color:#fff;text-decoration:none;font-size:1.4rem;line-height:1;padding:0 6px}
+.im-avatar{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:1.2rem}
+.im-head-info{display:flex;flex-direction:column;line-height:1.3}
+.im-ctx{padding:8px 16px;background:#eff6ff;color:#1d4ed8;font-size:.82rem}
+.im-ctx a{color:#1d4ed8}
+.im-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;background:#f1f5f9}
+.im-empty{text-align:center;color:#94a3b8;margin:auto;font-size:.88rem}
+.im-inputbar{display:flex;gap:10px;padding:12px;border-top:1px solid #e2e8f0;background:#fff}
+.im-inputbar input{flex:1;padding:11px 14px;border:1px solid #cbd5e1;border-radius:999px;font-size:.95rem}
+.im-inputbar input:focus{outline:none;border-color:#1d4ed8}
+.im-inputbar button{padding:11px 26px;background:#1d4ed8;color:#fff;border:none;border-radius:999px;font-weight:700;cursor:pointer}
+.im-inputbar button:hover{background:#1e40af}
+.im-inputbar button:disabled{opacity:.55;cursor:default}
