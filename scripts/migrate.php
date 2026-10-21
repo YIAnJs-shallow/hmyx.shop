@@ -692,3 +692,18 @@ query("CREATE TABLE IF NOT EXISTS seckill_items (
     KEY idx_window (status, start_at, end_at),
     CONSTRAINT fk_seckill_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// ===== E-lite：售前商品咨询（公开问答，2026-10-21）=====
+// 商品维度公开问答（买家提问/商户回答所有人可见）；与订单留言（order_messages）互不影响
+query("CREATE TABLE IF NOT EXISTS product_chats (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    user_id INT NOT NULL,
+    sender_role ENUM('buyer','merchant') NOT NULL,
+    content VARCHAR(500) NOT NULL,
+    read_by_buyer TINYINT NOT NULL DEFAULT 0,
+    read_by_merchant TINYINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_pc_product (product_id, id),
+    CONSTRAINT fk_pc_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");

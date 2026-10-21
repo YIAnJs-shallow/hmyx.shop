@@ -61,6 +61,48 @@ function view_also_items($productId, $categoryId, $userId, $limit = 8) {
     }
     return $out;
 }
+// ===== E-lite：售前商品咨询（公开问答，2026-10-21）=====
+// 商品维度公开问答：买家提问、商户回答，同商品下所有人可见；与订单留言（order_messages）互不影响
+const PRODUCT_CHAT_MAX = 500;      // 单条内容上限（字）
+const PRODUCT_CHAT_ASK_MAX = 5;    // 同一用户提问限流：次数 / 窗口
+const PRODUCT_CHAT_ASK_WINDOW = 600;
+// 问答列表（公开）：按时间正序，附提问者脱敏名与回答者店铺名
+function product_chat_list($productId, $limit = 30) {
+    return rows('SELECT pc.*, u.username AS buyer_name, sh.shop_name AS merchant_shop_name
+        FROM product_chats pc
+        JOIN users u ON u.id = pc.user_id
+        JOIN products p ON p.id = pc.product_id
+        LEFT JOIN shops sh ON sh.id = p.shop_id
+        WHERE pc.product_id=? ORDER BY pc.id LIMIT ' . (int)$limit, [(int)$productId]);
+}
+// 买家提问（校验下沉；限流防刷；失败抛 DomainException）
+function product_chat_ask($productId, $userId, $content) {
+    $content = trim((string)$content);
+    if (mb_strlen($content) < 2 || mb_strlen($content) > PRODUCT_CHAT_MAX) throw new DomainException('咨询内容须为 2 至 500 字');
+    if ((int)$userId <= 0) throw new DomainException('请先登录后咨询');
+    if (!rate_limit_ok('ask-id:' . (int)$userId, PRODUCT_CHAT_ASK_MAX, PRODUCT_CHAT_ASK_WINDOW)) throw new DomainException('提问太频繁，请稍后再试');
+    if (!one('SELECT id FROM products WHERE id=? AND status=1', [(int)$productId])) throw new DomainException('商品不存在或已下架');
+    rate_limit_hit('ask-id:' . (int)$userId, PRODUCT_CHAT_ASK_MAX, PRODUCT_CHAT_ASK_WINDOW);
+    query("INSERT INTO product_chats (product_id, user_id, sender_role, content) VALUES (?,?,'buyer',?)", [(int)$productId, (int)$userId, $content]);
+}
+// 商户回答（校验商品属于该商户的有效店铺；失败抛 DomainException）
+function product_chat_reply($chatId, $merchantUserId, $content) {
+    $content = trim((string)$content);
+    if (mb_strlen($content) < 2 || mb_strlen($content) > PRODUCT_CHAT_MAX) throw new DomainException('回复内容须为 2 至 500 字');
+    $chat = one('SELECT pc.*, p.shop_id FROM product_chats pc JOIN products p ON p.id = pc.product_id WHERE pc.id=?', [(int)$chatId]);
+    if (!$chat || $chat['sender_role'] !== 'buyer') throw new DomainException('咨询不存在或已不可回复');
+    $shop = one('SELECT id FROM shops WHERE user_id=? AND status=1', [(int)$merchantUserId]);
+    if (!$shop || (int)$shop['id'] !== (int)$chat['shop_id']) throw new DomainException('仅本店商户可回复该咨询');
+    query("INSERT INTO product_chats (product_id, user_id, sender_role, content) VALUES (?,?,'merchant',?)", [(int)$chat['product_id'], (int)$merchantUserId, $content]);
+    query('UPDATE product_chats SET read_by_merchant=1 WHERE id=?', [(int)$chatId]);
+}
+// 商户待回复咨询数（本店商品下未答的买家咨询，工作台数字口径）
+function product_chat_pending_count($shopId) {
+    return (int)one('SELECT COUNT(*) AS c FROM product_chats pc
+        JOIN products p ON p.id = pc.product_id
+        WHERE p.shop_id=? AND pc.sender_role="buyer"
+          AND NOT EXISTS (SELECT 1 FROM product_chats ans WHERE ans.product_id = pc.product_id AND ans.sender_role = "merchant" AND ans.id > pc.id)', [(int)$shopId])['c'];
+}
 function uid() {
     if (empty($_SESSION['user_id'])) login_redirect(current_page_url());
     return (int)$_SESSION['user_id'];

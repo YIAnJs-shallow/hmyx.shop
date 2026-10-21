@@ -1474,5 +1474,29 @@ if ($_shMethod === null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUE
 check(strpos(file_get_contents(__DIR__.'/../detail.php'), 'shop.php?id=') !== false, 'detail shop badge links to shop page');
 check(strpos(file_get_contents(__DIR__.'/../index.php'),'shop.php?id=<?php echo (int)$row[\'shop_id\']; ?>') !== false, 'search result shop line links to shop page');
 check(strpos(file_get_contents(__DIR__.'/../css/shop.css'),'thumb-shimmer') !== false && strpos(file_get_contents(__DIR__.'/../css/shop.css'),'prefers-reduced-motion') !== false, 'product image skeleton shimmer respects reduced motion');
+// ===== E-lite：售前商品咨询（公开问答） =====
+check((bool)one("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='product_chats'",[]),'product chats table exists');
+$pcBuyer = $profAId;
+try { product_chat_ask($migrateSku, $pcBuyer, '问'); check(false, 'reject short'); } catch (DomainException $e) { check(true, 'chat ask rejects too-short content'); }
+$pcProduct = (int)one("SELECT id FROM products WHERE shop_id=? ORDER BY id ASC LIMIT 1", [$shId])['id'];
+product_chat_ask($pcProduct, $pcBuyer, '这个商品支持七天无理由退货吗？');
+$pcRow = one("SELECT id FROM product_chats WHERE product_id=? AND sender_role='buyer' ORDER BY id DESC LIMIT 1", [$pcProduct]);
+check((bool)$pcRow, 'chat ask persists buyer question');
+try { product_chat_reply((int)$pcRow['id'], $profBId, '本店统一支持，收货后七天内可退。'); check(false, 'reject foreign reply'); } catch (DomainException $e) { check(true, 'chat reply rejects non-owner merchant'); }
+$pcMerchant = 'pcmerch' . time() . rand(100, 999);
+query("INSERT INTO users (username,password,email,role) VALUES (?,?,?,'merchant')", [$pcMerchant, password_hash('rlpass123', PASSWORD_DEFAULT), $pcMerchant . '@example.com']);
+$pcMerchUid = (int)one('SELECT id FROM users WHERE username=?', [$pcMerchant])['id'];
+query('UPDATE shops SET user_id=? WHERE id=?', [$pcMerchUid, $shId]);
+product_chat_reply((int)$pcRow['id'], $pcMerchUid, '本店统一支持，收货后七天内可退。');
+check((int)one("SELECT COUNT(*) c FROM product_chats WHERE product_id=? AND sender_role='merchant'", [$pcProduct])['c'] === 1, 'chat reply by owner merchant persists');
+check(product_chat_pending_count($shId) === 0, 'answered chat leaves merchant pending count zero');
+product_chat_ask($pcProduct, $pcBuyer, '发货用什么快递？');
+check(product_chat_pending_count($shId) === 1, 'new question bumps merchant pending count');
+$_pcSess = $_SESSION; $_pcMethod = $_SERVER['REQUEST_METHOD'] ?? null; $_pcGet = $_GET;
+$_SESSION = ['user_id' => $profAId, 'role' => 'user']; $_GET = ['id' => $pcProduct]; $_SERVER['REQUEST_METHOD'] = 'GET';
+ob_start(); include __DIR__ . '/../detail.php'; $pcHtml = ob_get_clean();
+$_GET = $_pcGet; $_SESSION = $_pcSess;
+if ($_pcMethod === null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD'] = $_pcMethod;
+check(strpos($pcHtml, '商品咨询') !== false && strpos($pcHtml, '七天无理由') !== false && strpos($pcHtml, '发货用什么快递') !== false, 'detail renders public product chat thread');
 check(send_mail('qa-disable@example.com', 'qa', 'qa') === true, 'mail send disabled under SHOP_MAIL_DISABLE in test env');
 echo "$assertions integration assertions passed. Test database: $testDb\n";

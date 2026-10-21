@@ -20,6 +20,24 @@ if(!$p) { http_response_code(404); page_start('商品不存在或已下架'); pa
 record_browsing((int)($_SESSION['user_id'] ?? 0), $id);
 page_start($p['title']);
 $reviews=rows('SELECT r.*,u.username FROM reviews r JOIN users u ON u.id=r.user_id WHERE r.product_id=? AND r.parent_id IS NULL ORDER BY r.id DESC LIMIT 30',[$id]);
+// ===== 售前商品咨询（E-lite 公开问答）：买家提问 / 本店商户回答 =====
+$chatNotice = '';
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_SESSION['user_id'])) {
+    try {
+        if (($_POST['chat_action'] ?? '') === 'ask') {
+            product_chat_ask($id, (int)$_SESSION['user_id'], $_POST['chat_content'] ?? '');
+            redirect_to('detail.php?id=' . $id, '咨询已提交，商家会尽快回复。');
+        } elseif (($_POST['chat_action'] ?? '') === 'reply') {
+            product_chat_reply((int)($_POST['chat_id'] ?? 0), (int)$_SESSION['user_id'], $_POST['chat_content'] ?? '');
+            redirect_to('detail.php?id=' . $id, '回复已发布。');
+        }
+    } catch (DomainException $e) {
+        redirect_to('detail.php?id=' . $id, $e->getMessage());
+    }
+}
+$chats = product_chat_list($id);
+$myMerchantShop = (($_SESSION['role'] ?? '') === 'merchant') ? one('SELECT id FROM shops WHERE user_id=? AND status=1', [(int)$_SESSION['user_id']]) : null;
+$isProductMerchant = $myMerchantShop && (int)$p['shop_id'] > 0 && (int)$myMerchantShop['id'] === (int)$p['shop_id'];
 // 追评与晒图统计只针对当前展示的首评（评分均值不含 rating 固定为 0 的追评）
 $stats=one('SELECT COUNT(*) AS n,ROUND(AVG(rating),1) AS score FROM reviews WHERE product_id=? AND parent_id IS NULL',[$id]);
 $followups=[]; $reviewImages=[];
@@ -76,6 +94,26 @@ $detailCoupons=rows("SELECT c.* FROM coupons c
 })();
 </script>
 <?php endif; ?>
+<section class="card" style="margin-top:18px;">
+    <h2>💬 商品咨询</h2>
+    <p class="muted">购买前想了解的信息可直接向商家提问，问答所有人可见；回答由本店商家发布。</p>
+    <?php foreach ($chats as $c): ?>
+    <article style="border-left:3px solid <?= $c['sender_role'] === 'buyer' ? '#2563eb' : '#16a34a' ?>;padding-left:12px;margin:10px 0;">
+        <strong><?= $c['sender_role'] === 'buyer' ? '问' : '答' ?> · <?= $c['sender_role'] === 'buyer' ? h(mb_substr($c['buyer_name'], 0, 1)) . '***' : h((string)$c['merchant_shop_name']) ?></strong>
+        <small class="muted"> <?= h($c['created_at']) ?></small>
+        <p class="product-copy"><?= h($c['content']) ?></p>
+        <?php if ($isProductMerchant && $c['sender_role'] === 'buyer' && empty($c['read_by_merchant'])): ?>
+        <form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="chat_action" value="reply"><input type="hidden" name="chat_id" value="<?=(int)$c['id'] ?>"><label>商家回复（2 至 500 字）<input name="chat_content" minlength="2" maxlength="500" required></label><button>回复咨询</button></form>
+        <?php endif; ?>
+    </article>
+    <?php endforeach; ?>
+    <?php if (!$chats): ?><p class="muted">暂无咨询，来提第一个问题吧。</p><?php endif; ?>
+    <?php if (!empty($_SESSION['user_id'])): ?>
+    <form method="post" class="row" style="margin-top:10px;"><?= csrf_field() ?><input type="hidden" name="chat_action" value="ask"><label>向商家咨询（2 至 500 字）<input name="chat_content" minlength="2" maxlength="500" required></label><button>提交咨询</button></form>
+    <?php else: ?>
+    <p class="notice" style="margin-top:10px;">需要咨询请先<a href="user_login.php?next=detail.php%3Fid%3D<?= (int)$id ?>">登录</a>。</p>
+    <?php endif; ?>
+</section>
 <?php $viewAlso = view_also_items($id, (int)$p['category_id'], (int)($_SESSION['user_id'] ?? 0)); if ($viewAlso): ?>
 <section class="card">
     <h3>👀 看了又看</h3>
