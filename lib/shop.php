@@ -98,6 +98,9 @@ function shop_chat_send($shopId, $threadUserId, $role, $content, $productId = nu
 }
 // 打开会话即标记对方消息为已读
 function shop_chat_mark_read($shopId, $userId, $role) {
+    try { return shop_chat_mark_read_unsafe($shopId, $userId, $role); } catch (Throwable $e) { error_log('shop chat mark read degraded: ' . $e->getMessage()); return; }
+}
+function shop_chat_mark_read_unsafe($shopId, $userId, $role) {
     if ($role === 'buyer') query('UPDATE shop_chats SET read_by_buyer=1 WHERE shop_id=? AND user_id=? AND sender_role="merchant" AND read_by_buyer=0', [(int)$shopId, (int)$userId]);
     else query('UPDATE shop_chats SET read_by_merchant=1 WHERE shop_id=? AND user_id=? AND sender_role="buyer" AND read_by_merchant=0', [(int)$shopId, (int)$userId]);
 }
