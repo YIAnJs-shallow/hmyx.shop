@@ -675,3 +675,20 @@ query("CREATE TABLE IF NOT EXISTS rate_limit_hits (
     hit_at DATETIME NOT NULL,
     KEY idx_bucket_time (bucket_key, hit_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// ===== 首页改版：秒杀楼层配置表（2026-10-21 A+B 专项）=====
+// 引流展示位：sold/total 为配置制进度口径，不挂接下单/资金路径；status 1=上架 0=下架
+query("CREATE TABLE IF NOT EXISTS seckill_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    seckill_price_cents INT NOT NULL COMMENT '秒杀价（分）',
+    total_stock INT NOT NULL COMMENT '活动限量（件）',
+    sold INT NOT NULL DEFAULT 0 COMMENT '已抢件数（配置制进度口径）',
+    start_at DATETIME NOT NULL,
+    end_at DATETIME NOT NULL,
+    sort INT NOT NULL DEFAULT 0,
+    status TINYINT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_window (status, start_at, end_at),
+    CONSTRAINT fk_seckill_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");

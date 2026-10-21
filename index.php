@@ -216,6 +216,8 @@ $recommend = recommend_for_user((int)($_SESSION['user_id'] ?? 0), 8);
 // 6. 运营推荐楼位：后台配置的三席（today/new/clearance），仅首页无搜索/筛选条件时渲染
 $show_home_slots = $keyword === '' && $category_id <= 0 && $brand === '' && $material === '' && $price_min === null && $price_max === null && !$in_stock;
 $home_slot_data = [];
+$seckillItems = $show_home_slots ? seckill_active_items() : [];
+$sideCartQty = $is_logged_in ? (int)one('SELECT COALESCE(SUM(quantity),0) AS q FROM cart WHERE user_id=?', [(int)$_SESSION['user_id']])['q'] : 0;
 if ($show_home_slots) foreach (home_recommend_slots() as $slot_code => $slot_title) $home_slot_data[$slot_code] = home_slot_products($slot_code);
 
 // 筛选链接生成：每个链接只切换自身维度，其余维度原样携带（空值/默认值剔除）
@@ -355,6 +357,25 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
     </div>
 
     <main class="container" style="margin: 20px auto; padding: 0 15px; width: 100%; box-sizing: border-box;">
+    <div class="home-body">
+    <?php if ($show_home_slots): ?>
+    <!-- 京东式左侧分类导航：一级分类常驻，hover 展开二级面板（窄屏由 CSS 隐藏） -->
+    <aside class="home-cat-nav" aria-label="商品分类导航">
+        <div class="cn-head">全部商品分类</div>
+        <?php $cnIcons = [1 => '📱', 2 => '👗', 3 => '🏠', 4 => '💄']; ?>
+        <?php foreach ($categories as $main_id => $main_cat): ?>
+        <div class="cn-item">
+            <a href="index.php?category_id=<?= (int)$main_id ?>"><span class="cn-icon"><?= $cnIcons[(int)$main_id] ?? '🛍️' ?></span><?= h($main_cat['name']) ?><span class="cn-arrow">›</span></a>
+            <div class="cn-panel">
+                <?php foreach ($main_cat['subs'] as $sub): ?>
+                <a href="index.php?category_id=<?= (int)$sub['id'] ?>"><?= h($sub['name']) ?></a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </aside>
+    <?php endif; ?>
+    <div class="home-main">
         <?php if (!empty($hot_searches) || !empty($my_searches)): ?>
         <div class="search-trends" style="margin:0 0 20px;font-size:.85rem;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;">
             <?php if (!empty($hot_searches)): ?>
@@ -425,16 +446,43 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         </div>
         <?php endif; ?>
 
+        <?php if ($show_home_slots && !empty($seckillItems)): ?>
+        <!-- 限时秒杀楼层：后台配置引流位，倒计时+配置制进度条，点击进详情页（不新增下单路径） -->
+        <section class="card sk-floor" data-floor="⚡ 限时秒杀">
+            <div class="sk-head">
+                <h3>⚡ 限时秒杀</h3>
+                <div class="sk-countdown" id="sk-countdown" data-end="<?= h($seckillItems[0]['end_at']) ?>"><span>--</span>:<span>--</span>:<span>--</span></div>
+            </div>
+            <div class="grid">
+                <?php foreach ($seckillItems as $si): $skPct = (int)$si['total_stock'] > 0 ? (int)min(100, floor($si['sold'] / $si['total_stock'] * 100)) : 0; ?>
+                <article class="card sk-item">
+                    <a href="detail.php?id=<?=(int)$si['pid'] ?>">
+                        <?php if (!empty($si['image_url']) && file_exists($si['image_url'])): ?>
+                            <img class="thumb" style="width:100%;height:150px;" loading="lazy" src="<?= h($si['image_url']) ?>" alt="<?= h($si['title']) ?>">
+                        <?php else: ?>
+                            <span class="thumb" style="display:inline-flex;width:100%;height:150px;align-items:center;justify-content:center;font-size:2.5rem;">📦</span>
+                        <?php endif; ?>
+                    </a>
+                    <div class="sk-price"><span class="sk-now">¥<?= number_format($si['seckill_price_cents'] / 100, 2) ?></span><del class="sk-orig">¥<?= number_format((float)$si['price'], 2) ?></del></div>
+                    <h3 class="sk-title"><a href="detail.php?id=<?=(int)$si['pid'] ?>"><?= h($si['title']) ?></a></h3>
+                    <div class="sk-bar"><i style="width:<?= $skPct ?>%"></i></div>
+                    <div class="sk-meta"><span>已抢 <?= $skPct ?>%</span><a class="sk-buy" href="detail.php?id=<?=(int)$si['pid'] ?>">马上抢</a></div>
+                </article>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php endif; ?>
+
         <?php if (!empty($home_slot_data)): foreach (home_recommend_slots() as $slot_code => $slot_title): if (empty($home_slot_data[$slot_code])) continue; ?>
         <!-- 运营推荐楼位：后台配置，sort 升序 -->
-        <section class="card">
+        <section class="card" data-floor="<?= h($slot_title) ?>">
             <h3>✨ <?= h($slot_title) ?></h3>
             <div class="grid">
                 <?php foreach ($home_slot_data[$slot_code] as $item): ?>
                 <article class="card">
                     <a href="detail.php?id=<?php echo (int)$item['id']; ?>">
                         <?php if (!empty($item['image_url']) && file_exists($item['image_url'])): ?>
-                            <img class="thumb" style="width:100%;height:150px;" src="<?php echo h($item['image_url']); ?>" alt="<?php echo h($item['title']); ?>">
+                            <img class="thumb" style="width:100%;height:150px;" loading="lazy" src="<?php echo h($item['image_url']); ?>" alt="<?php echo h($item['title']); ?>">
                         <?php else: ?>
                             <span class="thumb" style="display:inline-flex;width:100%;height:150px;align-items:center;justify-content:center;font-size:2.5rem;">📦</span>
                         <?php endif; ?>
@@ -449,14 +497,14 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
 
         <?php if (!empty($best_sellers)): ?>
         <!-- 热销榜：按有效订单累计销量排序 -->
-        <section class="card">
+        <section class="card" data-floor="🔥 热销榜">
             <h3>🔥 热销榜</h3>
             <?php foreach ($best_sellers as $rank => $item): ?>
                 <div class="row">
                     <span class="badge"><?php echo $rank + 1; ?></span>
                     <a href="detail.php?id=<?php echo (int)$item['id']; ?>">
                         <?php if (!empty($item['image_url']) && file_exists($item['image_url'])): ?>
-                            <img class="thumb" src="<?php echo h($item['image_url']); ?>" alt="<?php echo h($item['title']); ?>">
+                            <img class="thumb" loading="lazy" src="<?php echo h($item['image_url']); ?>" alt="<?php echo h($item['title']); ?>">
                         <?php else: ?>
                             <span class="thumb" style="display:inline-flex;align-items:center;justify-content:center;font-size:2rem;">📦</span>
                         <?php endif; ?>
@@ -473,14 +521,14 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
 
         <?php if (!empty($recommend)): ?>
         <!-- 猜你喜欢：基于收藏与历史购买类目，不足时由热销榜补齐 -->
-        <section class="card">
+        <section class="card" data-floor="💡 猜你喜欢">
             <h3>💡 猜你喜欢</h3>
             <div class="grid">
                 <?php foreach ($recommend as $item): ?>
                     <article class="card">
                         <a href="detail.php?id=<?php echo (int)$item['id']; ?>">
                             <?php if (!empty($item['image_url']) && file_exists($item['image_url'])): ?>
-                                <img class="thumb" style="width:100%;height:150px;" src="<?php echo h($item['image_url']); ?>" alt="<?php echo h($item['title']); ?>">
+                                <img class="thumb" style="width:100%;height:150px;" loading="lazy" src="<?php echo h($item['image_url']); ?>" alt="<?php echo h($item['title']); ?>">
                             <?php else: ?>
                                 <span class="thumb" style="display:inline-flex;width:100%;height:150px;align-items:center;justify-content:center;font-size:2.5rem;">📦</span>
                             <?php endif; ?>
@@ -568,6 +616,9 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         <span>第 <?php echo $page; ?> 页 · 共 <?php echo $total_products; ?> 件商品</span>
         <?php if($page*12<$total_products): ?><a href="<?= h($filter_query(['page'=>$page+1])) ?>">下一页</a><?php endif; ?>
         </nav>
+    </div><!-- /home-main -->
+    </div><!-- /home-body -->
+    <div class="floor-elevator" id="floor-elevator" aria-label="楼层导航"></div>
     </main>
 
     <!-- 公共页脚 -->
@@ -578,8 +629,53 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         <?php if ($is_logged_in): ?>
         <a href="my_coupons.php" title="我的优惠券">🎟</a>
         <?php endif; ?>
+        <a href="my_orders.php" title="我的订单">📋</a>
+        <a href="cart.php" title="购物车">🛒<?php if ($is_logged_in && $sideCartQty > 0): ?><i class="dock-badge"><?= min($sideCartQty, 99) ?></i><?php endif; ?></a>
         <a href="javascript:void(0);" id="back-top" title="回到顶部">⬆</a>
     </div>
+
+    <script>
+    (function () {
+        // 秒杀倒计时：以最近一场结束时间为终点，HH:MM:SS 逐秒递减，归零后整点刷新
+        var cd = document.getElementById('sk-countdown');
+        if (cd) {
+            var endTs = Date.parse(cd.getAttribute('data-end').replace(' ', 'T'));
+            var spans = cd.getElementsByTagName('span');
+            var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+            var tick = function () {
+                var left = Math.max(0, Math.floor((endTs - Date.now()) / 1000));
+                spans[0].textContent = pad(Math.floor(left / 3600));
+                spans[1].textContent = pad(Math.floor(left % 3600 / 60));
+                spans[2].textContent = pad(left % 60);
+                if (left <= 0) setTimeout(function () { location.reload(); }, 1500);
+            };
+            tick(); setInterval(tick, 1000);
+        }
+        // 楼层电梯导航：扫描 [data-floor] 生成圆点，点击平滑定位，滚动监听高亮当前楼层
+        var floors = [].slice.call(document.querySelectorAll('[data-floor]'));
+        var nav = document.getElementById('floor-elevator');
+        if (nav && floors.length) {
+            var dots = floors.map(function (s, i) {
+                if (!s.id) s.id = 'home-floor-' + i;
+                var a = document.createElement('a');
+                a.href = '#' + s.id;
+                a.textContent = s.getAttribute('data-floor');
+                a.title = s.getAttribute('data-floor');
+                a.addEventListener('click', function (e) { e.preventDefault(); s.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+                nav.appendChild(a);
+                return a;
+            });
+            var spy = function () {
+                nav.classList.toggle('fl-vis', window.scrollY > 400);
+                var cur = 0;
+                floors.forEach(function (s, i) { if (s.getBoundingClientRect().top < 200) cur = i; });
+                dots.forEach(function (a, i) { a.className = i === cur ? 'fl-on' : ''; });
+            };
+            window.addEventListener('scroll', spy, { passive: true });
+            spy();
+        }
+    })();
+    </script>
 
     <script>
     (function () {

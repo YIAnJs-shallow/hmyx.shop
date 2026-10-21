@@ -1405,5 +1405,33 @@ $_SESSION = $_profSess;
 if ($_profMethod === null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD'] = $_profMethod;
 check(strpos($profViewHtml, 'avatar-preview-box') !== false && strpos($profViewHtml, 'uc-lightbox') !== false, 'profile avatar preview wired with lightbox');
 check(strpos(file_get_contents(__DIR__.'/../lib/shop.php'),'function site_logo_svg') !== false && strpos(file_get_contents(__DIR__.'/../lib/shop.php'),'<header>\'.site_logo_html()') !== false && strpos(file_get_contents(__DIR__.'/../index.php'),'echo site_logo_html()') !== false && strpos(file_get_contents(__DIR__.'/../lib/uc.php'),'site_logo_svg(22)') !== false && strpos(file_get_contents(__DIR__.'/../help.php'),'url(#logoBlue)') !== false, 'site brand logo unified across index, page_start, uc sidebar and help page');
+// ===== 首页京东式改版专项（A+B）：秒杀楼层 / 左分类栏 / dock / 电梯 / 懒加载 =====
+check((bool)one("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='seckill_items'",[]),'seckill items table exists');
+$skAdmin = 'skadmin' . time() . rand(100, 999);
+query("INSERT INTO users (username,password,email,role) VALUES (?,?,?,'admin')", [$skAdmin, password_hash('rlpass123', PASSWORD_DEFAULT), $skAdmin . '@example.com']);
+$skAdminId = (int)one('SELECT id FROM users WHERE username=?', [$skAdmin])['id'];
+$migrateSku = (int)one('SELECT id FROM products ORDER BY id ASC LIMIT 1', [])['id'];
+$skId = admin_save_seckill(0, $migrateSku, 990, 100, 37, date('Y-m-d H:i:s', time() - 3600), date('Y-m-d H:i:s', time() + 3600), 1);
+check($skId > 0 && count(seckill_active_items()) >= 1, 'seckill active item renders in active window');
+try { admin_save_seckill(0, $migrateSku, 0, 100, 0, date('Y-m-d H:i:s'), date('Y-m-d H:i:s', time() + 3600), 1); check(false, 'reject zero price'); } catch (DomainException $e) { check(true, 'seckill save rejects non-positive price'); }
+try { admin_save_seckill(0, $migrateSku, 990, 100, 0, date('Y-m-d H:i:s', time() + 7200), date('Y-m-d H:i:s', time() + 3600), 1); check(false, 'reject bad window'); } catch (DomainException $e) { check(true, 'seckill save rejects end-before-start window'); }
+try { admin_save_seckill(0, 99999999, 990, 100, 0, date('Y-m-d H:i:s'), date('Y-m-d H:i:s', time() + 3600), 1); check(false, 'reject missing product'); } catch (DomainException $e) { check(true, 'seckill save rejects nonexistent product'); }
+admin_toggle_seckill($skId);
+check(!in_array($skId, array_column(seckill_active_items(), 'id'), true), 'seckill toggle takes item out of active floor');
+$skIdx = (int)one('SELECT id FROM products WHERE id<>? ORDER BY id ASC LIMIT 1', [$migrateSku])['id'];
+admin_save_seckill($skId, $skIdx, 1990, 50, 5, date('Y-m-d H:i:s', time() - 60), date('Y-m-d H:i:s', time() + 3600), 0);
+check((int)one('SELECT seckill_price_cents FROM seckill_items WHERE id=?', [$skId])['seckill_price_cents'] === 1990, 'seckill edit persists updated config');
+admin_toggle_seckill($skId); // 编辑不改状态位，恢复上架供首页楼层渲染断言
+$skHomeSess = $_SESSION; $skIdxMethod = $_SERVER['REQUEST_METHOD'] ?? null; $skIdxGet = $_GET;
+$_SESSION = ['user_id' => $skAdminId, 'role' => 'user']; $_GET = []; $_SERVER['REQUEST_METHOD'] = 'GET';
+ob_start(); include __DIR__ . '/../index.php'; $skHomeHtml = ob_get_clean();
+$_GET = $skIdxGet; $_SESSION = $skHomeSess;
+if ($skIdxMethod === null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD'] = $skIdxMethod;
+check(strpos($skHomeHtml, 'sk-floor') !== false && strpos($skHomeHtml, 'sk-countdown') !== false && strpos($skHomeHtml, '已抢') !== false, 'home renders seckill floor with countdown and progress');
+check(strpos($skHomeHtml, 'home-cat-nav') !== false && strpos($skHomeHtml, 'cn-panel') !== false, 'home renders jd-style left category nav');
+check(strpos($skHomeHtml, 'floor-elevator') !== false && strpos($skHomeHtml, 'data-floor') !== false, 'home renders floor elevator anchors');
+check(strpos(file_get_contents(__DIR__.'/../index.php'),'loading="lazy"') !== false, 'home product images use lazy loading');
+$_SERVER['REMOTE_ADDR'] = '203.0.113.20';
+check(strpos(file_get_contents(__DIR__.'/../lib/shop.php'),'site-dock') !== false && strpos(file_get_contents(__DIR__.'/../lib/shop.php'),'dock-badge') !== false, 'page_end renders floating dock with cart badge');
 check(send_mail('qa-disable@example.com', 'qa', 'qa') === true, 'mail send disabled under SHOP_MAIL_DISABLE in test env');
 echo "$assertions integration assertions passed. Test database: $testDb\n";

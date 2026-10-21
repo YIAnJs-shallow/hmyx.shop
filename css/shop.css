@@ -64,3 +64,42 @@
 .lg-timeline li::before{content:'';position:absolute;left:-6px;top:13px;width:10px;height:10px;border-radius:50%;background:#e2e5ea}
 .lg-timeline li.lg-on::before{background:#2563eb}
 .lg-timeline .lg-time{display:inline-block;min-width:130px;color:#7a8494;margin-right:8px;font-size:13px}
+
+/* ===== 首页京东式改版（2026-10-21 A+B 专项）：左分类栏/楼层电梯/秒杀楼层/dock/卡片 hover ===== */
+.home-body{display:flex;gap:20px;align-items:flex-start}
+.home-main{flex:1;min-width:0}
+.home-cat-nav{width:200px;flex:none;position:sticky;top:74px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:6px 0}
+.home-cat-nav .cn-head{font-weight:800;font-size:.95rem;padding:10px 16px 8px;color:#1e293b;border-bottom:1px solid #f1f5f9}
+.cn-item{position:relative}
+.cn-item>a{display:flex;align-items:center;gap:8px;padding:9px 16px;color:#334155;text-decoration:none;font-size:.92rem}
+.cn-item>a:hover{background:#eff6ff;color:#1d4ed8}
+.cn-icon{width:20px;text-align:center}
+.cn-arrow{margin-left:auto;color:#94a3b8}
+.cn-panel{display:none;position:absolute;left:100%;top:-6px;min-width:180px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 12px 28px rgba(15,23,42,.14);padding:10px 14px;z-index:60}
+.cn-item:hover .cn-panel{display:block}
+.cn-panel a{display:block;padding:6px 4px;color:#475569;text-decoration:none;white-space:nowrap}
+.cn-panel a:hover{color:#1d4ed8}
+@media (max-width:1100px){.home-cat-nav{display:none}}
+.floor-elevator{position:fixed;right:18px;top:50%;transform:translateY(-50%);z-index:900;opacity:0;pointer-events:none;transition:opacity .25s}
+.floor-elevator.fl-vis{opacity:1;pointer-events:auto}
+.floor-elevator a{display:block;width:74px;padding:6px 6px;margin:4px 0;text-align:center;font-size:.72rem;background:#fff;border:1px solid #e2e8f0;border-radius:8px;color:#475569;text-decoration:none;cursor:pointer}
+.floor-elevator a.fl-on{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+.site-dock{position:fixed;right:18px;bottom:120px;z-index:900;display:flex;flex-direction:column;gap:8px;opacity:0;pointer-events:none;transform:translateY(10px);transition:all .25s}
+.site-dock.dock-on{opacity:1;pointer-events:auto;transform:none}
+.dock-btn{position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center;font-size:1.25rem;background:#fff;border:1px solid #e2e8f0;border-radius:12px;text-decoration:none;cursor:pointer;box-shadow:0 4px 12px rgba(15,23,42,.08)}
+.dock-btn:hover{border-color:#93c5fd}
+.dock-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;line-height:18px;text-align:center;font-size:.68rem;font-style:normal;font-weight:700;color:#fff;background:#dc2626;border-radius:999px;padding:0 4px;box-sizing:border-box}
+.sk-floor{border:1px solid #fee2e2;background:linear-gradient(180deg,#fff5f5,#fff)}
+.sk-head{display:flex;align-items:center;justify-content:space-between}
+.sk-head h3{color:#dc2626}
+.sk-countdown{font-weight:800;color:#fff;background:#dc2626;border-radius:8px;padding:4px 10px;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.sk-price .sk-now{color:#dc2626;font-weight:800;font-size:1.15rem;margin-right:6px}
+.sk-orig{color:#94a3b8;font-size:.8rem}
+.sk-title{margin:6px 0;font-size:.92rem}
+.sk-bar{height:10px;background:#fee2e2;border-radius:999px;overflow:hidden}
+.sk-bar i{display:block;height:100%;background:linear-gradient(90deg,#f87171,#dc2626);border-radius:999px}
+.sk-meta{display:flex;align-items:center;justify-content:space-between;margin-top:6px;font-size:.78rem;color:#b91c1c}
+.sk-buy{background:#dc2626;color:#fff;font-weight:700;padding:4px 14px;border-radius:999px;text-decoration:none}
+.sk-buy:hover{background:#b91c1c}
+article.card{transition:transform .2s ease,box-shadow .2s ease}
+article.card:hover{transform:translateY(-4px);box-shadow:0 14px 28px rgba(15,23,42,.12)}

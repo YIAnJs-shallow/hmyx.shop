@@ -628,6 +628,39 @@ function home_slot_products($slot, $limit = 8) {
         ORDER BY hr.sort ASC, hr.id ASC
         LIMIT " . (int)$limit, [$slot]);
 }
+// ===== 首页改版：秒杀楼层（2026-10-21 A+B 专项）=====
+// 进行中的秒杀商品（status=1 且当前处于场次窗口内），可见口径与 home_slot_products 完全一致，sort 升序
+function seckill_active_items($limit = 8) {
+    return rows("SELECT si.id, si.seckill_price_cents, si.total_stock, si.sold, si.end_at, p.id AS pid, p.title, p.image_url, p.price
+        FROM seckill_items si
+        JOIN products p ON p.id = si.product_id
+        WHERE si.status = 1 AND p.status = 1 AND p.audit_status = 'approved'
+          AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops s WHERE s.id = p.shop_id AND s.status = 1))
+          AND si.start_at <= NOW() AND si.end_at > NOW()
+        ORDER BY si.sort ASC, si.id ASC
+        LIMIT " . (int)$limit, []);
+}
+// 后台保存秒杀配置（校验下沉，分口径入参；仿 admin_create_coupon 模式，审计由页面记录）
+function admin_save_seckill(int $itemId, int $productId, int $priceCents, int $totalStock, int $sold, string $startAt, string $endAt, int $sort): int {
+    if ($priceCents <= 0) throw new DomainException('秒杀价必须大于 0');
+    if ($totalStock <= 0 || $totalStock > 1000000) throw new DomainException('活动限量须在 1 至 1000000 之间');
+    if ($sold < 0 || $sold > $totalStock) throw new DomainException('已抢件数须在 0 与限量之间');
+    if ($productId <= 0 || !one('SELECT id FROM products WHERE id=?', [$productId])) throw new DomainException('商品不存在');
+    if (strtotime($startAt) === false || strtotime($endAt) === false) throw new DomainException('场次时间格式无效');
+    if (strtotime($endAt) <= strtotime($startAt)) throw new DomainException('结束时间必须晚于开始时间');
+    if (strtotime($endAt) - strtotime($startAt) > 86400 * 7) throw new DomainException('单场时长不可超过 7 天');
+    if ($itemId > 0) {
+        if (!one('SELECT id FROM seckill_items WHERE id=?', [$itemId])) throw new DomainException('秒杀配置不存在');
+        query('UPDATE seckill_items SET product_id=?,seckill_price_cents=?,total_stock=?,sold=?,start_at=?,end_at=?,sort=? WHERE id=?', [$productId, $priceCents, $totalStock, $sold, $startAt, $endAt, $sort, $itemId]);
+        return $itemId;
+    }
+    query('INSERT INTO seckill_items(product_id,seckill_price_cents,total_stock,sold,start_at,end_at,sort) VALUES(?,?,?,?,?,?,?)', [$productId, $priceCents, $totalStock, $sold, $startAt, $endAt, $sort]);
+    return (int)one('SELECT id FROM seckill_items ORDER BY id DESC LIMIT 1', [])['id'];
+}
+// 后台上下架切换
+function admin_toggle_seckill(int $itemId): void {
+    query('UPDATE seckill_items SET status = 1 - status WHERE id=?', [$itemId]);
+}
 function admin_set_recommendation($slot, $productId) {
     if (!isset(home_recommend_slots()[$slot])) throw new DomainException('无效的推荐楼位');
     $product = one("SELECT id FROM products p WHERE p.id=? AND p.status=1 AND p.audit_status='approved' AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops s WHERE s.id=p.shop_id AND s.status=1))", [(int)$productId]);
@@ -717,7 +750,7 @@ function site_logo_html(): string {
         .'<span style="display:flex;flex-direction:column;line-height:1.1;"><span style="font-size:1.3rem;font-weight:800;color:#1e293b;">惠蒙优选</span><span style="font-size:0.55rem;font-weight:700;color:#2563eb;letter-spacing:1.2px;">HUIMENG CHOICE</span></span></a></div>';
 }
 function page_start($title) {
-    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=5"></head><body><header>'.site_logo_html().'<nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
+    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=6"></head><body><header>'.site_logo_html().'<nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
     if (!empty($_SESSION['user_id'])) {
         // 未读角标：一次性 COUNT 查询
         $unread = (int)one('SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND read_at IS NULL', [(int)$_SESSION['user_id']])['n'];
@@ -728,7 +761,25 @@ function page_start($title) {
     echo '</nav></header><main><h1>'.h($title).'</h1>';
     if (isset($_SESSION['notice'])) { echo '<p class="notice" role="status">'.h($_SESSION['notice']).'</p>'; unset($_SESSION['notice']); }
 }
-function page_end() { echo '</main><footer>惠蒙优选 · 精选好物，安心选购</footer></body></html>'; }
+function page_end() {
+    // 购物车角标（登录态，一次 COUNT 汇总）
+    $dockCart = 0;
+    if (!empty($_SESSION['user_id'])) {
+        $dockCart = (int)one('SELECT COALESCE(SUM(quantity),0) AS q FROM cart WHERE user_id=?', [(int)$_SESSION['user_id']])['q'];
+    }
+    echo '</main><footer>惠蒙优选 · 精选好物，安心选购</footer>';
+    // 全前台右侧悬浮 dock（京东式）：默认潜藏，滚动超 300px 浮现（.dock-on），纯 CSS/JS 无依赖
+    echo '<div class="site-dock" id="site-dock">'
+        . '<button type="button" class="dock-btn" id="dock-top" title="回到顶部">🔝</button>'
+        . '<a class="dock-btn" href="my_orders.php" title="我的订单">📋</a>'
+        . '<a class="dock-btn" href="cart.php" title="购物车">🛒' . ($dockCart > 0 ? '<i class="dock-badge">' . min($dockCart, 99) . '</i>' : '') . '</a>'
+        . '<a class="dock-btn" href="help.php" title="帮助中心">❓</a>'
+        . '</div>';
+    echo '<script>(function(){var d=document.getElementById("site-dock"),t=document.getElementById("dock-top");if(!d)return;'
+        . 'window.addEventListener("scroll",function(){d.classList.toggle("dock-on",window.scrollY>300);},{passive:true});'
+        . 'if(t)t.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"});});})();</script>';
+    echo '</body></html>';
+}
 function action_button($orderId, $action, $label) {
     return '<form class="inline" method="post" action="order_action.php">'.csrf_field().'<input type="hidden" name="order_id" value="'.(int)$orderId.'"><button name="action" value="'.h($action).'">'.h($label).'</button></form>';
 }
