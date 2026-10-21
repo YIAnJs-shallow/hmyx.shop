@@ -1303,6 +1303,7 @@ $_GET=$lgBackupGet; $_SESSION=$lgBackupSession;
 if ($lgBackupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$lgBackupMethod;
 check(is_string($lgExprHtml) && strpos($lgExprHtml,'物流轨迹')!==false && strpos($lgExprHtml,'演示物流说明')!==false && strpos($lgExprHtml,$cronShipExpressNo ?? 'CRON00001')!==false,'express detail renders simulated logistics timeline');
 check(strpos(file_get_contents(__DIR__.'/../express_detail.php'),'webapi.amap.com/maps')!==false && strpos(file_get_contents(__DIR__.'/../express_detail.php'),'_AMapSecurityConfig')!==false && strpos(file_get_contents(__DIR__.'/../express_detail.php'),'lg-map-err')!==false,'express detail wires interactive AMap with security config and static fallback');
+check(strpos(file_get_contents(__DIR__.'/../express_detail.php'),'startIdx')!==false && strpos(file_get_contents(__DIR__.'/../express_detail.php'),'path.slice(startIdx)')!==false,'express map truck position aligns with logistics progress instead of replaying from origin');
 check(strpos(file_get_contents(__DIR__.'/../config/secrets.example.php'),"define('AMAP_JS_KEY', '')")!==false && strpos(file_get_contents(__DIR__.'/../config/secrets.example.php'),"define('AMAP_JS_SECURITY', '')")!==false,'secrets template declares interactive map key slots');
 // ===== 方向 A 安全加固：限流原语 + 认证/发码/注册/定位接口限流 =====
 check((bool)one("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='rate_limit_hits'",[]),'rate limit table exists');

@@ -38,8 +38,12 @@ $lgInteractive=$lgFrom&&$lgTo;
     var path=[];
     res.routes[0].steps.forEach(function(s){s.path.forEach(function(p,i){if(path.length===0||i%3===0){path.push([p.lng,p.lat]);}});});
     if(path.length<2){return;}
-    var truck=new AMap.Marker({map:map,position:path[0],anchor:'bottom-center',content:'<div style="font-size:24px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))">🚚</div>'});
-    truck.moveAlong(path,{duration:400,autoRotation:true});
+    // 车辆初始位置与演示引擎的真实进度对齐（percent 按发货时间起 48h 线性推进）：
+    // 已走过路段不重播，每次打开页面车辆都落在当前进度点上、只动画剩余段；签收后停在终点
+    var prog=<?= (int)$lg['percent'] ?>;
+    var startIdx=Math.min(path.length-1,Math.floor(path.length*prog/100));
+    var truck=new AMap.Marker({map:map,position:path[startIdx],anchor:'bottom-center',content:'<div style="font-size:24px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))">🚚</div>'});
+    if(startIdx<path.length-1){truck.moveAlong(path.slice(startIdx),{duration:400,autoRotation:true});}
   });
 })();
 </script>
