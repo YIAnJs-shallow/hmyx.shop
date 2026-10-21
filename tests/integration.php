@@ -1472,5 +1472,7 @@ check(strpos($shHtml4, '店铺不存在或已关闭') !== false, 'shop page with
 $_GET = $_shGet; $_SESSION = $_shSess;
 if ($_shMethod === null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD'] = $_shMethod;
 check(strpos(file_get_contents(__DIR__.'/../detail.php'), 'shop.php?id=') !== false, 'detail shop badge links to shop page');
+check(strpos(file_get_contents(__DIR__.'/../index.php'),'shop.php?id=<?php echo (int)$row[\'shop_id\']; ?>') !== false, 'search result shop line links to shop page');
+check(strpos(file_get_contents(__DIR__.'/../css/shop.css'),'thumb-shimmer') !== false && strpos(file_get_contents(__DIR__.'/../css/shop.css'),'prefers-reduced-motion') !== false, 'product image skeleton shimmer respects reduced motion');
 check(send_mail('qa-disable@example.com', 'qa', 'qa') === true, 'mail send disabled under SHOP_MAIL_DISABLE in test env');
 echo "$assertions integration assertions passed. Test database: $testDb\n";

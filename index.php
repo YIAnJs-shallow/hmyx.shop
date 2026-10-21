@@ -595,7 +595,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
                             </div>
                             <div class="product-title"><?php echo htmlspecialchars($p_name); ?></div>
                             <?php if (!empty($row['shop_name'])): ?>
-                                <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 4px;">🏪 <?php echo htmlspecialchars($row['shop_name']); ?></div>
+                                <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 4px;"><a href="shop.php?id=<?php echo (int)$row['shop_id']; ?>" style="color:#64748b;text-decoration:none;" title="进入店铺主页">🏪 <?php echo htmlspecialchars($row['shop_name']); ?></a></div>
                             <?php endif; ?>
                             <div class="product-price"><?php if ($p_group > 0): ?><span style="text-decoration:line-through;color:#94a3b8;font-size:.8rem;margin-right:4px;">￥<?php echo number_format($p_price, 2); ?></span><strong style="color:#dc2626;">￥<?php echo number_format($p_group / 100, 2); ?></strong><small style="color:#dc2626;"> 拼团价</small><?php elseif ($p_flash !== null): ?><span style="text-decoration:line-through;color:#94a3b8;font-size:.8rem;margin-right:4px;">￥<?php echo number_format($p_price, 2); ?></span><strong style="color:#dc2626;">￥<?php echo number_format($p_flash / 100, 2); ?></strong><small style="color:#dc2626;"> 限时特价</small><?php else: ?>￥<?php echo number_format($p_price, 2); ?><?php endif; ?></div>
                         </div>

@@ -103,3 +103,8 @@
 .sk-buy:hover{background:#b91c1c}
 article.card{transition:transform .2s ease,box-shadow .2s ease}
 article.card:hover{transform:translateY(-4px);box-shadow:0 14px 28px rgba(15,23,42,.12)}
+
+/* ===== 商品图骨架屏（2026-10-21）：加载期间微光流动背景，图片绘制后自然覆盖；尊重 prefers-reduced-motion ===== */
+img.thumb{background:#eef2f7 linear-gradient(100deg,rgba(255,255,255,0) 20%,rgba(255,255,255,.75) 50%,rgba(255,255,255,0) 80%) no-repeat;background-size:200% 100%}
+@media (prefers-reduced-motion: no-preference){img.thumb{animation:thumb-shimmer 1.4s infinite}}
+@keyframes thumb-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
