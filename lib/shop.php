@@ -67,13 +67,19 @@ const PRODUCT_CHAT_MAX = 500;      // 单条内容上限（字）
 const PRODUCT_CHAT_ASK_MAX = 5;    // 同一用户提问限流：次数 / 窗口
 const PRODUCT_CHAT_ASK_WINDOW = 600;
 // 问答列表（公开）：按时间正序，附提问者脱敏名与回答者店铺名
+// 防御：表缺失等异常时降级为空数组隐藏咨询区，不允许展示层异常炸掉详情页（同秒杀楼层口径）
 function product_chat_list($productId, $limit = 30) {
-    return rows('SELECT pc.*, u.username AS buyer_name, sh.shop_name AS merchant_shop_name
-        FROM product_chats pc
-        JOIN users u ON u.id = pc.user_id
-        JOIN products p ON p.id = pc.product_id
-        LEFT JOIN shops sh ON sh.id = p.shop_id
-        WHERE pc.product_id=? ORDER BY pc.id LIMIT ' . (int)$limit, [(int)$productId]);
+    try {
+        return rows('SELECT pc.*, u.username AS buyer_name, sh.shop_name AS merchant_shop_name
+            FROM product_chats pc
+            JOIN users u ON u.id = pc.user_id
+            JOIN products p ON p.id = pc.product_id
+            LEFT JOIN shops sh ON sh.id = p.shop_id
+            WHERE pc.product_id=? ORDER BY pc.id LIMIT ' . (int)$limit, [(int)$productId]);
+    } catch (Throwable $e) {
+        error_log('product chat degraded: ' . $e->getMessage());
+        return [];
+    }
 }
 // 买家提问（校验下沉；限流防刷；失败抛 DomainException）
 function product_chat_ask($productId, $userId, $content) {
@@ -96,12 +102,17 @@ function product_chat_reply($chatId, $merchantUserId, $content) {
     query("INSERT INTO product_chats (product_id, user_id, sender_role, content) VALUES (?,?,'merchant',?)", [(int)$chat['product_id'], (int)$merchantUserId, $content]);
     query('UPDATE product_chats SET read_by_merchant=1 WHERE id=?', [(int)$chatId]);
 }
-// 商户待回复咨询数（本店商品下未答的买家咨询，工作台数字口径）
+// 商户待回复咨询数（本店商品下未答的买家咨询，工作台数字口径；表缺失降级为 0）
 function product_chat_pending_count($shopId) {
-    return (int)one('SELECT COUNT(*) AS c FROM product_chats pc
-        JOIN products p ON p.id = pc.product_id
-        WHERE p.shop_id=? AND pc.sender_role="buyer"
-          AND NOT EXISTS (SELECT 1 FROM product_chats ans WHERE ans.product_id = pc.product_id AND ans.sender_role = "merchant" AND ans.id > pc.id)', [(int)$shopId])['c'];
+    try {
+        return (int)one('SELECT COUNT(*) AS c FROM product_chats pc
+            JOIN products p ON p.id = pc.product_id
+            WHERE p.shop_id=? AND pc.sender_role="buyer"
+              AND NOT EXISTS (SELECT 1 FROM product_chats ans WHERE ans.product_id = pc.product_id AND ans.sender_role = "merchant" AND ans.id > pc.id)', [(int)$shopId])['c'];
+    } catch (Throwable $e) {
+        error_log('product chat pending degraded: ' . $e->getMessage());
+        return 0;
+    }
 }
 function uid() {
     if (empty($_SESSION['user_id'])) login_redirect(current_page_url());

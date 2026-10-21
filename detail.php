@@ -33,6 +33,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_SESSION['user_id']
         }
     } catch (DomainException $e) {
         redirect_to('detail.php?id=' . $id, $e->getMessage());
+    } catch (Throwable $e) {
+        if (PHP_SAPI !== 'cli') error_log($e); // 表缺失等底层异常也转为友好提示，不暴露技术细节
+        redirect_to('detail.php?id=' . $id, '咨询提交失败，请稍后再试');
     }
 }
 $chats = product_chat_list($id);
