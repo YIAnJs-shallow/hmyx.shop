@@ -142,4 +142,3 @@ $browsing = browsing_history($user_id);
 <?php endif; ?>
 <?php if ($avatar !== '') uc_avatar_lightbox_script('uc-avatar-trigger'); ?>
 <?php uc_page_end(); ?>
-

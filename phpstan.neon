@@ -1,0 +1,16 @@
+# PHPStan 静态分析配置（开发期工具，不进运行时）
+# 运行：E:/e2/phpstudy/phpstudy_pro/Extensions/php/php7.4.3nts/php.exe E:/e2/phpstudy/phpstudy_pro/tools/phpstan/phpstan.phar analyse --no-progress
+parameters:
+	# 起步 0 级：未知的类/函数 + 实参个数错误（专治 bind_param 参数错位类失误）；后续按需逐级上调
+	level: 0
+	paths:
+		- .
+	excludePaths:
+		# 历史手工备份区，非活代码
+		- backup_*
+		# 第三方捆绑库（PHPMailer 自带源码，缺其可选 psr/log 依赖属库自身问题，不纳入自检范围）
+		- lib/PHPMailer
+	# 排除分析但仍扫描符号注册，让 lib/mailer.php 对 PHPMailer 的引用可解析
+	scanFiles:
+		- lib/PHPMailer/src/PHPMailer.php
+		- lib/PHPMailer/src/SMTP.php

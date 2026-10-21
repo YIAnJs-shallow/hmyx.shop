@@ -817,7 +817,7 @@ $gRow1=one('SELECT group_buy_id,group_member_id,group_success FROM orders WHERE 
 $gMember1=one('SELECT * FROM group_members WHERE order_id=?',[$gOrder1]);
 check(one('SELECT price FROM order_items WHERE order_id=?',[$gOrder1])['price']==='30.00' && (int)$gRow1['group_buy_id']===(int)$gb['id'] && (int)$gRow1['group_member_id']===(int)$gMember1['id'] && $gMember1['role']==='leader' && (int)$gMember1['group_id']===(int)$gMember1['id'],'group order uses group price and registers leader row');
 check((int)one('SELECT stock FROM products WHERE id=?',[$pGroup])['stock']===9,'group order reserves one item from stock');
-rejects(function(){ create_orders($buyer,$pGroup,1,$address,'group-dup',0,0,0,(int)$gb['id']); },'same user cannot hold two unresolved slots in one activity');
+rejects(function()use($buyer,$pGroup,$address,$gb){ create_orders($buyer,$pGroup,1,$address,'group-dup',0,0,0,(int)$gb['id']); },'same user cannot hold two unresolved slots in one activity');
 change_order($gOrder1,$buyer,'pay');
 check((int)one('SELECT group_success FROM orders WHERE id=?',[$gOrder1])['group_success']===0 && (int)group_buy_stats((int)$gb['id'])[1]===1,'single paid member does not complete the group');
 $_SESSION['role']='merchant';
