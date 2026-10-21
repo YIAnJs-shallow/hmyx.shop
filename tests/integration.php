@@ -1433,5 +1433,15 @@ check(strpos($skHomeHtml, 'floor-elevator') !== false && strpos($skHomeHtml, 'da
 check(strpos(file_get_contents(__DIR__.'/../index.php'),'loading="lazy"') !== false, 'home product images use lazy loading');
 $_SERVER['REMOTE_ADDR'] = '203.0.113.20';
 check(strpos(file_get_contents(__DIR__.'/../lib/shop.php'),'site-dock') !== false && strpos(file_get_contents(__DIR__.'/../lib/shop.php'),'dock-badge') !== false, 'page_end renders floating dock with cart badge');
+// ===== D-lite：详情页"看了又看" + 后台导航菜单补全 =====
+$vaCat = (int)one('SELECT category_id FROM products WHERE id=?', [$migrateSku])['category_id'];
+$vaList = view_also_items($migrateSku, $vaCat, 0);
+check(!in_array($migrateSku, array_column($vaList, 'id'), true) && count($vaList) > 0, 'view-also list excludes current product and fills from category');
+query('INSERT INTO user_browsing (user_id, product_id, viewed_at) VALUES (?,?,NOW())', [$profAId, $migrateSku]);
+$vaBrowsed = (int)one('SELECT id FROM products WHERE id<>? ORDER BY id DESC LIMIT 1', [$migrateSku])['id'];
+query('INSERT INTO user_browsing (user_id, product_id, viewed_at) VALUES (?,?,NOW() - INTERVAL 1 MINUTE)', [$profAId, $vaBrowsed]);
+$vaUserList = view_also_items($migrateSku, $vaCat, $profAId);
+check((int)$vaUserList[0]['id'] === $vaBrowsed, 'view-also prioritizes user browsing history');
+check(strpos(file_get_contents(__DIR__.'/../admin/inc/header.php'),"['seckill.php', '秒杀楼层', 'coupon.manage']") !== false && strpos(file_get_contents(__DIR__.'/../admin/inc/header.php'),"['stats.php', '数据看板', 'dashboard.view']") !== false, 'admin menu covers stats, search logs, recommendations, coupons and seckill pages');
 check(send_mail('qa-disable@example.com', 'qa', 'qa') === true, 'mail send disabled under SHOP_MAIL_DISABLE in test env');
 echo "$assertions integration assertions passed. Test database: $testDb\n";

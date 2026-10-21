@@ -5,9 +5,14 @@ if (!isset($_SESSION['admin'])) { http_response_code(403); exit('未登录'); }
 $current_page = basename($_SERVER['PHP_SELF']);
 $admin_menu = [
     ['dashboard.php', '仪表盘', 'dashboard.view'],
+    ['stats.php', '数据看板', 'dashboard.view'],
+    ['search_logs.php', '搜索词分析', 'dashboard.view'],
     ['products.php', '商品管理', 'product.view'],
+    ['recommendations.php', '推荐位管理', 'product.manage'],
     ['product_audit.php', '商品审核', 'product.audit'],
     ['orders.php', '订单/售后', 'order.view'],
+    ['coupons.php', '优惠券管理', 'coupon.manage'],
+    ['seckill.php', '秒杀楼层', 'coupon.manage'],
     ['users.php', '用户管理', 'user.view'],
     ['roles.php', '角色与权限', 'role.manage'],
     ['admins.php', '管理员账号', 'admin.manage'],

@@ -76,4 +76,24 @@ $detailCoupons=rows("SELECT c.* FROM coupons c
 })();
 </script>
 <?php endif; ?>
+<?php $viewAlso = view_also_items($id, (int)$p['category_id'], (int)($_SESSION['user_id'] ?? 0)); if ($viewAlso): ?>
+<section class="card">
+    <h3>👀 看了又看</h3>
+    <div class="grid">
+        <?php foreach ($viewAlso as $va): ?>
+        <article class="card">
+            <a href="detail.php?id=<?=(int)$va['id'] ?>">
+                <?php if (!empty($va['image_url']) && file_exists($va['image_url'])): ?>
+                    <img class="thumb" style="width:100%;height:130px;" loading="lazy" src="<?= h($va['image_url']) ?>" alt="<?= h($va['title']) ?>">
+                <?php else: ?>
+                    <span class="thumb" style="display:inline-flex;width:100%;height:130px;align-items:center;justify-content:center;font-size:2.2rem;">📦</span>
+                <?php endif; ?>
+            </a>
+            <h3 style="margin-top:8px;font-size:.9rem;"><a href="detail.php?id=<?=(int)$va['id'] ?>"><?= h($va['title']) ?></a></h3>
+            <div class="price">￥<?= h(number_format((float)$va['price'], 2)) ?></div>
+        </article>
+        <?php endforeach; ?>
+    </div>
+</section>
+<?php endif; ?>
 <?php page_end(); ?>

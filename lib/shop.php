@@ -33,6 +33,34 @@ function browsing_history($userId, $limit = 20) {
                  GROUP BY b.product_id, p.title, p.price, p.image_url
                  ORDER BY last_viewed DESC LIMIT '.(int)$limit, [(int)$userId]);
 }
+// ===== 详情页"看了又看"（2026-10-21 D-lite）：浏览足迹优先（排除当前商品），不足由同分类新品补齐，再由全站热销补齐；纯读展示位 =====
+function view_also_items($productId, $categoryId, $userId, $limit = 8) {
+    $out = [];
+    $seen = [(int)$productId => true];
+    $vis = "p.status = 1 AND p.audit_status = 'approved' AND (p.shop_id IS NULL OR EXISTS (SELECT 1 FROM shops s WHERE s.id = p.shop_id AND s.status = 1))";
+    if ((int)$userId > 0) {
+        foreach (browsing_history((int)$userId, 12) as $b) {
+            $bid = (int)$b['product_id'];
+            if (isset($seen[$bid])) continue;
+            $seen[$bid] = true;
+            $out[] = ['id' => $bid, 'title' => $b['title'], 'image_url' => $b['image_url'], 'price' => $b['price']];
+            if (count($out) >= $limit) return $out;
+        }
+    }
+    foreach (rows("SELECT p.id, p.title, p.image_url, p.price FROM products p WHERE p.category_id=? AND p.id<>? AND $vis ORDER BY p.id DESC LIMIT " . (int)$limit, [(int)$categoryId, (int)$productId]) as $r) {
+        if (isset($seen[(int)$r['id']])) continue;
+        $seen[(int)$r['id']] = true;
+        $out[] = $r;
+        if (count($out) >= $limit) return $out;
+    }
+    foreach (best_sellers($limit) as $r) {
+        if (isset($seen[(int)$r['id']])) continue;
+        $seen[(int)$r['id']] = true;
+        $out[] = $r;
+        if (count($out) >= $limit) return $out;
+    }
+    return $out;
+}
 function uid() {
     if (empty($_SESSION['user_id'])) login_redirect(current_page_url());
     return (int)$_SESSION['user_id'];
