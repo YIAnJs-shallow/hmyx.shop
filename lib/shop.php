@@ -899,7 +899,7 @@ function page_end() {
         . 'window.addEventListener("scroll",function(){d.classList.toggle("dock-on",window.scrollY>300);},{passive:true});'
         . 'if(t)t.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"});});'
         . 'var mt=document.getElementById("motion-toggle");'
-        . 'if(mt){if(localStorage.getItem("hm_motion")===null)localStorage.setItem("hm_motion",window.matchMedia("(prefers-reduced-motion: reduce)").matches?"0":"1");'
+        . 'if(mt){if(localStorage.getItem("hm_motion")===null)localStorage.setItem("hm_motion","1");'
         . 'var sync=function(){mt.style.opacity=localStorage.getItem("hm_motion")==="0"?"0.4":"1";};'
         . 'mt.addEventListener("click",function(){localStorage.setItem("hm_motion",localStorage.getItem("hm_motion")==="0"?"1":"0");sync();location.reload();});sync();}'
         . '})();</script>';

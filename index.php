@@ -662,7 +662,7 @@ document.querySelectorAll('[data-floor]').forEach(function (s) {
     });
 });
 // 动效开关：站内 localStorage 控制（hm_motion），OS 的 reduce 只作为首次访问初始值——避免 Windows 关动画时用户永远看不到效果
-if (localStorage.getItem('hm_motion') === null) localStorage.setItem('hm_motion', window.matchMedia('(prefers-reduced-motion: reduce)').matches ? '0' : '1');
+if (localStorage.getItem('hm_motion') === null) localStorage.setItem('hm_motion', '1');
 if ('IntersectionObserver' in window) {
     var io = new IntersectionObserver(function (entries) {
         entries.forEach(function (en) {
