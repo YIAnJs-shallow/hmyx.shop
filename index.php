@@ -663,13 +663,25 @@ document.querySelectorAll('[data-floor]').forEach(function (s) {
 });
 // 动效开关：站内 localStorage 控制（hm_motion），OS 的 reduce 只作为首次访问初始值——避免 Windows 关动画时用户永远看不到效果
 if (localStorage.getItem('hm_motion') === null) localStorage.setItem('hm_motion', window.matchMedia('(prefers-reduced-motion: reduce)').matches ? '0' : '1');
-if ('IntersectionObserver' in window && localStorage.getItem('hm_motion') !== '0') {
+if ('IntersectionObserver' in window) {
     var io = new IntersectionObserver(function (entries) {
         entries.forEach(function (en) {
             if (en.isIntersecting) { en.target.classList.add('floor-in'); io.unobserve(en.target); }
         });
     }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
     revealTargets.forEach(function (el) { io.observe(el); });
+} else {
+    // 老内核降级（夸克 7.4 实测无 IntersectionObserver）：scroll + getBoundingClientRect 等效检测，全部点亮后自摘监听
+    var pending = revealTargets.slice();
+    var checkReveal = function () {
+        pending = pending.filter(function (el) {
+            if (el.getBoundingClientRect().top < window.innerHeight - 40) { el.classList.add('floor-in'); return false; }
+            return true;
+        });
+        if (!pending.length) window.removeEventListener('scroll', checkReveal);
+    };
+    window.addEventListener('scroll', checkReveal, { passive: true });
+    checkReveal();
     } catch (e) {
         // 任何异常立即移除隐藏类，保证内容可见（动画可牺牲，内容不可消失）
         document.querySelectorAll('.floor-reveal').forEach(function (el) { el.classList.remove('floor-reveal'); });
