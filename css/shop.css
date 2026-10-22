@@ -149,3 +149,25 @@ img.thumb{background:#eef2f7 linear-gradient(100deg,rgba(255,255,255,0) 20%,rgba
 .pd-thumb{width:64px;height:64px;object-fit:cover;border-radius:8px;border:2px solid #e2e8f0;cursor:pointer;transition:border-color .15s}
 .pd-thumb:hover{border-color:#93c5fd}
 .pd-thumb.pd-on{border-color:#1d4ed8}
+
+/* ===== 滚动交互舒适化（2026-10-22）：楼层入场/秒杀横滑/结算吸底 ===== */
+.floor-reveal{opacity:0;transform:translateY(14px)}
+.floor-reveal.floor-in{opacity:1;transform:none;transition:opacity .2s ease-out,transform .2s ease-out}
+@media (prefers-reduced-motion: reduce){.floor-reveal{opacity:1;transform:none}}
+.sk-head{gap:8px}
+.sk-track{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px;-webkit-overflow-scrolling:touch}
+.sk-track .sk-item{flex:0 0 200px;scroll-snap-align:start}
+.sk-track::-webkit-scrollbar{height:6px}
+.sk-track::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:999px}
+.sk-arrow{width:28px;height:28px;line-height:24px;text-align:center;background:#fff;border:1px solid #e2e8f0;border-radius:50%;color:#475569;font-size:1.05rem;cursor:pointer}
+.sk-arrow:hover{border-color:#1d4ed8;color:#1d4ed8}
+.pay-bar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:950;align-items:center;justify-content:space-between;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #e2e8f0;box-shadow:0 -6px 18px rgba(15,23,42,.08)}
+.pay-bar .pb-total{font-size:1rem}
+.pay-bar .pb-total strong{color:#dc2626;font-size:1.2rem}
+.pay-bar button{background:#dc2626;color:#fff;border:none;border-radius:999px;padding:11px 30px;font-weight:800;font-size:1rem;cursor:pointer}
+.pay-bar button:disabled{opacity:.55}
+@media (max-width:768px){
+  .pay-bar{display:flex}
+  body{padding-bottom:64px}
+  .site-dock{bottom:84px}
+}

@@ -451,9 +451,13 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         <section class="card sk-floor" data-floor="⚡ 限时秒杀">
             <div class="sk-head">
                 <h3>⚡ 限时秒杀</h3>
-                <div class="sk-countdown" id="sk-countdown" data-end="<?= h($seckillItems[0]['end_at']) ?>"><span>--</span>:<span>--</span>:<span>--</span></div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="sk-countdown" id="sk-countdown" data-end="<?= h($seckillItems[0]['end_at']) ?>"><span>--</span>:<span>--</span>:<span>--</span></div>
+                    <button type="button" class="sk-arrow" id="sk-prev" title="上一批">‹</button>
+                    <button type="button" class="sk-arrow" id="sk-next" title="下一批">›</button>
+                </div>
             </div>
-            <div class="grid">
+            <div class="sk-track" id="sk-track">
                 <?php foreach ($seckillItems as $si): $skPct = (int)$si['total_stock'] > 0 ? (int)min(100, floor($si['sold'] / $si['total_stock'] * 100)) : 0; ?>
                 <article class="card sk-item">
                     <a href="detail.php?id=<?=(int)$si['pid'] ?>">
@@ -634,6 +638,30 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         <a href="javascript:void(0);" id="back-top" title="回到顶部">⬆</a>
     </div>
 
+    <script>
+    (function () {
+        // 楼层滚动入场：JS 注入 floor-reveal 类（无 JS 时楼层照常显示），IntersectionObserver 一次性淡入
+        var floors = document.querySelectorAll('[data-floor]');
+        if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            floors.forEach(function (s) { s.classList.add('floor-reveal'); });
+            var io = new IntersectionObserver(function (entries) {
+                entries.forEach(function (en) {
+                    if (en.isIntersecting) { en.target.classList.add('floor-in'); io.unobserve(en.target); }
+                });
+            }, { threshold: 0.12 });
+            floors.forEach(function (s) { io.observe(s); });
+        }
+        // 秒杀横滑箭头：逐卡步进（卡宽 200 + 间距 12）
+        var track = document.getElementById('sk-track');
+        var prev = document.getElementById('sk-prev');
+        var next = document.getElementById('sk-next');
+        if (track && prev && next) {
+            var step = function () { return 212 * (track.clientWidth > 480 ? 2 : 1); };
+            prev.addEventListener('click', function () { track.scrollBy({ left: -step(), behavior: 'smooth' }); });
+            next.addEventListener('click', function () { track.scrollBy({ left: step(), behavior: 'smooth' }); });
+        }
+    })();
+    </script>
     <script>
     (function () {
         // 秒杀倒计时：以最近一场结束时间为终点，HH:MM:SS 逐秒递减，归零后整点刷新
