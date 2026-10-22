@@ -246,7 +246,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>惠蒙优选 - 精选优质商城</title>
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
-    <link rel="stylesheet" href="css/shop.css?v=11">
+    <link rel="stylesheet" href="css/shop.css?v=12">
     <link rel="stylesheet" href="css/style.css?v=8">
     <link rel="stylesheet" href="css/user_menu.css?v=2">
 </head>
@@ -640,18 +640,27 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
 
     <script>
     (function () {
-        // 楼层滚动入场：JS 注入 floor-reveal 类（无 JS 时楼层照常显示），IntersectionObserver 一次性淡入
-        var floors = document.querySelectorAll('[data-floor]');
-        if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-            floors.forEach(function (s) { s.classList.add('floor-reveal'); });
-            var io = new IntersectionObserver(function (entries) {
-                entries.forEach(function (en) {
-                    if (en.isIntersecting) { en.target.classList.add('floor-in'); io.unobserve(en.target); }
-                });
-            }, { threshold: 0.12 });
-            floors.forEach(function (s) { io.observe(s); });
-        }
-        // 秒杀横滑箭头：逐卡步进（卡宽 200 + 间距 12）
+        // 楼层滚动入场 v2（用户反馈"感受不到"后加强）：楼层与楼层内卡片级联错峰入场，
+// 一次波浪 0.45s + 每卡递进 45ms（封顶 240ms）；JS 注入类名保无 JS 回退；reduced-motion 守卫
+var revealTargets = [];
+document.querySelectorAll('[data-floor]').forEach(function (s) {
+    s.classList.add('floor-reveal');
+    revealTargets.push(s);
+    s.querySelectorAll('.grid > article.card, .row').forEach(function (c, i) {
+        c.classList.add('floor-reveal');
+        c.style.setProperty('--reveal-delay', Math.min(i * 45, 240) + 'ms');
+        revealTargets.push(c);
+    });
+});
+if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+            if (en.isIntersecting) { en.target.classList.add('floor-in'); io.unobserve(en.target); }
+        });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+    revealTargets.forEach(function (el) { io.observe(el); });
+}
+// 秒杀横滑箭头：逐卡步进（卡宽 200 + 间距 12）
         var track = document.getElementById('sk-track');
         var prev = document.getElementById('sk-prev');
         var next = document.getElementById('sk-next');
