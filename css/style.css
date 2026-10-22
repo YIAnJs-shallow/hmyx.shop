@@ -698,3 +698,7 @@ h1, h2 { font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
 .filter-row .fr-price input{width:72px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:6px}
 .filter-row .fr-price button{padding:4px 12px;border:1px solid #2563eb;color:#2563eb;background:#fff;border-radius:6px;cursor:pointer}
 @media(max-width:768px){.search-fixed-bar{display:none}}
+
+/* ===== hero 深空背景下的搜索辅助链接（2026-10-22）：深底白字胶囊替代浅灰（浅灰在深背景上对比不足致"看不清/像重叠"） ===== */
+.home-hero .reset-btn { background: rgba(15, 23, 42, .55); color: #fff; border: 1px solid rgba(255, 255, 255, .4); }
+.home-hero .reset-btn:hover { background: rgba(15, 23, 42, .8); color: #fff; transform: none; }
