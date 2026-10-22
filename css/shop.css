@@ -153,7 +153,7 @@ img.thumb{background:#eef2f7 linear-gradient(100deg,rgba(255,255,255,0) 20%,rgba
 /* ===== 滚动交互舒适化（2026-10-22）：楼层入场/秒杀横滑/结算吸底 ===== */
 .floor-reveal{opacity:0;transform:translateY(28px)}
 .floor-reveal.floor-in{opacity:1;transform:none;transition:opacity .45s cubic-bezier(.22,.61,.36,1),transform .45s cubic-bezier(.22,.61,.36,1);transition-delay:var(--reveal-delay,0ms)}
-@media (prefers-reduced-motion: reduce){.floor-reveal{opacity:1;transform:none;transition:none}}
+/* 动效开关由站内 hm_motion 控制是否注入动画类（不再依赖系统 reduce 媒体查询） */
 .sk-head{gap:8px}
 .sk-track{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px;-webkit-overflow-scrolling:touch}
 .sk-track .sk-item{flex:0 0 200px;scroll-snap-align:start}
@@ -171,3 +171,5 @@ img.thumb{background:#eef2f7 linear-gradient(100deg,rgba(255,255,255,0) 20%,rgba
   body{padding-bottom:64px}
   .site-dock{bottom:84px}
 }
+
+.motion-toggle{font-size:1.05rem}

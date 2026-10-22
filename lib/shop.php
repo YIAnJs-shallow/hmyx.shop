@@ -869,7 +869,7 @@ function site_logo_html(): string {
         .'<span style="display:flex;flex-direction:column;line-height:1.1;"><span style="font-size:1.3rem;font-weight:800;color:#1e293b;">惠蒙优选</span><span style="font-size:0.55rem;font-weight:700;color:#2563eb;letter-spacing:1.2px;">HUIMENG CHOICE</span></span></a></div>';
 }
 function page_start($title) {
-    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=12"></head><body><header>'.site_logo_html().'<nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
+    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.h($title).' · 惠蒙优选</title><link rel="stylesheet" href="css/shop.css?v=13"></head><body><header>'.site_logo_html().'<nav><a href="index.php">选购商品</a><a href="cart.php">购物车</a><a href="favorites.php">收藏</a><a href="my_coupons.php">优惠券</a><a href="my_orders.php">我的订单</a><a href="groups.php">我的拼团</a><a href="notifications.php">消息';
     if (!empty($_SESSION['user_id'])) {
         // 未读角标：一次性 COUNT 查询
         $unread = (int)one('SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=? AND read_at IS NULL', [(int)$_SESSION['user_id']])['n'];
@@ -893,10 +893,16 @@ function page_end() {
         . '<a class="dock-btn" href="my_orders.php" title="我的订单">📋</a>'
         . '<a class="dock-btn" href="cart.php" title="购物车">🛒' . ($dockCart > 0 ? '<i class="dock-badge">' . min($dockCart, 99) . '</i>' : '') . '</a>'
         . '<a class="dock-btn" href="help.php" title="帮助中心">❓</a>'
+        . '<button type="button" class="dock-btn motion-toggle" id="motion-toggle" title="开/关页面动效">✨</button>'
         . '</div>';
     echo '<script>(function(){var d=document.getElementById("site-dock"),t=document.getElementById("dock-top");if(!d)return;'
         . 'window.addEventListener("scroll",function(){d.classList.toggle("dock-on",window.scrollY>300);},{passive:true});'
-        . 'if(t)t.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"});});})();</script>';
+        . 'if(t)t.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"});});'
+        . 'var mt=document.getElementById("motion-toggle");'
+        . 'if(mt){if(localStorage.getItem("hm_motion")===null)localStorage.setItem("hm_motion",window.matchMedia("(prefers-reduced-motion: reduce)").matches?"0":"1");'
+        . 'var sync=function(){mt.style.opacity=localStorage.getItem("hm_motion")==="0"?"0.4":"1";};'
+        . 'mt.addEventListener("click",function(){localStorage.setItem("hm_motion",localStorage.getItem("hm_motion")==="0"?"1":"0");sync();location.reload();});sync();}'
+        . '})();</script>';
     echo '</body></html>';
 }
 function action_button($orderId, $action, $label) {

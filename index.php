@@ -246,7 +246,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>惠蒙优选 - 精选优质商城</title>
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
-    <link rel="stylesheet" href="css/shop.css?v=12">
+    <link rel="stylesheet" href="css/shop.css?v=13">
     <link rel="stylesheet" href="css/style.css?v=8">
     <link rel="stylesheet" href="css/user_menu.css?v=2">
 </head>
@@ -635,12 +635,19 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
         <?php endif; ?>
         <a href="my_orders.php" title="我的订单">📋</a>
         <a href="cart.php" title="购物车">🛒<?php if ($is_logged_in && $sideCartQty > 0): ?><i class="dock-badge"><?= min($sideCartQty, 99) ?></i><?php endif; ?></a>
-        <a href="javascript:void(0);" id="back-top" title="回到顶部">⬆</a>
+        <button type="button" class="motion-toggle" id="motion-toggle" title="开/关页面动效">✨</button><a href="javascript:void(0);" id="back-top" title="回到顶部">⬆</a>
     </div>
 
     <script>
     (function () {
-        // 楼层滚动入场 v2（用户反馈"感受不到"后加强）：楼层与楼层内卡片级联错峰入场，
+        (function () {
+        var mt = document.getElementById('motion-toggle');
+        if (!mt) return;
+        var sync = function () { mt.style.opacity = localStorage.getItem('hm_motion') === '0' ? '.4' : '1'; };
+        mt.addEventListener('click', function () { localStorage.setItem('hm_motion', localStorage.getItem('hm_motion') === '0' ? '1' : '0'); sync(); location.reload(); });
+        sync();
+    })();
+    // 楼层滚动入场 v2（用户反馈"感受不到"后加强）：楼层与楼层内卡片级联错峰入场，
 // 一次波浪 0.45s + 每卡递进 45ms（封顶 240ms）；JS 注入类名保无 JS 回退；reduced-motion 守卫
 var revealTargets = [];
 document.querySelectorAll('[data-floor]').forEach(function (s) {
@@ -652,7 +659,9 @@ document.querySelectorAll('[data-floor]').forEach(function (s) {
         revealTargets.push(c);
     });
 });
-if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+// 动效开关：站内 localStorage 控制（hm_motion），OS 的 reduce 只作为首次访问初始值——避免 Windows 关动画时用户永远看不到效果
+if (localStorage.getItem('hm_motion') === null) localStorage.setItem('hm_motion', window.matchMedia('(prefers-reduced-motion: reduce)').matches ? '0' : '1');
+if ('IntersectionObserver' in window && localStorage.getItem('hm_motion') !== '0') {
     var io = new IntersectionObserver(function (entries) {
         entries.forEach(function (en) {
             if (en.isIntersecting) { en.target.classList.add('floor-in'); io.unobserve(en.target); }

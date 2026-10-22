@@ -1558,9 +1558,10 @@ check(strpos($galHtml, '联系客服') === false, 'contact service card removed 
 check(strpos(file_get_contents(__DIR__ . '/../product_edit.php'), 'gallery_action') !== false, 'product edit exposes gallery management');
 // ===== 滚动交互舒适化 =====
 $ri = file_get_contents(__DIR__.'/../index.php');
-check(strpos($ri, "classList.add('floor-reveal')") !== false && strpos($ri, 'IntersectionObserver') !== false && strpos($ri, 'prefers-reduced-motion: reduce') !== false && strpos($ri, '--reveal-delay') !== false, 'home floors use staggered scroll reveal with reduced-motion guard');
+check(strpos($ri, "classList.add('floor-reveal')") !== false && strpos($ri, 'IntersectionObserver') !== false && strpos($ri, 'hm_motion') !== false && strpos($ri, '--reveal-delay') !== false, 'home floors use staggered scroll reveal gated by site motion toggle');
 check(strpos($ri, 'sk-track') !== false && strpos($ri, 'sk-prev') !== false && strpos(file_get_contents(__DIR__.'/../css/shop.css'), 'scroll-snap-type:x mandatory') !== false, 'seckill floor is horizontal snap carousel with arrows');
 $rc = file_get_contents(__DIR__.'/../checkout.php');
 check(strpos($rc, 'class="pay-bar"') !== false && substr_count($rc, 'name="submit_order"') === 2 && strpos(file_get_contents(__DIR__.'/../css/shop.css'), 'media (max-width:768px)') !== false, 'checkout has mobile-only sticky pay bar reusing submit_order');
+check(strpos(file_get_contents(__DIR__.'/../lib/shop.php'), 'motion-toggle') !== false && strpos(file_get_contents(__DIR__.'/../index.php'), 'motion-toggle') !== false, 'motion toggle available on home and page_start pages');
 check(send_mail('qa-disable@example.com', 'qa', 'qa') === true, 'mail send disabled under SHOP_MAIL_DISABLE in test env');
 echo "$assertions integration assertions passed. Test database: $testDb\n";
