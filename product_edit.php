@@ -550,25 +550,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <div class="mb-4">
-                <label class="form-label fw-bold small">商品相册（最多 <?= PRODUCT_GALLERY_MAX ?> 张，详情页主图区轮播展示）</label>
-                <?php if ($galleryImages): ?>
-                <div class="mb-2 d-flex gap-2 flex-wrap">
-                    <?php foreach ($galleryImages as $gi): ?>
-                    <div style="position:relative;">
-                        <img src="<?= htmlspecialchars($gi['image_url']) ?>" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #dee2e6;" alt="相册图">
-                        <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="del"><input type="hidden" name="gallery_image_id" value="<?=(int)$gi['id'] ?>"><button class="btn-close btn-sm" style="position:absolute;top:-4px;right:-4px;background:#fff;border-radius:50%;padding:2px;" title="删除" onclick="return confirm('删除这张相册图？')"></button></form>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-                <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center"><?= csrf_field() ?>
-                    <input type="hidden" name="gallery_action" value="add">
-                    <input type="file" name="gallery_image" accept="image/*" class="form-control" style="max-width:280px;" required>
-                    <button class="btn btn-sm btn-outline-primary">上传相册图</button>
-                </form>
-            </div>
-
-            <div class="mb-4">
                 <label class="form-label fw-bold small">商品详情描述</label>
                 <textarea name="detail" rows="4" class="form-control" style="resize: vertical;" placeholder="请输入商品的详细介绍..."><?= htmlspecialchars($product['detail'] ?? '') ?></textarea>
             </div>
@@ -582,6 +563,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </button>
             </div>
         </form>
+
+        <!-- 商品相册管理：独立于主编辑表单（2026-10-24 修复嵌套 form——此前相册隐藏域并入外层表单，保存商品会被空上传劫持进相册分支导致永远保存失败） -->
+        <div class="mb-4">
+            <label class="form-label fw-bold small">商品相册（最多 <?= PRODUCT_GALLERY_MAX ?> 张，详情页主图区轮播展示）</label>
+            <?php if ($galleryImages): ?>
+            <div class="mb-2 d-flex gap-2 flex-wrap">
+                <?php foreach ($galleryImages as $gi): ?>
+                <div style="position:relative;">
+                    <img src="<?= htmlspecialchars($gi['image_url']) ?>" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #dee2e6;" alt="相册图">
+                    <form method="post" class="d-inline"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="del"><input type="hidden" name="gallery_image_id" value="<?=(int)$gi['id'] ?>"><button class="btn-close btn-sm" style="position:absolute;top:-4px;right:-4px;background:#fff;border-radius:50%;padding:2px;" title="删除" onclick="return confirm('删除这张相册图？')"></button></form>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center"><?= csrf_field() ?>
+                <input type="hidden" name="gallery_action" value="add">
+                <input type="file" name="gallery_image" accept="image/*" class="form-control" style="max-width:280px;" required>
+                <button class="btn btn-sm btn-outline-primary">上传相册图</button>
+            </form>
+        </div>
 
         <?php if (!$is_admin && $existing_group): ?>
         <form action="product_edit.php?id=<?= $product_id ?>" method="POST" class="mb-3"><?php echo csrf_field(); ?><input type="hidden" name="end_group_buy" value="1"><button type="submit" class="btn btn-outline-danger btn-sm">立即结束拼团活动（当前进行中：<?php echo (int)$existing_group['size']; ?> 人成团）</button></form>
