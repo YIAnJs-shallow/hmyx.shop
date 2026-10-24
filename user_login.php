@@ -11,6 +11,8 @@ if (!$db) {
 }
 
 $message = '';
+// CSRF 校验失败 303 跳回时经 $_SESSION['notice'] 带回提示（与 page_start 同一闪存约定）
+if (isset($_SESSION['notice'])) { $message = $_SESSION['notice']; unset($_SESSION['notice']); }
 $next = safe_next_url($_POST['next'] ?? $_GET['next'] ?? '');
 // 记住当前选中的标签页（白名单，默认验证码登录）
 $active_tab = $_POST['login_type'] ?? 'code';
@@ -203,9 +205,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             const body = new URLSearchParams();
             body.append('email', email);
             body.append('csrf_token', form.querySelector('input[name="csrf_token"]').value);
-            fetch('email_login_code.php', { method: 'POST', body: body })
+            fetch('email_login_code.php', { method: 'POST', headers: { 'X-Requested-With': 'fetch' }, body: body })
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
+                    if (data.csrf_expired) { alert('页面已过期，已自动刷新，请重试'); location.reload(); return; }
                     alert(data.message);
                     if (data.success) startCountdown(60);
                 })

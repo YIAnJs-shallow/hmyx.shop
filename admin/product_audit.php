@@ -369,7 +369,7 @@ function bulkAction(action) {
 
     fetch('api_bulk_audit.php', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <?php echo json_encode(csrf_token()); ?> },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', 'X-CSRF-Token': <?php echo json_encode(csrf_token()); ?> },
         body: JSON.stringify({ product_ids: ids, action: action, comment: comment })
     })
     .then(res => res.json())

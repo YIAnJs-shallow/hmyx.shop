@@ -534,6 +534,7 @@ function deleteAddress(addressId) {
 
     fetch('addresses.php', {
         method: 'POST',
+        headers: { 'X-Requested-With': 'fetch' },
         body: formData
     })
     .then(res => {

@@ -375,6 +375,7 @@ function deleteProduct(productId) {
 
     fetch('product_list.php', {
         method: 'POST',
+        headers: { 'X-Requested-With': 'fetch' },
         body: formData
     })
     .then(res => {
@@ -424,6 +425,7 @@ document.addEventListener('click', function (e) {
 
     fetch('product_list.php', {
         method: 'POST',
+        headers: { 'X-Requested-With': 'fetch' },
         body: formData
     })
     .then(res => {

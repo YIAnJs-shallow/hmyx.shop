@@ -13,12 +13,22 @@ function csrf_token() {
     return $_SESSION['csrf_token'];
 }
 function csrf_field() { return '<input type="hidden" name="csrf_token" value="'.h(csrf_token()).'">'; }
+// AJAX 请求识别：fetch 调用点统一带 X-Requested-With 头（XMLHttpRequest 或 fetch 均算），失败时返回 JSON 而非重定向
+function request_wants_json() { return ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== ''; }
 function csrf_check() {
     $token = $_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
-    if (!is_string($token) || !hash_equals(csrf_token(), $token)) {
+    if (is_string($token) && hash_equals(csrf_token(), $token)) return;
+    // 失败分流：AJAX 回 JSON（前端可提示真实原因并自愈）；表单 303 跳回当前页，
+    // 页面重载即携带新 token，用户重新提交即可，不再落在纯文本 403 死胡同（夸克老内核实测卡死）。
+    if (request_wants_json()) {
         http_response_code(403);
-        exit('请求已过期或来源无效，请刷新页面重试。');
+        header('Content-Type: application/json; charset=utf-8');
+        exit(json_encode(['success' => false, 'message' => '页面已过期，请刷新页面后重试。', 'csrf_expired' => true], JSON_UNESCAPED_UNICODE));
     }
+    $_SESSION['notice'] = '页面已过期，请重新提交。';
+    $target = $_SERVER['REQUEST_URI'] ?? '';
+    header('Location: '.(is_string($target) && isset($target[0]) && $target[0] === '/' ? $target : 'index.php'), true, 303);
+    exit;
 }
 
 // ===== 接口限流原语（2026-10-20 方向 A 安全加固）=====

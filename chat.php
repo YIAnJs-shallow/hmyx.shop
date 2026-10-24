@@ -110,7 +110,7 @@ page_start(($role === 'buyer' ? '与「' . h($threadName) . '」的客服对话'
         btn.disabled = true;
         var body = new URLSearchParams(base);
         body.set('content', text);
-        fetch('chat_send.php', { method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+        fetch('chat_send.php', { method: 'POST', headers: { 'X-Requested-With': 'fetch', 'X-CSRF-Token': csrf, 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
             .then(function (r) { return r.ok ? r.json() : { success: false, message: '网络异常' }; })
             .then(function (d) {
                 btn.disabled = false;
