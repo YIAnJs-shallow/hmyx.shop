@@ -1287,7 +1287,8 @@ check(strpos($myOrdersHtml,'待付尾款')!==false && strpos($myOrdersHtml,'补�
 $presaleCheckoutHtml=render_checkout_page(['user_id'=>$buyer,'role'=>'user'],['product_id'=>$pPresale,'quantity'=>1]);
 check(strpos($presaleCheckoutHtml,'当前为预售商品')!==false && strpos($presaleCheckoutHtml,'¥ 5.00')!==false && strpos($presaleCheckoutHtml,'使用优惠券')===false && strpos($presaleCheckoutHtml,'使用积分抵扣')===false,'checkout preview shows presale deposit and hides coupon and points options');
 $superSession=bin2hex(random_bytes(24));$operatorSession=bin2hex(random_bytes(24));
-session_save_path(sys_get_temp_dir());
+// 会话必须落在 php.ini 的 session.save_path（2026-10-24 修复：原先写 sys_get_temp_dir()，与 Web 服务器读取路径错位，
+// HTTP 回归里管理员从未真正登录过，驳回/审核类断言一直在静默空跑）
 foreach ([$superSession=>$superId,$operatorSession=>$operatorId] as $sid=>$aid) {
     session_id($sid);session_start();$_SESSION=['admin'=>['id'=>$aid]];refresh_admin_session();csrf_token();session_write_close();
 }
