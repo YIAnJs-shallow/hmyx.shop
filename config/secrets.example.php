@@ -41,3 +41,8 @@ define('ALIPAY_ALIPAY_PUBLIC_KEY', '');       // 支付宝公钥（Base64 单行
 // 来源：火山引擎控制台 → 方舟（Ark）→ API Key 管理；Key 以 ark- 开头
 // 用于 search_image.php：调视觉模型生成商品搜索关键词；留空/未定义时图片搜索功能自动降级为"暂不可用"，不影响正常搜索
 define('ARK_API_KEY', '');
+
+// ===== 火山方舟（AI 智能导购 ai_pick.php） =====
+// Coding Plan 套餐模型名，不带日期版本号（2026-10-24 实测 doubao-seed-2.1-pro 可用）；套餐内不单独计费
+// 未定义时 lib/ai_pick.php 代码兜底同名默认值；与 ARK_API_KEY 共用同一密钥
+define('ARK_MODEL_GUIDE', 'doubao-seed-2.1-pro');

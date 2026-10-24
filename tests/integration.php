@@ -1564,4 +1564,89 @@ $rc = file_get_contents(__DIR__.'/../checkout.php');
 check(strpos($rc, 'class="pay-bar"') !== false && substr_count($rc, 'name="submit_order"') === 2 && strpos(file_get_contents(__DIR__.'/../css/shop.css'), 'media (max-width:768px)') !== false, 'checkout has mobile-only sticky pay bar reusing submit_order');
 check(strpos(file_get_contents(__DIR__.'/../lib/shop.php'), 'motion-toggle') !== false && strpos(file_get_contents(__DIR__.'/../index.php'), 'motion-toggle') !== false, 'motion toggle available on home and page_start pages');
 check(send_mail('qa-disable@example.com', 'qa', 'qa') === true, 'mail send disabled under SHOP_MAIL_DISABLE in test env');
+// ===== AI 智能导购（lib/ai_pick.php：门禁/限流/降级/id 白名单/候选可见口径/搜索日志） =====
+require_once __DIR__.'/../lib/ai_pick.php';
+check(defined('ARK_MODEL_GUIDE'), 'ark guide model fallback constant defined');
+// 页面渲染助手：函数作用域 include 需要全局 $conn 可见（同 member.php 先例）
+function render_ai_pick_page(array $session, array $post, $method) {
+    global $conn;
+    $backupPost=$_POST; $backupSession=$_SESSION; $backupMethod=$_SERVER['REQUEST_METHOD'] ?? null;
+    $_SESSION=$session; $_POST=$post; $_SERVER['REQUEST_METHOD']=$method;
+    ob_start();
+    include __DIR__.'/../ai_pick.php';
+    $html=ob_get_clean();
+    $_POST=$backupPost; $_SESSION=$backupSession;
+    if ($backupMethod===null) unset($_SERVER['REQUEST_METHOD']); else $_SERVER['REQUEST_METHOD']=$backupMethod;
+    return $html;
+}
+// 1) 未登录门禁：CLI 渲染"请先登录"提示并带 next 回跳链接
+$guestPickHtml = render_ai_pick_page([], [], 'GET');
+check(strpos($guestPickHtml, '请先登录后使用 AI 帮我挑') !== false && strpos($guestPickHtml, 'user_login.php?next=ai_pick.php') !== false, 'ai pick page rejects guests with login prompt and next return url');
+// 2) 登录后 GET 空表单正常展示
+$sessAi = ['user_id' => $buyer, 'role' => 'user', 'csrf_token' => 'qa-csrf'];
+$formHtml = render_ai_pick_page($sessAi, [], 'GET');
+check(strpos($formHtml, 'name="q"') !== false && strpos($formHtml, 'name="csrf_token"') !== false, 'ai pick page renders question form for logged-in user');
+// 3) 限流：桶内预置满额计数 → 第 11 次拒绝，且不写搜索日志
+$aiBucket = 'ai-pick:'.$buyer;
+$aiQ1 = '限流测试关键词abc';
+for ($i = 0; $i < 10; $i++) query('INSERT INTO rate_limit_hits (bucket_key, hit_at) VALUES (?, NOW() - INTERVAL 1 SECOND)', [rate_limit_bucket_key($aiBucket)]);
+putenv('AI_PICK_EXTRACT_OVERRIDE={"keywords":["平台"],"category":"","price_min":null,"price_max":null}');
+putenv('AI_PICK_GENERATE_OVERRIDE={"product_ids":['.$p1.'],"reason":"限流测试"}');
+$rlHtml = render_ai_pick_page($sessAi, ['csrf_token' => 'qa-csrf', 'q' => $aiQ1], 'POST');
+check(strpos($rlHtml, '操作过于频繁') !== false, 'ai pick rate limit rejects 11th request within window');
+check((int)one('SELECT COUNT(*) c FROM search_logs WHERE keyword=?', [$aiQ1])['c'] === 0, 'rate-limited ai pick writes no search log');
+query('DELETE FROM rate_limit_hits WHERE bucket_key=?', [rate_limit_bucket_key($aiBucket)]);
+// 4) 降级：AI_PICK_FAIL=1 模拟 curl 失败 → 页面显示"AI 导购暂不可用"，不写搜索日志
+$aiQ2 = '送妈妈的按摩仪';
+putenv('AI_PICK_FAIL=1');
+putenv('AI_PICK_EXTRACT_OVERRIDE');
+putenv('AI_PICK_GENERATE_OVERRIDE');
+$degradeHtml = render_ai_pick_page($sessAi, ['csrf_token' => 'qa-csrf', 'q' => $aiQ2], 'POST');
+check(strpos($degradeHtml, 'AI 导购暂不可用') !== false, 'model call failure degrades to unavailable notice');
+check((int)one('SELECT COUNT(*) c FROM search_logs WHERE keyword=?', [$aiQ2])['c'] === 0, 'degraded ai pick writes no search log');
+putenv('AI_PICK_FAIL');
+// 5) 抽取段解析失败降级（函数级）
+putenv('AI_PICK_EXTRACT_OVERRIDE=抱歉，我无法解析该需求');
+check(ai_pick_answer($aiQ2) === null, 'unparseable extract response degrades to null');
+// 6) 抽取解析归一化：脏 JSON → 关键词清洗/去重/价格带 clamp（与 index.php 价格筛选同口径）
+putenv('AI_PICK_EXTRACT_OVERRIDE=前置说明 {"keywords":["按摩仪!","按摩仪","  ","按摩仪器"],"category":"按摩器材","price_min":"500","price_max":5000000}');
+$aiEx = ai_pick_extract('x');
+check($aiEx !== null && $aiEx['keywords'] === ['按摩仪', '按摩仪器'] && $aiEx['category'] === '按摩器材' && $aiEx['price_min'] === 500.0 && $aiEx['price_max'] === null, 'dirty extract json normalized: keyword sanitize dedup and price clamp');
+putenv('AI_PICK_EXTRACT_OVERRIDE');
+// 7) 候选可见口径：下架/未审商品永不进候选（status/approved 过滤生效）
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('导购隐身下架商品','25.00',3,?,0,'approved')", [$category]); $aiHidOff = (int)$conn->insert_id;
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('导购隐身待审商品','35.00',3,?,1,'pending')", [$category]); $aiHidPending = (int)$conn->insert_id;
+$aiCands = ai_pick_candidates(['keywords' => ['导购隐身'], 'category' => '', 'price_min' => null, 'price_max' => null]);
+$aiCandIds = array_map('intval', array_column($aiCands, 'id'));
+check(!in_array($aiHidOff, $aiCandIds, true) && !in_array($aiHidPending, $aiCandIds, true), 'candidates visibility filter excludes off-shelf and pending-audit products');
+// 7b) 分类失配放宽兜底（L3）：LLM 猜的分类不在 categories 表时，去分类条件按关键词召回库内真实商品
+$candsSoft = ai_pick_candidates(['keywords' => ['平台'], 'category' => '绝无此分类名', 'price_min' => null, 'price_max' => null]);
+check(in_array($p1, array_map('intval', array_column($candsSoft, 'id')), true), 'category miss falls back to keyword-only recall');
+// 8) id 白名单硬校验：LLM 返回越界 id 被丢弃，幸存 id 重查库渲染
+putenv('AI_PICK_EXTRACT_OVERRIDE={"keywords":["平台"],"category":"","price_min":null,"price_max":null}');
+putenv('AI_PICK_GENERATE_OVERRIDE={"product_ids":['.$p1.',999999],"reason":"测试推荐理由"}');
+$aiAns = ai_pick_answer('推荐点好物');
+check(is_array($aiAns) && in_array($p1, array_map('intval', array_column($aiAns['products'], 'id')), true) && !in_array(999999, array_map('intval', array_column($aiAns['products'], 'id')), true) && $aiAns['reason'] === '测试推荐理由', 'forged llm id dropped and surviving id re-queried from db');
+check((int)one('SELECT results FROM search_logs WHERE keyword=? ORDER BY id DESC LIMIT 1', ['推荐点好物'])['results'] === count($aiAns['products']), 'search log records actual returned product count');
+// 9) 全越界 → 空态文案 + 日志 results=0
+putenv('AI_PICK_GENERATE_OVERRIDE={"product_ids":[999999,888888],"reason":"越界"}');
+$aiAns2 = ai_pick_answer('再来一个');
+check(is_array($aiAns2) && $aiAns2['products'] === [] && $aiAns2['reason'] === '没有找到匹配的商品', 'all forged ids dropped to empty state');
+check((int)one('SELECT results FROM search_logs WHERE keyword=? ORDER BY id DESC LIMIT 1', ['再来一个'])['results'] === 0, 'empty result ai pick logs results zero');
+// 10) 页面级 happy path：POST 全链路（抽取→候选→生成→校验）渲染理由与商品卡（重新设回含 p1 的生成响应）
+putenv('AI_PICK_GENERATE_OVERRIDE={"product_ids":['.$p1.',999999],"reason":"测试推荐理由"}');
+$okPickHtml = render_ai_pick_page($sessAi, ['csrf_token' => 'qa-csrf', 'q' => '给我推荐点好物'], 'POST');
+check(strpos($okPickHtml, '平台测试商品') !== false && strpos($okPickHtml, '测试推荐理由') !== false && strpos($okPickHtml, '为你挑选') !== false, 'ai pick page renders reason and product cards end to end');
+// 11) 候选为空时第三段不调模型：即使 AI_PICK_FAIL=1 也返回空态而非降级
+putenv('AI_PICK_FAIL=1');
+putenv('AI_PICK_EXTRACT_OVERRIDE={"keywords":["绝无匹配词xyzq"],"category":"","price_min":null,"price_max":null}');
+putenv('AI_PICK_GENERATE_OVERRIDE');
+$aiAns3 = ai_pick_answer('根本不存在的商品词');
+check(is_array($aiAns3) && $aiAns3['products'] === [] && $aiAns3['reason'] === '没有找到匹配的商品', 'empty candidates skip model call and return empty state even on fail override');
+putenv('AI_PICK_FAIL');
+putenv('AI_PICK_EXTRACT_OVERRIDE');
+putenv('AI_PICK_GENERATE_OVERRIDE');
+// 12) 首页入口链接落点
+$aiIdx = file_get_contents(__DIR__.'/../index.php');
+check(strpos($aiIdx, 'ai_pick.php') !== false && strpos($aiIdx, '✨ AI 帮我挑') !== false, 'homepage search bar links to ai pick entry');
 echo "$assertions integration assertions passed. Test database: $testDb\n";

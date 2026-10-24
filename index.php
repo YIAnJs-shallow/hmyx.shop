@@ -319,6 +319,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
                 <select name="sort" class="search-select" aria-label="排序"><?php foreach($sort_labels as $key=>$label): ?><option value="<?php echo $key; ?>" <?php echo $sort===$key?'selected':''; ?>><?php echo $label; ?></option><?php endforeach; ?></select><button type="submit" class="search-btn">搜索</button>
 
                 <a href="search_image.php" class="reset-btn" title="上传照片搜索同款商品">📷 拍照搜同款</a>
+                <a href="ai_pick.php" class="reset-btn" title="AI 智能导购：一句话描述需求帮你挑">✨ AI 帮我挑</a>
                 <?php if (!empty($keyword) || $category_id > 0): ?>
                     <a href="index.php" class="reset-btn">重置条件</a>
                 <?php endif; ?>
