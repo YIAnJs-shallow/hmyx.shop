@@ -8,8 +8,10 @@ if (!defined('ARK_API_KEY')) {
     if (is_file($arkSecretsPath)) require_once $arkSecretsPath;
 }
 
-define('ARK_API_URL', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions');
-define('ARK_MODEL', 'doubao-seed-2-0-lite-260428');
+// 2026-10-24 实测切换：账号 ARK Key 为 Coding Plan 套餐 Key，仅 /api/coding/v3 端点可用（/api/v3 全部 ModelNotOpen，拍照搜同款因此一直静默降级）。
+// 套餐模型名不带日期版本号（doubao-seed-2.1-lite），含在订阅额度内不单独计费。视觉传图已实测可用（2026-10-24，data:image/png base64）。
+define('ARK_API_URL', 'https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions');
+define('ARK_MODEL', 'doubao-seed-2.1-lite');
 
 /**
  * 调方舟视觉模型生成商品关键词。
