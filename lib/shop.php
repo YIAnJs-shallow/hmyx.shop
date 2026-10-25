@@ -326,6 +326,24 @@ function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId
     unset($line);
     return $lines;
 }
+// ===== 村级自提点（2026-10-25，毕设"信息平台+按村集单"定位配套）=====
+// 地址类型归一：pickup=村级自提点（名称必填 2~60 字）；home=快递到家（名称强制清空）；非法值一律按 home 处理
+function address_normalize_type($addrType, $pickupPoint) {
+    $addrType = ($addrType === 'pickup') ? 'pickup' : 'home';
+    $pickupPoint = trim((string)$pickupPoint);
+    if ($addrType === 'pickup') {
+        $len = mb_strlen($pickupPoint);
+        if ($len < 2 || $len > 60) throw new DomainException('自提点名称须为 2 至 60 字');
+    } else {
+        $pickupPoint = '';
+    }
+    return [$addrType, $pickupPoint];
+}
+// 快照口径：自提点地址进订单时在收货地址文本前加【自提点】标记，随文本入单，orders 表零改动
+function address_ship_text(array $address) {
+    return (($address['addr_type'] ?? 'home') === 'pickup' ? '【自提点】' : '') . $address['receiver_address'];
+}
+
 function create_orders($userId, $productId, $qty, $addressId, $token, $userCouponId = 0, $skuId = 0, $usePoints = 0, $groupBuyId = 0, $presale = 0) {
     global $conn;
     $conn->begin_transaction();
@@ -426,7 +444,7 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
             }
             $number = 'HM'.date('YmdHis').bin2hex(random_bytes(6));
             query("INSERT INTO orders(order_no,user_id,total_amount,status,pay_stage,receiver_name,receiver_phone,receiver_address,shop_id,checkout_token,stock_reserved,points_paid,points_discount_cents,member_discount_cents) VALUES(?,?,?,'pending',?,?,?,?,?,?,1,?,?,?)",
-                [$number,$userId,money($total),$presale ? 'deposit' : 'full',$address['receiver_name'],$address['receiver_phone'],$address['receiver_address'],$shopId ?: null,$token,$pointsPaid,$pointsDiscount,$memberDiscount]);
+                [$number,$userId,money($total),$presale ? 'deposit' : 'full',$address['receiver_name'],$address['receiver_phone'],address_ship_text($address),$shopId ?: null,$token,$pointsPaid,$pointsDiscount,$memberDiscount]);
             $orderId = (int)$conn->insert_id;
             if (isset($shares[$shopId])) query('UPDATE orders SET discount_amount=?, coupon_user_id=? WHERE id=?', [money($shares[$shopId]), (int)$userCouponId, $orderId]);
             $ids[] = $orderId;

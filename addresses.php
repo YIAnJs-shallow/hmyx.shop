@@ -188,14 +188,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $conn->begin_transaction();
     try {
         if (!$receiver_name || mb_strlen($receiver_name)>50 || !preg_match('/^[0-9+ -]{6,20}$/D',$receiver_phone) || mb_strlen($receiver_address)<5 || mb_strlen($receiver_address)>255) throw new DomainException('请填写有效的收货人、联系电话及详细地址（5 至 255 字）');
+        [$addr_type, $pickup_point] = address_normalize_type($_POST['addr_type'] ?? 'home', $_POST['pickup_point'] ?? '');
         one('SELECT id FROM users WHERE id=? FOR UPDATE',[(int)$user_id]);
         $existing=$edit_id ? one('SELECT * FROM user_addresses WHERE id=? AND user_id=?',[$edit_id,(int)$user_id]) : null;
         if ($edit_id && !$existing) throw new DomainException('地址不存在或无权修改');
         if (!one('SELECT id FROM user_addresses WHERE user_id=? AND is_default=1',[(int)$user_id])) $is_default=1;
         if ($existing && $existing['is_default']) $is_default=1;
         if ($is_default) query('UPDATE user_addresses SET is_default=0 WHERE user_id=?',[(int)$user_id]);
-        if ($edit_id) query('UPDATE user_addresses SET receiver_name=?,receiver_phone=?,receiver_address=?,is_default=? WHERE id=? AND user_id=?',[$receiver_name,$receiver_phone,$receiver_address,$is_default,$edit_id,(int)$user_id]);
-        else query('INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,?,?,?,?)',[(int)$user_id,$receiver_name,$receiver_phone,$receiver_address,$is_default]);
+        if ($edit_id) query('UPDATE user_addresses SET receiver_name=?,receiver_phone=?,receiver_address=?,addr_type=?,pickup_point=?,is_default=? WHERE id=? AND user_id=?',[$receiver_name,$receiver_phone,$receiver_address,$addr_type,$pickup_point,$is_default,$edit_id,(int)$user_id]);
+        else query('INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,addr_type,pickup_point,is_default) VALUES(?,?,?,?,?,?,?)',[(int)$user_id,$receiver_name,$receiver_phone,$receiver_address,$addr_type,$pickup_point,$is_default]);
         $conn->commit(); header('Location: addresses.php?saved=1',true,303); exit;
     } catch (Throwable $e) {
         $conn->rollback(); if (!($e instanceof DomainException)) error_log($e);
@@ -306,6 +307,25 @@ try {
             </div>
 
             <div class="mb-3">
+                <label class="form-label text-muted small">地址类型</label>
+                <div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="addr_type" value="home" id="addrTypeHome" checked onchange="togglePickup()">
+                        <label class="form-check-label" for="addrTypeHome">快递到家</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="addr_type" value="pickup" id="addrTypePickup" onchange="togglePickup()">
+                        <label class="form-check-label" for="addrTypePickup">村级自提点</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3" id="pickup-point-group">
+                <label class="form-label text-muted small">自提点名称（选"村级自提点"必填，2 至 60 字）</label>
+                <input type="text" name="pickup_point" id="pickup_point" class="form-control" placeholder="如：柳林村村口小卖部（王叔代收）" maxlength="60">
+            </div>
+
+            <div class="mb-3">
                 <div class="map-wrapper">
                     <div id="map-container"></div>
                     <button type="button" class="btn btn-locate" onclick="getCurrentLocation()">
@@ -344,8 +364,11 @@ try {
                                 <?php if (!empty($addr['is_default'])): ?>
                                     <span class="badge bg-danger ms-2">默认</span>
                                 <?php endif; ?>
+                                <?php if (($addr['addr_type'] ?? 'home') === 'pickup'): ?>
+                                    <span class="badge bg-success ms-2">自提点</span>
+                                <?php endif; ?>
                             </div>
-                            <div class="text-secondary small mt-1"><?= htmlspecialchars($addr['receiver_address']) ?></div>
+                            <div class="text-secondary small mt-1"><?= htmlspecialchars($addr['receiver_address']) ?><?= ($addr['addr_type'] ?? 'home') === 'pickup' && $addr['pickup_point'] !== '' ? ' · 自提点：' . htmlspecialchars($addr['pickup_point']) : '' ?></div>
                         </div>
 
                         <div class="btn-group">
@@ -495,6 +518,14 @@ function parseBackendAddress(lat, lng) {
     .catch(() => showLocationHint('未能解析详细地址，请手动补充'));
 }
 
+// 自提点名称输入框随地址类型显隐（村级自提点必填）
+function togglePickup() {
+    var isPickup = document.getElementById('addrTypePickup').checked;
+    var group = document.getElementById('pickup-point-group');
+    if (group) group.style.display = isPickup ? '' : 'none';
+    if (!isPickup) document.getElementById('pickup_point').value = '';
+}
+
 // 填入数据进入编辑模式
 function editAddress(data) {
     document.getElementById('edit_id').value = data.id;
@@ -502,6 +533,11 @@ function editAddress(data) {
     document.getElementById('receiver_phone').value = data.receiver_phone;
     document.getElementById('detail_address').value = data.receiver_address;
     document.getElementById('isDefault').checked = parseInt(data.is_default) === 1;
+    var isPickup = data.addr_type === 'pickup';
+    document.getElementById('addrTypeHome').checked = !isPickup;
+    document.getElementById('addrTypePickup').checked = isPickup;
+    document.getElementById('pickup_point').value = data.pickup_point || '';
+    togglePickup();
 
     document.getElementById('form-title').innerText = "✏️ 修改收货地址";
     document.getElementById('submit-btn').innerText = "保存修改";

@@ -725,6 +725,10 @@ query("CREATE TABLE IF NOT EXISTS shop_chats (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 add_column('shops', 'certifications', "varchar(500) NOT NULL DEFAULT '' COMMENT '资质背书（商户自填，顿号/逗号分隔，展示用）'");
 
+// ===== 村级自提点（2026-10-25，毕设"信息平台+按村集单"定位配套）：地址类型与自提点名称 =====
+add_column('user_addresses', 'addr_type', "enum('home','pickup') NOT NULL DEFAULT 'home' COMMENT 'home=快递到家 pickup=村级自提点'");
+add_column('user_addresses', 'pickup_point', "varchar(60) NOT NULL DEFAULT '' COMMENT '自提点名称（addr_type=pickup 时必填，如：柳林村村口小卖部）'");
+
 // ===== 查漏补缺：商品相册（2026-10-21，对标淘宝多图主图区）=====
 query("CREATE TABLE IF NOT EXISTS product_images (
     id INT AUTO_INCREMENT PRIMARY KEY,

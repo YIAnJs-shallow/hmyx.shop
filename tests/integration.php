@@ -74,6 +74,23 @@ rejects(function()use($ids,$other){change_order((int)$ids[0],$other,'cancel');},
 change_order((int)$ids[0],$buyer,'cancel');
 check((int)one('SELECT stock FROM products WHERE id=?',[$p1])['stock']===10,'cancellation restores inventory');
 rejects(function()use($ids,$buyer){change_order((int)$ids[0],$buyer,'cancel');},'repeat cancellation cannot inflate stock');
+
+// ===== 村级自提点（2026-10-25，毕设"信息平台+按村集单"定位配套）=====
+check((int)one("SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='user_addresses' AND COLUMN_NAME IN ('addr_type','pickup_point')")['n']===2,'pickup address columns exist');
+[$pt1,$pp1]=address_normalize_type('pickup',' 柳林村村口小卖部 ');
+check($pt1==='pickup' && $pp1==='柳林村村口小卖部','pickup type keeps trimmed point name');
+rejects(function(){address_normalize_type('pickup','  ');},'pickup without point name rejected');
+rejects(function(){address_normalize_type('pickup',str_repeat('点',61));},'oversized pickup point name rejected');
+[$pt2,$pp2]=address_normalize_type('home','某自提点');
+check($pt2==='home' && $pp2==='','home type clears pickup point');
+[$pt3,$pp3]=address_normalize_type('bogus','某自提点');
+check($pt3==='home' && $pp3==='','invalid addr_type normalized to home');
+query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,addr_type,pickup_point,is_default) VALUES(?,'测试买家','13800000000','测试省柳林县柳林乡柳林村','pickup','柳林村村口小卖部',0)",[$buyer]); $pickupAddress=(int)$conn->insert_id;
+$pickupIds=create_orders($buyer,$p1,1,$pickupAddress,'pickup-ship-text');
+$pickupOrder=one('SELECT receiver_address FROM orders WHERE id=?',[(int)$pickupIds[0]]);
+check(strpos($pickupOrder['receiver_address'],'【自提点】')===0,'pickup order snapshot carries pickup flag');
+change_order((int)$pickupIds[0],$buyer,'cancel');
+check(strpos(file_get_contents(__DIR__.'/../addresses.php'),'address_normalize_type')!==false && strpos(file_get_contents(__DIR__.'/../checkout.php'),'【自提点】')!==false,'address pickup type wired into save and checkout rendering');
 $shopOrder=(int)$ids[1];
 putenv('SHOP_DEMO_PAYMENT=0');
 rejects(function()use($shopOrder,$buyer){change_order($shopOrder,$buyer,'pay');},'payment disabled unless explicitly enabled');
