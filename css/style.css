@@ -620,10 +620,13 @@ h1, h2 { font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 }
 /* 右侧浮动挂件：优惠券 / 回到顶部，滚动 400px 后淡入 */
+/* z-index 910：必须压过楼层电梯(.floor-elevator z-index:900)——两者同为右侧固定件且同时于滚动 400px 后显示，
+   层级低于电梯时电梯锚点区会吞掉挂件按钮(含动效开关)的点击（2026-10-25 用户实测 ✨ 无法点击）；
+   bottom 收到 18px 与垂直居中的电梯错开空间，常规屏高下两者不再重叠 */
 .side-float {
     position: fixed;
     right: 18px;
-    bottom: 120px;
+    bottom: 18px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -632,7 +635,7 @@ h1, h2 { font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
     border-radius: 12px;
     box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
     padding: 6px 0;
-    z-index: 90;
+    z-index: 910;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;

@@ -247,7 +247,7 @@ $filter_query = function (array $override = []) use ($keyword, $category_id, $br
     <title>惠蒙优选 - 精选优质商城</title>
     <!-- shop.css 提供推荐板块的卡片类名；style.css 在后以保持整页现有观感 -->
     <link rel="stylesheet" href="css/shop.css?v=13">
-    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/style.css?v=9">
     <link rel="stylesheet" href="css/user_menu.css?v=2">
 </head>
 <body class="page-home">
