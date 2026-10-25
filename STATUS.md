@@ -3,7 +3,7 @@
 > 本文件由项目负责人（Claude Code）维护：每开始一个任务、每提交一次、遇到阻塞时立即更新。
 > ROADMAP.md 管全局规划与历史；本文件只管"现在做到哪了"。
 
-- 当前任务：CSRF 失败体验自愈修复 + 两个存量缺陷连带修复（2026-10-24，integration 470 断言 + http_flow 44 断言全绿）
-- 进行到的步骤：security.php CSRF 失败分流（表单 303 跳回+notice 闪存自愈 / AJAX 带 X-Requested-With 返回 403 JSON）；登录页验证码 JS 收到 csrf_expired 自动刷新；6 处 fetch 调用点补标记头。连带修：product_edit 相册块移出主表单（嵌套 form 自 10-21 起劫持保存致商品永远存不上）；integration.php 超管会话改落 php.ini save_path（原写 sys_get_temp_dir 致 HTTP 回归管理员从未真登录）+ http_flow 过时文案断言更新（尚未接入→模拟生成）
-- 遗留：夸克浏览器侧若 Cookie 完全不落盘仍无法登录（属浏览器设置问题，需用户检查夸克隐私/云端加速设置）；支付探针阻塞仍在用户侧
-- 下一步：用户在夸克复测登录；按 ROADMAP 优先级推进
+- 当前任务：毕设支持阶段（功能冻结只修 bug）；首页动效开关修复已交付（2026-10-25，b3a63cd，已推送，470 断言全绿）
+- 进行到的步骤：动效开关根因=右侧悬浮件(side-float z-index:90)被楼层电梯(z-index:900)遮挡吞点击；修复=提 910 + bottom 120→18px 错开空间，style.css v=9 破缓存。下一任务：村级自提点最小功能（用户已批准，毕设"信息平台+集单"定位配套）
+- 遗留：夸克登录问题已闭环（2026-10-25 根因=夸克在 http 下不存会话 Cookie，session_diag.log 实锤；vhost 80 端口已加 301 强转 https——配置在 phpStudy 的 huimeng_vhost.conf 不入库，待用户在面板重启 Apache 生效）；支付探针阻塞在用户侧
+- 下一步：自提点最小功能开工（地址类型+自提点字段，测试库 migrate 自主，正式库 DDL 执行前请示）；随后论文第 3 章初稿（毕设口径，E:\zuoye\论文初稿\）
