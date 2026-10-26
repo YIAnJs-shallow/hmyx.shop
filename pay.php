@@ -8,6 +8,7 @@ if (!$order) { http_response_code(404); page_start('订单不存在'); page_end(
 // 支付宝沙箱支付发起：POST + CSRF（db.php 已统一校验），仅本人 pending 订单可付
 if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST' && ($_POST['action'] ?? '')==='alipay') {
     if ($order['status']!=='pending') redirect_to('pay.php?order_id='.$id, $order['status']==='paid' ? '订单已支付，请勿重复付款' : '当前订单状态不可支付');
+    $order = order_prepare_payment($order);
     $payable = order_payable_cents($order);
     $titles = rows('SELECT product_title AS title FROM order_items WHERE order_id=?', [$id]);
     $subject = mb_substr(implode('、', array_column($titles, 'title')), 0, 60, 'UTF-8');
@@ -46,7 +47,7 @@ $presaleStage = ($order['pay_stage'] ?? 'full') === 'deposit';
 $presalePaidCents = $presaleStage ? (int)round(((float)$order['paid_cents']) * 100) : 0;
 $presaleEnd = $presaleStage ? one('SELECT presale_end_at FROM products p JOIN order_items i ON i.product_id=p.id WHERE i.order_id=?', [$id]) : null;
 ?>
-<section class="card"><p>订单号 <?=h($order['order_no'])?></p><p>商品合计 ¥ <?=h($order['total_amount'])?><?php if ((int)$order['member_discount_cents']>0): ?> · 会员折扣已减 ¥ <?=money((int)$order['member_discount_cents'])?><?php endif; ?><?php if ((float)$order['discount_amount']>0): ?> · 优惠券已减 ¥ <?=h($order['discount_amount'])?><?php endif; ?><?php if ((int)$order['points_discount_cents']>0): ?> · 积分抵扣 <?=money((int)$order['points_discount_cents'])?>（支付时扣减 <?=h((int)$order['points_paid'])?> 积分）<?php endif; ?></p><p class="price">实付 ¥ <?=money($payableCents)?></p><p><?=h(status_name($order['status']))?></p><p><?=h($order['receiver_name'])?> · <?=h($order['receiver_phone'])?><br><?=h($order['receiver_address'])?></p>
+<section class="card"><p>订单号 <?=h($order['order_no'])?></p><p>商品合计 ¥ <?=h($order['total_amount'])?><?php if ((int)$order['member_discount_cents']>0): ?> · 会员折扣已减 ¥ <?=money((int)$order['member_discount_cents'])?><?php endif; ?><?php if ((float)$order['discount_amount']>0): ?> · 优惠券已减 ¥ <?=h($order['discount_amount'])?><?php endif; ?><?php if ((int)$order['points_discount_cents']>0): ?> · 积分抵扣 <?=money((int)$order['points_discount_cents'])?>（支付发起时锁定 <?=h((int)$order['points_paid'])?> 积分，取消或超时未支付返还）<?php endif; ?></p><p class="price">实付 ¥ <?=money($payableCents)?></p><p><?=h(status_name($order['status']))?></p><p><?=h($order['receiver_name'])?> · <?=h($order['receiver_phone'])?><br><?=h($order['receiver_address'])?></p>
 <?php if ($presaleStage && $presalePaidCents === 0): ?><p class="notice">当前为预售商品：本单需支付定金 ¥ <?=money($payableCents)?>（商品总价 ¥ <?=h($order['total_amount'])?>），尾款 ¥ <?=money(max(0,(int)cents($order['total_amount'])-(int)$payableCents))?> 须在定金支付后 7 天内补齐。<?php if ($presaleEnd && !empty($presaleEnd['presale_end_at'])): ?>定金支付截止：<?=h($presaleEnd['presale_end_at'])?>。<?php endif; ?></p>
 <?php elseif ($presaleStage && $presalePaidCents > 0): ?><p class="notice">预售订单：已付定金 ¥ <?=money($presalePaidCents)?>，还需支付尾款 ¥ <?=money($payableCents)?>，须于 <?=h(date('Y-m-d H:i', strtotime($order['paid_at']) + 7*86400))?> 前完成。</p>
 <?php endif; ?>

@@ -719,6 +719,40 @@ query('UPDATE users SET points=0 WHERE id=?',[$buyer]);
 change_order($shortOrder,$buyer,'pay');
 $shortRow=one('SELECT points_paid,points_discount_cents FROM orders WHERE id=?',[$shortOrder]);
 check((int)$shortRow['points_paid']===0 && (int)$shortRow['points_discount_cents']===0 && one('SELECT id FROM points_log WHERE type=? AND ref_id=?',['pay',$shortOrder])===null && (int)one('SELECT points FROM users WHERE id=?',[$buyer])['points']===0,'insufficient points at payment skips deduction and pays the full amount');
+check(one('SELECT status FROM orders WHERE id=?',[$shortOrder])['status']==='paid' && order_payable_cents(one('SELECT * FROM orders WHERE id=?',[$shortOrder]))===3010,'insufficient-points demo order completes at the unchanged full price');
+// 5b) 多待付订单共用余额：首次发起支付即预留，后一单自动转全价，杜绝网关金额与入库口径漂移
+$prepareUser=insert_user('qa_points_prepare','user');
+query('UPDATE users SET points=100 WHERE id=?',[$prepareUser]);
+query("INSERT INTO user_addresses(user_id,receiver_name,receiver_phone,receiver_address,is_default) VALUES(?,'积分预留买家','13800000000','测试地址仅用于积分预留',1)",[$prepareUser]); $prepareAddress=(int)$conn->insert_id;
+query("INSERT INTO products(title,price,stock,category_id,status,audit_status) VALUES('积分预留商品','30.10',20,?,1,'approved')",[$category]); $prepareProduct=(int)$conn->insert_id;
+$prepare1=(int)create_orders($prepareUser,$prepareProduct,1,$prepareAddress,'points-prepare-1',0,0,1)[0];
+$prepare2=(int)create_orders($prepareUser,$prepareProduct,1,$prepareAddress,'points-prepare-2',0,0,1)[0];
+$prepared1=order_prepare_payment(one('SELECT * FROM orders WHERE id=?',[$prepare1]));
+check((int)$prepared1['points_paid']===100 && order_payment_points_reserved($prepared1) && order_payable_cents($prepared1)===2910 && (int)one('SELECT points FROM users WHERE id=?',[$prepareUser])['points']===0,'first payment preparation locks points and preserves the discounted gateway amount');
+order_prepare_payment($prepared1);
+check((int)one("SELECT COUNT(*) AS n FROM points_log WHERE user_id=? AND type='pay' AND ref_id=? AND change_points<0",[$prepareUser,$prepare1])['n']===1 && (int)one('SELECT points FROM users WHERE id=?',[$prepareUser])['points']===0,'payment preparation retry never deducts points twice');
+$prepared2=order_prepare_payment(one('SELECT * FROM orders WHERE id=?',[$prepare2]));
+check((int)$prepared2['points_paid']===0 && (int)$prepared2['points_discount_cents']===0 && order_payable_cents($prepared2)===3010,'second pending order falls back to full price before gateway amount is built');
+change_order($prepare1,$prepareUser,'pay'); change_order($prepare2,$prepareUser,'pay');
+check(one('SELECT status FROM orders WHERE id=?',[$prepare1])['status']==='paid' && one('SELECT status FROM orders WHERE id=?',[$prepare2])['status']==='paid' && order_payable_cents(one('SELECT * FROM orders WHERE id=?',[$prepare1]))===2910 && order_payable_cents(one('SELECT * FROM orders WHERE id=?',[$prepare2]))===3010,'both prepared orders complete with their original gateway amounts');
+// 5c) 预留后取消/超时只返还真扣积分，重复流转不重复返
+query('UPDATE users SET points=100 WHERE id=?',[$prepareUser]);
+$prepareCancel=(int)create_orders($prepareUser,$prepareProduct,1,$prepareAddress,'points-prepare-cancel',0,0,1)[0];
+order_prepare_payment(one('SELECT * FROM orders WHERE id=?',[$prepareCancel]));
+change_order($prepareCancel,$prepareUser,'cancel');
+check((int)one('SELECT points FROM users WHERE id=?',[$prepareUser])['points']===100 && (int)one("SELECT COUNT(*) AS n FROM points_log WHERE user_id=? AND type='pay' AND ref_id=? AND change_points>0",[$prepareUser,$prepareCancel])['n']===1,'cancelling a reserved order returns the actual points deduction once');
+query('UPDATE users SET points=100 WHERE id=?',[$prepareUser]);
+$prepareExpire=(int)create_orders($prepareUser,$prepareProduct,1,$prepareAddress,'points-prepare-expire',0,0,1)[0];
+order_prepare_payment(one('SELECT * FROM orders WHERE id=?',[$prepareExpire]));
+query('UPDATE orders SET created_at=NOW()-INTERVAL 4 HOUR WHERE id=?',[$prepareExpire]); expire_orders($prepareUser);
+check((int)one('SELECT points FROM users WHERE id=?',[$prepareUser])['points']===100 && one('SELECT status FROM orders WHERE id=?',[$prepareExpire])['status']==='cancelled','expiring a reserved order returns points and closes the order');
+// 5d) 支付宝积分单必须先经支付发起预留，禁止回调中临时改变金额口径
+query('UPDATE users SET points=100 WHERE id=?',[$prepareUser]);
+$prepareAlipay=(int)create_orders($prepareUser,$prepareProduct,1,$prepareAddress,'points-prepare-alipay',0,0,1)[0];
+rejects(function()use($prepareAlipay,$prepareUser){change_order($prepareAlipay,$prepareUser,'pay',['payment_method'=>'alipay_sandbox']);},'alipay points order without preparation cannot enter paid state');
+check(one('SELECT status FROM orders WHERE id=?',[$prepareAlipay])['status']==='pending' && (int)one('SELECT points FROM users WHERE id=?',[$prepareUser])['points']===100,'rejected unprepared alipay leaves order and points untouched');
+order_prepare_payment(one('SELECT * FROM orders WHERE id=?',[$prepareAlipay])); change_order($prepareAlipay,$prepareUser,'pay',['payment_method'=>'alipay_sandbox']);
+check(one('SELECT status FROM orders WHERE id=?',[$prepareAlipay])['status']==='paid' && (int)one('SELECT points FROM users WHERE id=?',[$prepareUser])['points']===0,'prepared alipay points order completes without a second deduction');
 // 6) 页面落点：结算页勾选框、个人中心入口、积分中心登录门禁与余额明细展示
 check(strpos(file_get_contents(__DIR__.'/../checkout.php'),'use_points')!==false && strpos(file_get_contents(__DIR__.'/../pay.php'),'积分抵扣')!==false,'checkout offers points checkbox and pay page shows deduction line');
 check(strpos(file_get_contents(__DIR__.'/../user_center.php'),'我的积分')!==false && strpos(file_get_contents(__DIR__.'/../user_center.php'),'points.php')!==false,'user center renders points entry block linking to points page');

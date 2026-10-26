@@ -261,6 +261,41 @@ function order_payable_cents(array $order) {
     }
     return max(0, $total - (int)cents((string)$order['discount_amount']) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents']);
 }
+// 本单积分是否已真实扣减：支付重试据此幂等，取消/超时也只返还实际扣减的积分
+function order_payment_points_reserved(array $order) {
+    return one("SELECT id FROM points_log WHERE user_id=? AND type='pay' AND ref_id=? AND change_points<0 LIMIT 1", [(int)$order['user_id'], (int)$order['id']]) !== null;
+}
+// 发起支付时确定积分与金额：余额够则先锁定扣减；不足则先转为全价，避免网关低价、入库高价
+function order_prepare_payment(array $order) {
+    global $conn;
+    $started = !points_in_transaction();
+    if ($started) $conn->begin_transaction();
+    try {
+        $locked = one('SELECT * FROM orders WHERE id=? FOR UPDATE', [(int)$order['id']]);
+        if (!$locked || $locked['status'] !== 'pending') throw new DomainException('当前订单状态不可支付');
+        if ((int)$locked['points_paid'] > 0 && !order_payment_points_reserved($locked)) {
+            $payer = one('SELECT points FROM users WHERE id=? FOR UPDATE', [(int)$locked['user_id']]);
+            if ($payer && (int)$payer['points'] >= (int)$locked['points_paid']) {
+                if (!grant_points((int)$locked['user_id'], 'pay', -(int)$locked['points_paid'], (int)$locked['id'], '订单支付积分抵扣')) {
+                    throw new DomainException('积分余额发生变化，请重新发起支付');
+                }
+            } else {
+                query('UPDATE orders SET points_paid=0,points_discount_cents=0 WHERE id=?', [(int)$locked['id']]);
+                $locked['points_paid'] = 0;
+                $locked['points_discount_cents'] = 0;
+            }
+        }
+        if ($started) $conn->commit();
+        return $locked;
+    } catch (Throwable $e) {
+        if ($started) $conn->rollback();
+        throw $e;
+    }
+}
+function order_release_payment_points(array $order) {
+    if ((int)$order['points_paid'] <= 0 || !order_payment_points_reserved($order)) return;
+    grant_points((int)$order['user_id'], 'pay', (int)$order['points_paid'], (int)$order['id'], '取消或退款返还积分抵扣');
+}
 function checkout_lines($userId, $productId = 0, $qty = 1, $lock = false, $skuId = 0) {
     $suffix = $lock ? ' FOR UPDATE' : '';
     $lines = [];
@@ -475,6 +510,7 @@ function create_orders($userId, $productId, $qty, $addressId, $token, $userCoupo
 function release_stock($order) {
     require_once __DIR__ . '/coupon.php';
     coupon_restore_for_order((int)$order['id']);
+    order_release_payment_points($order);
     if (!(int)$order['stock_reserved']) return;
     foreach (rows('SELECT product_id,sku_id,quantity FROM order_items WHERE order_id=? ORDER BY product_id', [(int)$order['id']]) as $item) {
         // 历史订单与默认规格回补 products 行，SKU 订单回补对应 sku 行
@@ -538,14 +574,13 @@ function change_order($id, $actor, $action, $data = []) {
                     query("UPDATE orders SET status='paid',paid_at=NOW(),payment_method=?,paid_cents=?,pay_stage='balance' WHERE id=?", [$paymentMethod, money($paidCents + $payableCents), (int)$id]);
                 }
             } else {
-                // 积分抵现原子扣减：余额充足则按下单记录扣（grant_points 幂等 + 余额校验），不足则放弃抵扣按原价支付（取消/超时关单不涉及积分，不退）
-                if ((int)$order['points_paid'] > 0) {
-                    $payer = one('SELECT points FROM users WHERE id=? FOR UPDATE', [(int)$order['user_id']]);
-                    if ($payer && (int)$payer['points'] >= (int)$order['points_paid']) {
-                        grant_points((int)$order['user_id'], 'pay', -(int)$order['points_paid'], (int)$id, '订单支付积分抵扣');
-                    } else {
-                        query('UPDATE orders SET points_paid=0, points_discount_cents=0 WHERE id=?', [$id]);
+                // demo 在状态机内完成积分预留/全价回退；沙箱金额已在发起时确定，回调不得再改变积分口径
+                if ($paymentMethod === 'alipay_sandbox') {
+                    if ((int)$order['points_paid'] > 0 && !order_payment_points_reserved($order)) {
+                        throw new DomainException('积分抵扣尚未预留，请从支付页重新发起');
                     }
+                } else {
+                    $order = order_prepare_payment($order);
                 }
                 query("UPDATE orders SET status='paid',paid_at=NOW(),payment_method=? WHERE id=?", [$paymentMethod, $id]);
                 // 拼团订单：支付成功事务内成团判定（group_buy_settle 内部锁 group_buys 行防并发判团竞态）
