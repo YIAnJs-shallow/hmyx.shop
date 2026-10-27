@@ -13,9 +13,7 @@ if (alipay_verify($_POST)) {
         // 金额比对（口径同 pay.php）：普通单小计−券−积分抵现−会员折扣；预售单按阶段（定金 / 尾款=total−已付）
         $payable = order_payable_cents($order);
         $callbackAmount = $_POST['total_amount'] ?? null;
-        $amountOk = false;
-        try { $amountOk = $callbackAmount !== null && (int)cents($callbackAmount) === $payable; }
-        catch (DomainException $e) { $amountOk = false; }
+        $amountOk = order_payment_amount_matches($order, $callbackAmount);
         if (!$amountOk) {
             // 面向支付宝应答 fail 触发重发；日志带订单号与两侧金额便于排障，不暴露表结构
             error_log('pay_notify amount mismatch order_no=' . $outTradeNo . ' user_id=' . $order['user_id'] . ' callback=' . var_export($callbackAmount, true) . ' payable_cents=' . $payable);

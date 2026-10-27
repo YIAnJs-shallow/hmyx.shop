@@ -261,6 +261,12 @@ function order_payable_cents(array $order) {
     }
     return max(0, $total - (int)cents((string)$order['discount_amount']) - (int)$order['points_discount_cents'] - (int)$order['member_discount_cents']);
 }
+// 同步查单与异步通知共用：金额类型/格式必须合法，且与当前订单阶段应付完全一致
+function order_payment_amount_matches(array $order, $amount) {
+    if (!is_string($amount) && !is_int($amount) && !is_float($amount)) return false;
+    try { return (int)cents($amount) === order_payable_cents($order); }
+    catch (DomainException $e) { return false; }
+}
 // 本单积分是否已真实扣减：支付重试据此幂等，取消/超时也只返还实际扣减的积分
 function order_payment_points_reserved(array $order) {
     return one("SELECT id FROM points_log WHERE user_id=? AND type='pay' AND ref_id=? AND change_points<0 LIMIT 1", [(int)$order['user_id'], (int)$order['id']]) !== null;

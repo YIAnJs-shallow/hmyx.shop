@@ -9,13 +9,20 @@ if (alipay_verify($_GET)) {
     $outTradeNo = (string)($_GET['out_trade_no'] ?? '');
     $order = $outTradeNo !== '' ? one('SELECT * FROM orders WHERE order_no=? AND user_id=?', [$outTradeNo, $userId]) : null;
     if ($order) {
-        // 金额一律以数据库订单应付金额为准，不信任 return 参数中的 total_amount
-        $tradeStatus = alipay_query_trade($order['order_no']);
+        // 信任经签名验证的主动查单结果；金额再与数据库当前阶段应付比对，不信任 return 参数
+        $trade = alipay_query_trade($order['order_no']);
+        $tradeStatus = $trade['trade_status'] ?? null;
         if ($tradeStatus === 'TRADE_SUCCESS' || $tradeStatus === 'TRADE_FINISHED') {
-            $result='ok'; $reason='';
-            if ($order['status'] === 'pending') {
-                try { change_order((int)$order['id'], (int)$order['user_id'], 'pay', ['payment_method' => 'alipay_sandbox']); }
-                catch (DomainException $e) { $result='fail'; $reason='支付未完成：'.$e->getMessage(); }
+            if (!order_payment_amount_matches($order, $trade['total_amount'] ?? null)) {
+                $result = 'fail';
+                $reason = '支付金额与订单应付不一致，请暂停重复付款并联系管理员核查';
+                error_log('pay_return amount mismatch order_no=' . $order['order_no'] . ' user_id=' . $order['user_id'] . ' queried=' . var_export($trade['total_amount'] ?? null, true) . ' payable_cents=' . order_payable_cents($order));
+            } else {
+                $result='ok'; $reason='';
+                if ($order['status'] === 'pending') {
+                    try { change_order((int)$order['id'], (int)$order['user_id'], 'pay', ['payment_method' => 'alipay_sandbox']); }
+                    catch (DomainException $e) { $result='fail'; $reason='支付未完成：'.$e->getMessage(); }
+                }
             }
         } else {
             $result='pending'; $reason='支付未完成（当前状态：'.($tradeStatus ?? '查询失败').'），订单保持待付款';

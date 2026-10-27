@@ -57,16 +57,62 @@ function alipay_sign(array $params) {
     return $params;
 }
 
-// 验签：$publicKey 可传 Base64 或 PEM（默认用支付宝公钥常量；环境变量 ALIPAY_VERIFY_KEY_OVERRIDE 仅用于集成测试注入应用公钥自验）；缺参/验签失败一律 false
-function alipay_verify(array $params, $publicKey = null) {
-    if (!isset($params['sign']) || !is_string($params['sign']) || $params['sign'] === '') return false;
-    $content = alipay_sign_content($params);
+// 通用 RSA2 内容验签：页面回跳与 API 响应共用密钥处理，但签名原文分别构造
+function alipay_verify_content_signature($content, $signature, $publicKey = null) {
+    if (!is_string($content) || !is_string($signature) || $signature === '') return false;
     $defaultKey = getenv('ALIPAY_VERIFY_KEY_OVERRIDE') ?: ALIPAY_ALIPAY_PUBLIC_KEY;
     $pem = alipay_public_key_pem($publicKey !== null ? $publicKey : $defaultKey);
     $pub = openssl_pkey_get_public($pem);
     if ($pub === false) return false;
-    $ok = openssl_verify($content, base64_decode($params['sign'], true), $pub, OPENSSL_ALGO_SHA256);
-    return $ok === 1;
+    $decoded = base64_decode($signature, true);
+    return $decoded !== false && openssl_verify($content, $decoded, $pub, OPENSSL_ALGO_SHA256) === 1;
+}
+
+// 验签：$publicKey 可传 Base64 或 PEM（默认用支付宝公钥常量；环境变量 ALIPAY_VERIFY_KEY_OVERRIDE 仅用于集成测试注入应用公钥自验）；缺参/验签失败一律 false
+function alipay_verify(array $params, $publicKey = null) {
+    if (!isset($params['sign']) || !is_string($params['sign']) || $params['sign'] === '') return false;
+    return alipay_verify_content_signature(alipay_sign_content($params), $params['sign'], $publicKey);
+}
+
+// API 响应签名原文是响应节点的原始 JSON，而非页面回跳的 k=v& 参数串；提取时兼容字符串内括号与转义
+function alipay_response_payload($body, $rootNode) {
+    if (!is_string($body) || $body === '') return null;
+    $data = json_decode($body, true);
+    if (!is_array($data) || !isset($data[$rootNode], $data['sign']) || !is_array($data[$rootNode]) || !is_string($data['sign'])) return null;
+    $needle = '"'.$rootNode.'"';
+    $rootIndex = strpos($body, $needle);
+    if ($rootIndex === false || $rootIndex !== strrpos($body, $needle)) return null;
+    $start = strpos($body, '{', $rootIndex + strlen($needle));
+    if ($start === false) return null;
+    $depth = 0; $inString = false; $escaped = false; $end = null;
+    $length = strlen($body);
+    for ($i = $start; $i < $length; $i++) {
+        $char = $body[$i];
+        if ($inString) {
+            if ($escaped) $escaped = false;
+            elseif ($char === '\\') $escaped = true;
+            elseif ($char === '"') $inString = false;
+            continue;
+        }
+        if ($char === '"') { $inString = true; continue; }
+        if ($char === '{') $depth++;
+        elseif ($char === '}') {
+            $depth--;
+            if ($depth === 0) { $end = $i; break; }
+            if ($depth < 0) return null;
+        }
+    }
+    if ($end === null) return null;
+    $source = substr($body, $start, $end - $start + 1);
+    $response = json_decode($source, true);
+    if (!is_array($response) || $response != $data[$rootNode]) return null;
+    return ['response'=>$response, 'sign_source'=>$source, 'sign'=>$data['sign']];
+}
+
+function alipay_verify_api_response($body, $rootNode) {
+    $payload = alipay_response_payload($body, $rootNode);
+    if (!$payload || !alipay_verify_content_signature($payload['sign_source'], $payload['sign'])) return null;
+    return $payload['response'];
 }
 
 // 网关地址：环境变量 ALIPAY_GATEWAY_OVERRIDE 仅用于集成测试注入不可达地址，正常运行取 secrets.php 的 ALIPAY_GATEWAY
@@ -119,7 +165,7 @@ function alipay_signed_request_with_retry(array $baseParams, int $maxAttempts = 
     return null;
 }
 
-// 主动查询交易状态（alipay.trade.query）：返回 trade_status 字符串，查询失败/无此单返回 null
+// 主动查询交易（alipay.trade.query）：验签并核对订单后返回状态+金额；失败/错单返回 null
 function alipay_query_trade($orderNo) {
     $params = [
         'app_id' => ALIPAY_SANDBOX_APP_ID,
@@ -132,24 +178,33 @@ function alipay_query_trade($orderNo) {
         'biz_content' => json_encode(['out_trade_no' => $orderNo], JSON_UNESCAPED_UNICODE),
     ];
     $params = alipay_sign($params);
-    // 沙箱网关仅支持 GET；TLS 校验按系统 CA 开启，phpStudy 环境若缺 CA 报错可临时关闭校验（仅限沙箱）
-    $ch = curl_init(ALIPAY_GATEWAY . '?' . http_build_query($params));
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 10,
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_SSL_VERIFYHOST => 2,
-    ]);
-    $body = curl_exec($ch);
-    if ($body === false) { curl_close($ch); error_log('alipay_query_trade curl: ' . curl_error($ch)); return null; }
-    curl_close($ch);
-    $data = json_decode($body, true);
-    $response = $data['alipay_trade_query_response'] ?? null;
-    if (!is_array($response) || (isset($response['code']) && $response['code'] !== '10000')) {
-        if (is_array($response)) error_log('alipay_query_trade: ' . json_encode($response, JSON_UNESCAPED_UNICODE));
+    $override = PHP_SAPI === 'cli' ? getenv('ALIPAY_QUERY_RESPONSE_OVERRIDE') : false;
+    if (is_string($override) && $override !== '') {
+        $body = $override; // 仅集成测试注入完整签名响应，不真调外网
+    } else {
+        // 沙箱网关仅支持 GET；TLS 证书与主机名强制校验
+        $ch = curl_init(ALIPAY_GATEWAY . '?' . http_build_query($params));
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+        $body = curl_exec($ch);
+        if ($body === false) { $error = curl_error($ch); curl_close($ch); error_log('alipay_query_trade curl: ' . $error); return null; }
+        curl_close($ch);
+    }
+    $response = alipay_verify_api_response($body, 'alipay_trade_query_response');
+    if (!is_array($response) || ($response['code'] ?? '') !== '10000') {
+        error_log('alipay_query_trade verify failed order_no=' . $orderNo);
         return null;
     }
-    return $response['trade_status'] ?? null;
+    if (!isset($response['out_trade_no']) || !is_string($response['out_trade_no']) || !hash_equals((string)$orderNo, $response['out_trade_no'])) {
+        error_log('alipay_query_trade order mismatch');
+        return null;
+    }
+    $tradeStatus = $response['trade_status'] ?? '';
+    return ['trade_status'=>is_string($tradeStatus) ? $tradeStatus : '', 'total_amount'=>$response['total_amount'] ?? null];
 }
 
 // 构造 alipay.trade.refund 请求参数（签名路径与 alipay_query_trade 一致）：供退款函数与测试断言共用

@@ -774,6 +774,12 @@ check(strpos($memberPoints,'当前积分余额')!==false && strpos($memberPoints
 require_once __DIR__.'/../lib/alipay.php';
 // 1) 签名/验签对称自测：应用私钥签、应用公钥验（不依赖真实支付宝公钥）
 $appPub = openssl_pkey_get_details(alipay_private_key_resource())['key'];
+function alipay_test_api_response(array $response) {
+    $source = json_encode($response, JSON_UNESCAPED_UNICODE);
+    $signature = '';
+    openssl_sign($source, $signature, alipay_private_key_resource(), OPENSSL_ALGO_SHA256);
+    return json_encode(['alipay_trade_query_response'=>$response, 'sign'=>base64_encode($signature), 'sign_type'=>'RSA2'], JSON_UNESCAPED_UNICODE);
+}
 $signed = alipay_sign(['out_trade_no'=>'QA'.time(),'total_amount'=>'19.90','subject'=>'测试商品']);
 check(alipay_verify($signed,$appPub),'alipay sign/verify round-trip with app keypair');
 $tampered = $signed; $tampered['total_amount'] = '0.01';
@@ -823,6 +829,41 @@ $amountOkRow = one('SELECT * FROM orders WHERE id=?',[$amountOkOrder]);
 $amountOkParams = alipay_sign(['out_trade_no'=>$amountOkRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>money((int)cents($amountOkRow['total_amount']) - (int)cents($amountOkRow['discount_amount']) - (int)$amountOkRow['points_discount_cents'] - (int)$amountOkRow['member_discount_cents'])]);
 $notifyAmountOk = render_alipay_page(__DIR__.'/../pay_notify.php', ['user_id'=>$buyer,'role'=>'user'], [], $amountOkParams);
 check(trim($notifyAmountOk)==='success' && one('SELECT status FROM orders WHERE id=?',[$amountOkOrder])['status']==='paid','pay_notify with matching amount replies success and marks order paid');
+// 4d) 主动查单响应：原始 JSON 验签、错单拒绝、金额类型防御
+$queryProbeBody = alipay_test_api_response(['code'=>'10000','msg'=>'Success','out_trade_no'=>$amountOkRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>'19.90']);
+check(is_array(alipay_verify_api_response($queryProbeBody,'alipay_trade_query_response')),'signed query response raw JSON verifies');
+$queryTamperedBody = str_replace('"total_amount":"19.90"','"total_amount":"0.01"',$queryProbeBody);
+check(alipay_verify_api_response($queryTamperedBody,'alipay_trade_query_response')===null,'tampered query response raw JSON fails signature verification');
+$wrongOrderBody = alipay_test_api_response(['code'=>'10000','msg'=>'Success','out_trade_no'=>'QA-NOT-THIS-ORDER','trade_status'=>'TRADE_SUCCESS','total_amount'=>'19.90']);
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE='.$wrongOrderBody);
+check(alipay_query_trade($amountOkRow['order_no'])===null,'signed query response for another order is rejected');
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE');
+$invalidOrderTypeBody = alipay_test_api_response(['code'=>'10000','msg'=>'Success','out_trade_no'=>[$amountOkRow['order_no']],'trade_status'=>['TRADE_SUCCESS'],'total_amount'=>'19.90']);
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE='.$invalidOrderTypeBody);
+check(alipay_query_trade($amountOkRow['order_no'])===null,'signed query response with non-string order or status is rejected safely');
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE');
+check(!order_payment_amount_matches($amountOkRow,[]) && !order_payment_amount_matches($amountOkRow,'not-a-price'),'invalid callback amount types and formats never match');
+// 4e) 同步回跳：金额不符/缺失/响应不可信均不改单，匹配才允许支付
+$returnMismatchOrder = (int)create_orders($buyer,$p1,1,$address,'alipay-return-mismatch')[0];
+$returnMismatchRow = one('SELECT * FROM orders WHERE id=?',[$returnMismatchOrder]);
+$returnMismatchGet = alipay_sign(['out_trade_no'=>$returnMismatchRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>'0.01']);
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE='.alipay_test_api_response(['code'=>'10000','msg'=>'Success','out_trade_no'=>$returnMismatchRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>'0.01']));
+$returnMismatchHtml = render_alipay_page(__DIR__.'/../pay_return.php',['user_id'=>$buyer,'role'=>'user'],$returnMismatchGet);
+check(strpos($returnMismatchHtml,'支付金额与订单应付不一致')!==false && one('SELECT status FROM orders WHERE id=?',[$returnMismatchOrder])['status']==='pending','pay_return with signed amount mismatch keeps order pending');
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE='.alipay_test_api_response(['code'=>'10000','msg'=>'Success','out_trade_no'=>$returnMismatchRow['order_no'],'trade_status'=>'TRADE_SUCCESS']));
+$returnMissingAmountHtml = render_alipay_page(__DIR__.'/../pay_return.php',['user_id'=>$buyer,'role'=>'user'],$returnMismatchGet);
+check(strpos($returnMissingAmountHtml,'支付金额与订单应付不一致')!==false && one('SELECT status FROM orders WHERE id=?',[$returnMismatchOrder])['status']==='pending','pay_return with missing queried amount keeps order pending');
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE='.str_replace('"total_amount":"0.01"','"total_amount":"0.02"',alipay_test_api_response(['code'=>'10000','msg'=>'Success','out_trade_no'=>$returnMismatchRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>'0.01'])));
+$returnBadQueryHtml = render_alipay_page(__DIR__.'/../pay_return.php',['user_id'=>$buyer,'role'=>'user'],$returnMismatchGet);
+check(strpos($returnBadQueryHtml,'支付未完成')!==false && one('SELECT status FROM orders WHERE id=?',[$returnMismatchOrder])['status']==='pending','pay_return with untrusted query response keeps order pending');
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE');
+$returnMatchOrder = (int)create_orders($buyer,$p1,1,$address,'alipay-return-match')[0];
+$returnMatchRow = one('SELECT * FROM orders WHERE id=?',[$returnMatchOrder]);
+$returnMatchGet = alipay_sign(['out_trade_no'=>$returnMatchRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>'19.90']);
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE='.alipay_test_api_response(['code'=>'10000','msg'=>'Success','out_trade_no'=>$returnMatchRow['order_no'],'trade_status'=>'TRADE_SUCCESS','total_amount'=>'19.90']));
+$returnMatchHtml = render_alipay_page(__DIR__.'/../pay_return.php',['user_id'=>$buyer,'role'=>'user'],$returnMatchGet);
+check(strpos($returnMatchHtml,'支付成功')!==false && one('SELECT status FROM orders WHERE id=?',[$returnMatchOrder])['status']==='paid','pay_return with trusted matching trade completes payment');
+putenv('ALIPAY_QUERY_RESPONSE_OVERRIDE');
 putenv('ALIPAY_VERIFY_KEY_OVERRIDE');
 // 5) 支付成功分支复用：alipay_sandbox 渠道在演示支付关闭时仍可走通，且幂等防重
 putenv('SHOP_DEMO_PAYMENT=0');
