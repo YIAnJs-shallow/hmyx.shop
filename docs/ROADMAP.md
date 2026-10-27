@@ -6,6 +6,15 @@
 
 ## 当前优先级（P0 → P2）
 
+### 完成记录：P0 Apache 隐藏路径暴露（2026-10-26 修复，2026-10-27 收尾，✅ d01d61f）
+
+- **角色目标**：访客正常访问商城；源码、提交历史、协作配置和 CI 配置不得经 Web 下载；管理员只做可回滚的最小变更，不中断服务。
+- **实测证据**：`/.git/HEAD`、`/.git/config`、`/.gitignore`、`/.github/workflows/ci.yml`、`/.cursor/rules/collab-habits.mdc` 均 200；HEAD 为真实 Git 元数据。`config/db.php`、`tests/state.json` 已 403。
+- **方案**：仅改根 `.htaccess`，用路径段规则默认拒绝所有隐藏文件/目录，唯一例外 `.well-known`（证书/平台验证惯例），不再逐目录补黑名单。现有 config/lib/scripts/tests 等规则保留作纵深防御。
+- **验收**：上述隐藏路径及一个真实 Git object 均 403；index/login 200、addresses 303、config/tests 403；`/.well-known/nonexistent` 保持 404 而非 403，证明例外未被误封；不读敏感内容。
+- **回滚与负面清单**：改动仅版本库内一个配置文件，可 git revert；不删/移动 `.git`，不改 Apache 全局配置，不重启服务，不动数据库/远程仓库/端口，不夹带其他 Bug 修复。
+- **完成验证**：真实 Apache 下 .git/.github/.cursor 与真实 object 均 403，公开 index/login 正常、config/tests 403、.well-known 例外 404；7 种编码/点段绕过均非 2xx；488 integration + 44 http_flow 全绿。2026-10-27 会话恢复后再次复测关键 9 项全过。
+
 ### 完成记录：P0-1 积分支付金额一致性（2026-10-26，✅ c6dfb12）
 
 - **角色目标**：客户支付前后金额一致，余额不足仍能按原价支付；管理员订单/积分/对账可核对；多待付订单不能复用同一余额；失败可取消并正确返还。
