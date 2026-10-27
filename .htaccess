@@ -6,4 +6,6 @@ Options -Indexes
 DirectoryIndex welcome.php index.php index.html
 
 RewriteEngine On
+# 隐藏文件/目录默认禁止（.git/.github/.cursor 等）；仅保留证书与平台验证常用的 .well-known 通道
+RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,L]
 RewriteRule ^(?:backup_[^/]+|config|lib|scripts|tests|\.claude|\.codex|\.agents)(?:/|$) - [F,L]
